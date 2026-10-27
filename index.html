@@ -145,6 +145,7 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
 .tuner-hit { border-color: var(--good); background: color-mix(in srgb, var(--good) 18%, var(--surface-2)); }
 .match-card.hit { border-color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--surface-2)); }
 select.btn { appearance: auto; }
+.take-box { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 12px; background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
 .stage { display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; padding: 18px 8px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); min-height: 150px; justify-content: center; }
 .kline { margin: 0; font-family: var(--font-display); font-weight: 700; line-height: 1.25; text-wrap: balance; max-width: 34ch; }
 .kline.dim { font-weight: 600; opacity: .55; }
@@ -1147,7 +1148,7 @@ select.btn { appearance: auto; }
     </div>`;
   }
 
-  function Analyst({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics }) {
+  function Analyst({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, incomingTake }) {
     const [take, setTake] = useState(null);
     const [off, setOff] = useState(0);
     const [octaveFree, setOctaveFree] = useState(true);
@@ -1192,6 +1193,18 @@ select.btn { appearance: auto; }
       if (!data || jobs.current[which] !== job) return;
       setter({ name: file.name, buffer, data });
     }, [stopPlay]);
+    // a take recorded in Karaoke arrives already as audio
+    useEffect(() => {
+      if (!incomingTake) return;
+      const job = ++jobs.current.take;
+      stopPlay(); setCursor(null); setSaved(false);
+      setTake({ name: incomingTake.name, busy: true, progress: 0 });
+      (async () => {
+        const data = await trackPitch(incomingTake.buffer, (pr) => { if (jobs.current.take === job) setTake((s) => (s ? { ...s, progress: pr } : s)); }, () => jobs.current.take !== job);
+        if (!data || jobs.current.take !== job) return;
+        setTake({ name: incomingTake.name, buffer: incomingTake.buffer, data });
+      })();
+    }, [incomingTake && incomingTake.id]);
 
     const ready = orig && orig.data && take && take.data;
 
@@ -2648,7 +2661,31 @@ select.btn { appearance: auto; }
     </p>`;
   }
 
-  function Karaoke({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics }) {
+  // 16-bit mono WAV, gently normalized so quiet phone recordings are easy to hear
+  function encodeWav(buf) {
+    const d = buf.getChannelData(0), sr = buf.sampleRate, n = d.length;
+    const ab = new ArrayBuffer(44 + n * 2), v = new DataView(ab);
+    const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+    w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt ");
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true);
+    v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+    let peak = 0;
+    for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(d[i]));
+    const g = peak > 0 ? Math.min(0.9 / peak, 8) : 1;
+    for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, d[i] * g)) * 32767, true);
+    return new Blob([ab], { type: "audio/wav" });
+  }
+  async function saveBlob(blob, filename) {
+    let dl = null;
+    try { dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch (e) { dl = null; }
+    if (dl) { await dl.save({ filename, data: blob }); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  function Karaoke({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, onSendTake }) {
     const data = orig && orig.data ? orig.data : null;
     const notes = data ? data.notes : [];
     const songName = data ? orig.name : null;
@@ -2664,6 +2701,10 @@ select.btn { appearance: auto; }
     const [marks, setMarks] = useState([]);
     const [lineScores, setLineScores] = useState({});
     const [final, setFinal] = useState(null);
+    const [takeBuf, setTakeBuf] = useState(null);
+    const [hearing, setHearing] = useState(false);
+    const [saveMsg, setSaveMsg] = useState("");
+    const tape = useRef({ on: false, sr: 24000, chunks: [] });
     const [loop, setLoop] = useState(null);
     const [best, setBest] = useState(null);
     const mixRef = useRef(mix), syncRef = useRef(0), loopRef = useRef(null), hpRef = useRef("unknown");
@@ -2686,7 +2727,9 @@ select.btn { appearance: auto; }
     };
     const killSources = () => {
       const p = play.current;
+      tape.current.on = false; p.songAt = null;
       cancelAnimationFrame(p.raf);
+      if (p.hear) { try { p.hear.stop(); } catch (e) {} p.hear = null; setHearing(false); }
       [...p.srcs, ...p.guide].forEach((s) => { try { s.stop(); } catch (e) {} });
       p.buses.forEach((g) => { try { g.disconnect(); } catch (e) {} });
       p.srcs = []; p.guide = []; p.buses = [];
@@ -2695,7 +2738,8 @@ select.btn { appearance: auto; }
     const closeMic = useCallback(() => {
       const m = mic.current;
       if (m.stream) m.stream.getTracks().forEach((t) => t.stop());
-      [m.src, m.an].forEach((n) => { if (n) { try { n.disconnect(); } catch (e) {} } });
+      if (m.proc) m.proc.onaudioprocess = null;
+      [m.src, m.an, m.proc, m.sink].forEach((n) => { if (n) { try { n.disconnect(); } catch (e) {} } });
       mic.current = {};
     }, []);
     const ensureMic = async () => {
@@ -2706,7 +2750,21 @@ select.btn { appearance: auto; }
         const src = ctx.createMediaStreamSource(stream);
         const an = ctx.createAnalyser(); an.fftSize = 2048;
         src.connect(an);
-        mic.current = { stream, src, an };
+        // record your voice onto a "tape" laid out in song time, so pauses and loops stay lined up
+        const proc = ctx.createScriptProcessor(4096, 1, 1), sink = ctx.createGain(); sink.gain.value = 0;
+        src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+        proc.onaudioprocess = (e) => {
+          const T = tape.current, p = play.current;
+          if (!T.on || !p.songAt) return;
+          const inp = e.inputBuffer.getChannelData(0), sr = e.inputBuffer.sampleRate;
+          const half = sr >= 44100;
+          const out = new Float32Array(half ? inp.length >> 1 : inp.length);
+          if (half) for (let i = 0; i < out.length; i++) out[i] = (inp[2 * i] + inp[2 * i + 1]) / 2; else out.set(inp);
+          T.sr = half ? sr / 2 : sr;
+          const startT = p.songAt() - inp.length / sr;
+          T.chunks.push({ i: Math.max(0, Math.round(startT * T.sr)), d: out });
+        };
+        mic.current = { stream, src, an, proc, sink };
         return true;
       } catch (e) { closeMic(); return false; }
     };
@@ -2819,11 +2877,25 @@ select.btn { appearance: auto; }
       });
       if (Object.keys(upd).length) setLineScores((s) => ({ ...s, ...upd }));
     };
+    const buildTake = () => {
+      const T = tape.current;
+      if (!T.chunks.length) return null;
+      const len = T.chunks.reduce((m, c) => Math.max(m, c.i + c.d.length), 0);
+      if (len < T.sr * 1) return null;
+      let ab;
+      try { ab = new AudioBuffer({ length: len, sampleRate: T.sr, numberOfChannels: 1 }); }
+      catch (e) { ab = ensureCtx().createBuffer(1, len, T.sr); }
+      const ch = ab.getChannelData(0);
+      T.chunks.forEach((c) => ch.set(c.d, c.i));
+      return ab;
+    };
     const finish = () => {
       const R = run.current;
       const t = Object.values(R.tally);
       const v = t.reduce((s, x) => s + x.v, 0), ok = t.reduce((s, x) => s + x.ok, 0);
-      if (!listening || v < 50) { setFinal(null); return; }
+      const tb = buildTake();
+      setTakeBuf(tb); setSaveMsg("");
+      if (!listening || v < 50) { setFinal(tb ? { score: null, lines: 0 } : null); return; }
       const score = Math.round((100 * ok) / v);
       setFinal({ score, lines: Object.keys(R.tally).length });
       if (songName) {
@@ -2843,7 +2915,8 @@ select.btn { appearance: auto; }
       if (t >= end - 0.1) t = lp ? Math.max(0, lp.a - 0.6) : 0;
       if (fresh || t < 0.05) {
         run.current = { her: new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN), lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {} };
-        setMarks([]); setLineScores({}); setFinal(null); setOverlay(null);
+        tape.current = { on: false, sr: 24000, chunks: [] };
+        setMarks([]); setLineScores({}); setFinal(null); setOverlay(null); setTakeBuf(null);
       } else if (!run.current.her) {
         run.current.her = new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN);
       }
@@ -2862,6 +2935,8 @@ select.btn { appearance: auto; }
       if (inst && inst.buffer) start(inst.buffer, t + sy, p.gM);
       start(orig.buffer, t, p.gV);
       p.guide = scheduleGuide(ctx, p.gG, notes, t, end, now, 0, 1);
+      p.songAt = () => t + Math.max(0, ctx.currentTime - now);
+      tape.current.on = !!(listening && mic.current.an && !check);
       setPlaying(true);
       const an = listening ? mic.current.an : null, buf = an ? new Float32Array(an.fftSize) : null;
       let frame = 0;
@@ -2909,6 +2984,28 @@ select.btn { appearance: auto; }
     };
     const loopLine = (l) => { const lp = { a: Math.max(0, l.start), b: l.end + 0.3 }; loopRef.current = lp; setLoop(lp); startAt(Math.max(0, lp.a - 0.6), false); };
     const clearLoop = () => { loopRef.current = null; setLoop(null); };
+    const stopSession = () => {
+      if (listening) judge(cursor + 0.5);
+      killSources(); setPlaying(false);
+      finish();
+    };
+    const hearSelf = () => {
+      const p = play.current;
+      if (p.hear) { try { p.hear.stop(); } catch (e) {} p.hear = null; setHearing(false); return; }
+      if (!takeBuf) return;
+      stopAll();
+      const ctx = ensureCtx(), s = ctx.createBufferSource();
+      s.buffer = takeBuf; s.connect(ctx.destination); s.onended = () => { if (p.hear === s) { p.hear = null; setHearing(false); } };
+      s.start(); p.hear = s; setHearing(true);
+    };
+    const takeName = () => "Karaoke take · " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const saveTake = async () => {
+      if (!takeBuf) return;
+      const base = (songName || "song").replace(/\.[^.]+$/, "").replace(/[^\w\- ]+/g, "").trim().slice(0, 40) || "song";
+      try { await saveBlob(encodeWav(takeBuf), base + " - my take.wav"); setSaveMsg("Saved."); }
+      catch (e) { setSaveMsg(e && e.code === "declined" ? "Save cancelled." : "Saving isn't available here."); }
+    };
+    const sendToAnalyst = () => { if (takeBuf && onSendTake) { stopAll(); onSendTake({ id: Date.now(), name: takeName(), buffer: takeBuf }); } };
 
     if (!data) {
       return html`<div class="grid gap-4 sm:grid-cols-2">
@@ -2995,9 +3092,10 @@ select.btn { appearance: auto; }
 
         <div class="flex flex-wrap items-center gap-2">
           <button class="btn btn-primary" onClick=${() => (playing ? stopAll() : startAt(cursor >= songEnd - 0.2 ? 0 : cursor, cursor < 0.05))}>${playing ? "❚❚ Pause" : cursor > 0.05 && cursor < songEnd - 0.2 ? "▶ Resume" : "▶ Start"}</button>
+          ${(playing || (cursor > 0.05 && cursor < songEnd - 0.2)) && html`<button class="btn" onClick=${stopSession}>■ Stop</button>`}
           <button class="btn" onClick=${() => { clearLoop(); setCursor(0); startAt(0, true); }}>↺ From the top</button>
           <span class="mono text-xs muted">${fmt(cursor)} / ${fmt(songEnd)}</span>
-          ${listening ? html`<span class="flex items-center gap-2 text-xs muted"><span class="rec-dot"></span>Scoring</span>` : html`<span class="text-xs muted">Not scoring</span>`}
+          ${listening ? html`<span class="flex items-center gap-2 text-xs muted"><span class="rec-dot"></span>${playing ? "Recording and scoring" : "Scoring on"}</span>` : html`<span class="text-xs muted">Not scoring</span>`}
           ${loop && html`<span class="chip" style=${{ borderColor: "var(--accent)" }}><span class="text-xs">↻ Looping</span><b class="mono text-xs">${fmt(loop.a)}–${fmt(loop.b)}</b>
             <button class="text-xs" style=${{ color: "var(--accent)", background: "none", border: 0, cursor: "pointer", fontWeight: 600 }} onClick=${clearLoop} aria-label="Stop looping">✕</button></span>`}
         </div>
@@ -3022,14 +3120,28 @@ select.btn { appearance: auto; }
       ${final && html`<section class="panel p-4 sm:p-5 flex flex-col gap-4">
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div class="flex items-end gap-3">
-            <span class="display font-bold" style=${{ fontSize: 72, lineHeight: 1, color: "var(--accent)" }}>${final.score}</span>
-            <div class="flex flex-col pb-2">
-              <span class="label">Karaoke score</span>
-              <span class="text-xs muted">${final.lines} lines scored${best != null && best === final.score ? " · new best!" : best != null ? " · best " + best : ""}</span>
-            </div>
+            ${final.score != null
+              ? html`<span class="display font-bold" style=${{ fontSize: 72, lineHeight: 1, color: "var(--accent)" }}>${final.score}</span>
+                <div class="flex flex-col pb-2">
+                  <span class="label">Karaoke score</span>
+                  <span class="text-xs muted">${final.lines} lines scored${best != null && best === final.score ? " · new best!" : best != null ? " · best " + best : ""}</span>
+                </div>`
+              : html`<div class="flex flex-col"><span class="label">Your take</span><span class="text-sm muted">Not enough singing to score, but your recording is ready.</span></div>`}
           </div>
-          <button class="btn btn-primary" onClick=${() => { clearLoop(); setCursor(0); startAt(0, true); }}>↺ Sing again</button>
+          <button class="btn" onClick=${() => { clearLoop(); setCursor(0); startAt(0, true); }}>↺ Sing again</button>
         </div>
+        ${takeBuf && html`<div class="take-box">
+          <div class="flex flex-col min-w-0">
+            <span class="label">Your recording</span>
+            <span class="text-sm">${fmt(takeBuf.duration)} of your voice, lined up with the song</span>
+            ${saveMsg && html`<span class="text-xs muted">${saveMsg}</span>`}
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button class="btn" onClick=${hearSelf}>${hearing ? "■ Stop playback" : "▶ Hear yourself"}</button>
+            <button class="btn" onClick=${saveTake}>Save recording</button>
+            <button class="btn btn-primary" onClick=${sendToAnalyst}>Analyze in Singing Analyst →</button>
+          </div>
+        </div>`}
         ${scored.length > 0 && html`<div class="grid gap-3 sm:grid-cols-2">
           <div class="flex flex-col gap-2">
             <span class="label">Needs work</span>
@@ -3052,6 +3164,8 @@ select.btn { appearance: auto; }
     const [matchTarget, setMatchTarget] = useState(null);
     const [matchStatus, setMatchStatus] = useState(null);
     const [showSettings, setShowSettings] = useState(false);
+    const [handoff, setHandoff] = useState(null);
+    const sendTake = useCallback((t) => { setHandoff(t); setTab("analyst"); setVisited((v) => ({ ...v, analyst: true })); try { window.scrollTo(0, 0); } catch (e) {} }, []);
     const [, bumpSettings] = useState(0);
     const [visited, setVisited] = useState({ live: true });
     // the acapella is shared by Practice, Karaoke and the Singing Analyst
@@ -3461,8 +3575,8 @@ select.btn { appearance: auto; }
       <${MatchTrainer} hookRef=${matchHook} listening=${mode === "mic"} onStartMic=${startMic} onTarget=${setMatchTarget} onStatus=${setMatchStatus} sung=${live ? live.midi : null} />
       <//>`}
       <div hidden=${tab !== "learn"}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
-      <div hidden=${tab !== "karaoke"}>${visited.karaoke && html`<${Karaoke} themeKey=${isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
-      <div hidden=${tab !== "analyst"}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
+      <div hidden=${tab !== "karaoke"}>${visited.karaoke && html`<${Karaoke} themeKey=${isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} />`}</div>
+      <div hidden=${tab !== "analyst"}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} incomingTake=${handoff} />`}</div>
     </div>`;
   }
 
