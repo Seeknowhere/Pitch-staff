@@ -131,6 +131,18 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
 .nchip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
 .nchip.miss { color: var(--muted); }
 .switch[disabled] { opacity: .45; cursor: not-allowed; }
+.keys { position: relative; height: 150px; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.wkey { position: absolute; top: 0; bottom: 0; border: 1px solid var(--line); border-radius: 0 0 8px 8px; background: #f7f7f4; color: #4a4f5a; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; font-size: 11px; cursor: pointer; }
+.bkey { position: absolute; top: 0; height: 60%; z-index: 2; border: 1px solid #000; border-radius: 0 0 6px 6px; background: #1d2027; cursor: pointer; }
+.wkey:active { background: #e6e6e1; } .bkey:active { background: #3a3f4a; }
+.wkey.k-target { background: color-mix(in srgb, var(--accent) 45%, #f7f7f4); color: #1a1408; font-weight: 700; }
+.bkey.k-target { background: var(--accent); }
+.wkey.k-hit, .bkey.k-hit { background: var(--good); color: #062014; font-weight: 700; }
+.wkey.k-sung, .bkey.k-sung { box-shadow: inset 0 0 0 3px var(--you); }
+.wkey:focus-visible, .bkey:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.match-card { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); transition: border-color .2s, background .2s; }
+.match-card.hit { border-color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--surface-2)); }
+select.btn { appearance: auto; }
 .lyr-band { position: relative; height: 30px; border-bottom: 1px solid var(--line); }
 .lyr { position: absolute; top: 5px; height: 20px; line-height: 20px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-left: 2px solid var(--line); color: var(--muted); }
 .lyr.on { color: var(--fg); border-left-color: var(--accent); font-weight: 600; }
@@ -160,8 +172,26 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
     const letter = name[0];
     return { name, letter, sharp: name.length > 1, octave, label: name + octave, step: octave * 7 + LETTERS.indexOf(letter) };
   }
+  /* ---------- app-wide settings ---------- */
+  const SETTINGS_KEY = "pitchstaff.settings.v1";
+  const SETTINGS = (() => {
+    const d = { a4: 440, sens: 4, micId: "" };
+    try { return { ...d, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {}) }; } catch (e) { return d; }
+  })();
+  function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ a4: SETTINGS.a4, sens: SETTINGS.sens, micId: SETTINGS.micId })); } catch (e) {} }
+  // loudness below this is treated as silence for live listening (sensitivity 1 = least, 10 = most)
+  const micGate = () => 0.04 * Math.pow(0.6, SETTINGS.sens - 1);
+  async function getMicStream() {
+    const base = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+    if (SETTINGS.micId) {
+      try { return await navigator.mediaDevices.getUserMedia({ audio: { ...base, deviceId: { exact: SETTINGS.micId } } }); }
+      catch (e) { if (e && e.name === "NotAllowedError") throw e; SETTINGS.micId = ""; saveSettings(); }
+    }
+    return navigator.mediaDevices.getUserMedia({ audio: base });
+  }
+
   function freqToMidi(f) {
-    const exact = 69 + 12 * Math.log2(f / 440);
+    const exact = 69 + 12 * Math.log2(f / SETTINGS.a4);
     const midi = Math.round(exact);
     return { midi, cents: Math.round((exact - midi) * 100) };
   }
@@ -169,12 +199,12 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
   const fmt = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
 
   /* ---------- autocorrelation pitch detection ---------- */
-  function detectPitch(buf, sr) {
+  function detectPitch(buf, sr, gate = 0.01) {
     const n = buf.length;
     let rms = 0;
     for (let i = 0; i < n; i++) rms += buf[i] * buf[i];
     rms = Math.sqrt(rms / n);
-    if (rms < 0.01) return { freq: -1, rms };
+    if (rms < gate) return { freq: -1, rms };
 
     const minLag = Math.floor(sr / 1400);             // highest pitch ~1400 Hz
     const maxLag = Math.min(Math.floor(sr / 65), n - 2); // lowest pitch ~65 Hz
@@ -234,7 +264,7 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
     </g>`;
   }
 
-  function Staff({ trail, live, example }) {
+  function Staff({ trail, live, example, target }) {
     const lines = [30, 32, 34, 36, 38];
     const slots = trail.slice(-7);
     const startX = 108, gap = 32;
@@ -252,6 +282,17 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
           <text x=${x} y="270" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--font-mono)">${info.label}</text>
         </g>`;
       })}
+      ${target && (() => {
+        const info = midiInfo(target.midi), sMin = Math.max(12, Math.min(50, info.step)), y = yOf(sMin);
+        const col = target.matched ? "var(--good)" : "var(--fg)";
+        return html`<g aria-hidden="true">
+          ${sMin <= 28 && Array.from({ length: Math.floor((28 - sMin) / 2) + 1 }, (_, i) => 28 - 2 * i).map((k) => html`<line key=${"t" + k} x1="345" x2="375" y1=${yOf(k)} y2=${yOf(k)} stroke="var(--muted)" stroke-width="1.3" />`)}
+          ${sMin >= 40 && Array.from({ length: Math.floor((sMin - 40) / 2) + 1 }, (_, i) => 40 + 2 * i).map((k) => html`<line key=${"t" + k} x1="345" x2="375" y1=${yOf(k)} y2=${yOf(k)} stroke="var(--muted)" stroke-width="1.3" />`)}
+          <ellipse cx="360" cy=${y} rx="10" ry="7.5" transform=${`rotate(-22 360 ${y})`} fill=${target.matched ? "color-mix(in srgb, var(--good) 25%, transparent)" : "none"} stroke=${col} stroke-width="2" stroke-dasharray=${target.matched ? "" : "3 2"} />
+          ${info.sharp && html`<text x="334" y=${y + 5} font-size="15" fill=${col} font-family="var(--font-music)">♯</text>`}
+          <text x="360" y="10" text-anchor="middle" font-size="9" fill=${col} font-family="var(--font-mono)">target ${info.label}</text>
+        </g>`;
+      })()}
       ${live && (() => {
         const info = midiInfo(live.midi);
         return html`<g>
@@ -308,7 +349,7 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
       const r = detectPitch(data.subarray(f * hop, f * hop + N), sr);
       rawL[f] = 20 * Math.log10(r.rms + 1e-5);
       if (r.freq > 0) {
-        raw[f] = 69 + 12 * Math.log2(r.freq / 440);
+        raw[f] = 69 + 12 * Math.log2(r.freq / SETTINGS.a4);
         silentSince = -1;
         recent.push(r.freq); if (recent.length > 5) recent.shift();
         const med = median(recent);
@@ -351,7 +392,7 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
       const s = Math.max(n.pos, from), e = Math.min(n.end, to);
       if (e - s < 0.06) return;
       const st = when + (s - from) / speed, en = when + (e - from) / speed;
-      const f = 440 * Math.pow(2, (n.midi + semis - 69) / 12);
+      const f = SETTINGS.a4 * Math.pow(2, (n.midi + semis - 69) / 12);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, st);
       g.gain.exponentialRampToValueAtTime(0.3, st + 0.015);
@@ -1763,7 +1804,7 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
     const openMic = async () => {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("unsupported");
       const ctx = ensureCtx();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      const stream = await getMicStream();
       const src = ctx.createMediaStreamSource(stream);
       const an = ctx.createAnalyser(); an.fftSize = 2048;
       const proc = ctx.createScriptProcessor(4096, 1, 1);
@@ -1896,8 +1937,8 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
         const left = until - ctx.currentTime;
         if (an) {
           an.getFloatTimeDomainData(buf);
-          const d = detectPitch(buf, ctx.sampleRate);
-          r.live.push({ t: ctx.currentTime - r.t0, m: d.freq > 0 ? 69 + 12 * Math.log2(d.freq / 440) : NaN });
+          const d = detectPitch(buf, ctx.sampleRate, micGate());
+          r.live.push({ t: ctx.currentTime - r.t0, m: d.freq > 0 ? 69 + 12 * Math.log2(d.freq / SETTINGS.a4) : NaN });
           if (++frame % 3 === 0) {
             const ms = r.live.filter((x) => x.m === x.m).map((x) => x.m);
             setLiveLine({ start: ph.start, speed: sp, oct: ms.length ? 12 * Math.round((median(ms) - tgtMed) / 12) : 0, points: r.live.slice() });
@@ -2184,9 +2225,281 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
     </div>`;
   }
 
+  /* ---------- note matching (Pitch Staff tab) ---------- */
+  const MATCH_KEY = "pitchstaff.match.v1";
+  const RANGES = { low: [40, 60, "Low"], mid: [48, 67, "Medium"], high: [55, 76, "High"] };
+  const TOLS = { easy: 50, normal: 25, hard: 10 };
+  const PIANO_QUIET = 2400; // ms the mic waits while the piano note rings out
+
+  // piano-like tone: a few slightly stretched partials with a fast attack and a natural decay
+  function playPiano(ctx, midi, dur = 3.2) {
+    const when = ctx.currentTime + 0.02;
+    const f = SETTINGS.a4 * Math.pow(2, (midi - 69) / 12);
+    const out = ctx.createGain();
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = Math.min(9000, f * 9);
+    out.connect(lp); lp.connect(ctx.destination);
+    out.gain.setValueAtTime(0.0001, when);
+    out.gain.exponentialRampToValueAtTime(0.55, when + 0.006);
+    out.gain.exponentialRampToValueAtTime(0.34, when + 0.25);
+    out.gain.exponentialRampToValueAtTime(0.12, when + dur * 0.6);
+    out.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    const amps = [1, 0.55, 0.3, 0.2, 0.12, 0.07, 0.04];
+    const total = amps.reduce((s, v) => s + v, 0);
+    amps.forEach((amp, i) => {
+      const n = i + 1, fn = f * n * Math.sqrt(1 + 0.0004 * n * n);
+      if (fn > 12000) return;
+      const o = ctx.createOscillator(); o.type = "sine"; o.frequency.value = fn;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(amp / total, when);
+      g.gain.exponentialRampToValueAtTime((amp / total) * 0.004, when + dur / (1 + i * 0.35));
+      o.connect(g); g.connect(out);
+      o.start(when); o.stop(when + dur + 0.05);
+    });
+  }
+  function playChime(ctx) {
+    [88, 93].forEach((m, i) => {
+      const t = ctx.currentTime + 0.02 + i * 0.09;
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine"; o.frequency.value = SETTINGS.a4 * Math.pow(2, (m - 69) / 12);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.4);
+    });
+  }
+
+  function Keyboard({ baseOct, target, matched, sung, onKey }) {
+    const c = 12 * (baseOct + 1);
+    const whites = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => c + s);
+    const blacks = [[1, 0], [3, 1], [6, 3], [8, 4], [10, 5]].map(([s, after]) => ({ m: c + s, after }));
+    const ww = 100 / whites.length;
+    const state = (m) => (m === target ? (matched ? " k-hit" : " k-target") : "") + (m === sung ? " k-sung" : "");
+    return html`<div class="keys" role="group" aria-label="Piano keyboard">
+      ${whites.map((m, i) => { const info = midiInfo(m); return html`<button key=${m} class=${"wkey" + state(m)} style=${{ left: i * ww + "%", width: ww + "%" }} onClick=${() => onKey(m)} aria-label=${"Play " + info.label}>
+        <span class="mono">${info.letter === "C" ? info.label : info.letter}</span></button>`; })}
+      ${blacks.map(({ m, after }) => html`<button key=${m} class=${"bkey" + state(m)} style=${{ left: (after + 1) * ww - ww * 0.31 + "%", width: ww * 0.62 + "%" }} onClick=${() => onKey(m)} aria-label=${"Play " + midiInfo(m).label}></button>`)}
+    </div>`;
+  }
+
+  function MatchTrainer({ hookRef, listening, onStartMic, onTarget, sung }) {
+    const [target, setTarget] = useState(null);
+    const [baseOct, setBaseOct] = useState(4);
+    const [range, setRange] = useState(() => loadJSON(MATCH_KEY + ".range", "mid"));
+    const [diff, setDiff] = useState(() => loadJSON(MATCH_KEY + ".diff", "normal"));
+    const [anyOct, setAnyOct] = useState(() => loadJSON(MATCH_KEY + ".anyoct", true));
+    const [autoNext, setAutoNext] = useState(() => loadJSON(MATCH_KEY + ".auto", true));
+    const [phase, setPhase] = useState("idle"); // idle | listen | sing | hit
+    const [cents, setCents] = useState(null);
+    const [hold, setHold] = useState(0);
+    const [streak, setStreak] = useState(0);
+    const [lastTime, setLastTime] = useState(null);
+    const [stats, setStats] = useState(() => loadJSON(MATCH_KEY + ".stats", { hits: 0, best: null }));
+    const r = useRef({ target: null, setAt: 0, holdStart: 0, ignoreUntil: 0, matched: false, ctx: null, timers: [] });
+    const opts = useRef({});
+    opts.current = { tol: TOLS[diff], anyOct, autoNext, range };
+
+    const ctx = () => {
+      const s = r.current;
+      if (!s.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; s.ctx = new Ctx(); }
+      if (s.ctx.state === "suspended") s.ctx.resume().catch(() => {});
+      return s.ctx;
+    };
+    const later = (fn, ms) => { const id = setTimeout(fn, ms); r.current.timers.push(id); };
+    useEffect(() => () => { hookRef.current = null; onTarget(null); r.current.timers.forEach(clearTimeout); if (r.current.ctx) r.current.ctx.close().catch(() => {}); }, []);
+
+    const choose = (midi) => {
+      const s = r.current;
+      s.timers.forEach(clearTimeout); s.timers = [];
+      if (s.target != null && !s.matched) setStreak(0); // moved on without hitting it
+      s.target = midi; s.matched = false; s.holdStart = 0;
+      // ignore the mic while the piano rings, so the app doesn't "hear" its own note
+      s.ignoreUntil = performance.now() + PIANO_QUIET; s.setAt = s.ignoreUntil;
+      setTarget(midi); setCents(null); setHold(0); setPhase("listen");
+      onTarget({ midi, matched: false });
+      const oct = Math.floor(midi / 12) - 1;
+      setBaseOct((b) => (midi >= 12 * (b + 1) && midi <= 12 * (b + 1) + 12 ? b : Math.max(2, Math.min(5, oct))));
+      playPiano(ctx(), midi);
+      later(() => setPhase((p) => (p === "listen" ? "sing" : p)), PIANO_QUIET);
+    };
+    const random = () => {
+      const [lo, hi] = RANGES[opts.current.range];
+      let m;
+      do { m = lo + Math.floor(Math.random() * (hi - lo + 1)); } while (m === r.current.target && hi > lo);
+      choose(m);
+    };
+    const replay = () => {
+      const s = r.current;
+      if (s.target == null) return;
+      s.ignoreUntil = performance.now() + PIANO_QUIET; s.holdStart = 0; setHold(0);
+      if (!s.matched) { setPhase("listen"); later(() => setPhase((p) => (p === "listen" ? "sing" : p)), PIANO_QUIET); }
+      playPiano(ctx(), s.target);
+    };
+
+    // called by the microphone loop on every frame: m = sung pitch (fractional MIDI) or null for silence
+    hookRef.current = (m, now) => {
+      const s = r.current, o = opts.current;
+      if (s.target == null || s.matched || now < s.ignoreUntil) return;
+      if (m == null) { if (s.holdStart) { s.holdStart = 0; setHold(0); } setCents(null); return; }
+      let d = m - s.target;
+      if (o.anyOct) d -= 12 * Math.round(d / 12);
+      const c = Math.round(d * 100);
+      setCents(c);
+      if (Math.abs(c) <= o.tol) {
+        if (!s.holdStart) s.holdStart = now;
+        const h = Math.min(1, (now - s.holdStart) / 500);
+        setHold(h);
+        if (h >= 1) {
+          s.matched = true;
+          setPhase("hit"); onTarget({ midi: s.target, matched: true });
+          playChime(ctx());
+          const secs = Math.max(0, (now - s.setAt) / 1000);
+          setLastTime(secs);
+          setStreak((v) => v + 1);
+          setStats((st) => { const next = { hits: st.hits + 1, best: st.best == null ? secs : Math.min(st.best, secs) }; saveJSON(MATCH_KEY + ".stats", next); return next; });
+          if (o.autoNext) later(random, 1400);
+        }
+      } else if (s.holdStart) { s.holdStart = 0; setHold(0); }
+    };
+
+    const tol = TOLS[diff];
+    let hint, tone = "muted";
+    if (target == null) hint = "Pick a note on the keyboard, or tap Random note.";
+    else if (phase === "hit") { hint = "Matched!"; tone = "good"; }
+    else if (!listening) hint = "Tap Start listening, then sing the note.";
+    else if (phase === "listen") hint = "Listen…";
+    else if (cents == null) hint = "Your turn. Sing the note.";
+    else if (Math.abs(cents) <= tol) { hint = "Hold it…"; tone = "good"; }
+    else if (cents < 0) { hint = cents < -Math.max(2 * tol, 50) ? "Go up ↑" : "A little higher ↑"; tone = "warn"; }
+    else { hint = cents > Math.max(2 * tol, 50) ? "Go down ↓" : "A little lower ↓"; tone = "warn"; }
+    const save = (k, v) => saveJSON(MATCH_KEY + "." + k, v);
+    const small = { padding: "5px 10px", fontSize: 13 };
+    const tInfo = target != null ? midiInfo(target) : null;
+
+    return html`<section class="panel p-4 sm:p-5 flex flex-col gap-4 min-w-0">
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 class="display text-xl font-bold">Match the note</h2>
+          <p class="muted text-xs">Hear a note, sing it back, and hold it until it turns green.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <span class="chip"><span class="muted text-xs">Streak</span><b class="mono">${streak}</b></span>
+          <span class="chip"><span class="muted text-xs">Last</span><b class="mono">${lastTime == null ? "—" : lastTime.toFixed(1) + " s"}</b></span>
+          <span class="chip"><span class="muted text-xs">Best</span><b class="mono">${stats.best == null ? "—" : stats.best.toFixed(1) + " s"}</b></span>
+          <span class="chip"><span class="muted text-xs">Hits</span><b class="mono">${stats.hits}</b></span>
+        </div>
+      </div>
+
+      <div class=${"match-card" + (phase === "hit" ? " hit" : "")}>
+        <div class="flex flex-col gap-1 min-w-0">
+          <span class="label">Target</span>
+          <span class="display font-bold" style=${{ fontSize: 52, lineHeight: 1, color: phase === "hit" ? "var(--good)" : target != null ? "var(--fg)" : "var(--muted)" }}>${tInfo ? pretty(tInfo.label) : "—"}</span>
+          ${tInfo && html`<span class="mono text-xs muted">${(SETTINGS.a4 * Math.pow(2, (target - 69) / 12)).toFixed(1)} Hz</span>`}
+        </div>
+        <div class="flex flex-col gap-2 min-w-0" style=${{ flex: 1 }}>
+          <span class="display font-bold" style=${{ fontSize: 26, lineHeight: 1.15, color: "var(--" + tone + ")" }} aria-live="polite">${hint}</span>
+          <div class="level" style=${{ height: 8 }} title="Hold progress"><div style=${{ width: hold * 100 + "%", background: "var(--good)", transition: "none" }}></div></div>
+          <div class="tuner" aria-hidden="true">
+            <div class="zone" style=${{ left: 50 - tol + "%", width: 2 * tol + "%" }}></div><div class="center"></div>
+            ${cents != null && phase !== "listen" && html`<div class="needle" style=${{ left: 50 + Math.max(-50, Math.min(50, cents)) + "%", background: Math.abs(cents) <= tol ? "var(--good)" : "var(--warn)" }}></div>`}
+          </div>
+          <div class="flex justify-between mono text-xs muted"><span>too low</span><span>${cents != null && phase !== "listen" ? signed(cents) + "¢" : ""}</span><span>too high</span></div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        ${!listening && html`<button class="btn btn-primary" onClick=${onStartMic}>● Start listening</button>`}
+        <button class=${"btn" + (listening ? " btn-primary" : "")} onClick=${random}>Random note</button>
+        <button class="btn" onClick=${replay} disabled=${target == null}>▶ Play again</button>
+        <div class="seg" role="group" aria-label="Voice range for random notes">
+          ${Object.entries(RANGES).map(([k, v]) => html`<button key=${k} aria-pressed=${range === k ? "true" : "false"} onClick=${() => { setRange(k); save("range", k); }}>${v[2]}</button>`)}
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button class="btn" style=${small} onClick=${() => setBaseOct((b) => Math.max(2, b - 1))} disabled=${baseOct <= 2} aria-label="Lower octave">− Octave</button>
+        <span class="mono text-xs muted" style=${{ flex: 1, textAlign: "center" }}>C${baseOct} – C${baseOct + 1}</span>
+        <button class="btn" style=${small} onClick=${() => setBaseOct((b) => Math.min(5, b + 1))} disabled=${baseOct >= 5} aria-label="Higher octave">+ Octave</button>
+      </div>
+      <${Keyboard} baseOct=${baseOct} target=${target} matched=${phase === "hit"} sung=${sung} onKey=${choose} />
+
+      <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+        <div class="flex items-center gap-2">
+          <span class="label">Difficulty</span>
+          <div class="seg" role="group" aria-label="Difficulty">
+            ${[["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]].map(([k, l]) => html`<button key=${k} aria-pressed=${diff === k ? "true" : "false"} onClick=${() => { setDiff(k); save("diff", k); }}>${l}</button>`)}
+          </div>
+        </div>
+        <button class="switch" role="switch" aria-checked=${anyOct ? "true" : "false"} onClick=${() => { setAnyOct(!anyOct); save("anyoct", !anyOct); }} style=${{ fontSize: 13 }}>
+          <span class="track"><span class="knob"></span></span>Any octave counts
+        </button>
+        <button class="switch" role="switch" aria-checked=${autoNext ? "true" : "false"} onClick=${() => { setAutoNext(!autoNext); save("auto", !autoNext); }} style=${{ fontSize: 13 }}>
+          <span class="track"><span class="knob"></span></span>Auto next note
+        </button>
+      </div>
+      <p class="text-xs muted">${diff === "easy" ? "Easy: within half a piano key." : diff === "normal" ? "Normal: within a quarter of a piano key." : "Hard: within a tenth of a piano key."} Hold it for half a second to count. The app ignores the mic while the piano note rings, so it never hears itself.</p>
+    </section>`;
+  }
+
+  /* ---------- app-wide settings ---------- */
+  function SettingsPanel({ listening, level, onClose, onMicChange, onChange }) {
+    const [devices, setDevices] = useState([]);
+    const [, force] = useState(0);
+    useEffect(() => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      navigator.mediaDevices.enumerateDevices().then((d) => setDevices(d.filter((x) => x.kind === "audioinput"))).catch(() => {});
+    }, [listening]);
+    const set = (k, v) => { SETTINGS[k] = v; saveSettings(); force((n) => n + 1); onChange && onChange(); };
+    const small = { padding: "5px 10px", fontSize: 13 };
+    return html`<section class="panel p-4 sm:p-5 flex flex-col gap-4">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="display text-lg font-bold">Settings</h2>
+          <p class="text-xs muted">These apply to the whole app and are saved on this device.</p>
+        </div>
+        <button class="btn btn-ghost" style=${small} onClick=${onClose}>Done</button>
+      </div>
+      <div class="flex flex-col gap-2">
+        <span class="label">Tuning reference (A4)</span>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="seg" role="group" aria-label="A4 presets">
+            ${[432, 440, 442].map((v) => html`<button key=${v} aria-pressed=${SETTINGS.a4 === v ? "true" : "false"} onClick=${() => set("a4", v)}>${v} Hz</button>`)}
+          </div>
+          <button class="btn" style=${small} onClick=${() => set("a4", Math.max(415, SETTINGS.a4 - 1))} aria-label="Lower A4 by 1 hertz">−</button>
+          <span class="mono text-sm">A4 = ${SETTINGS.a4} Hz</span>
+          <button class="btn" style=${small} onClick=${() => set("a4", Math.min(466, SETTINGS.a4 + 1))} aria-label="Raise A4 by 1 hertz">+</button>
+        </div>
+        <p class="text-xs muted">440 Hz is standard. Change it only if your instrument or song is tuned differently. It shifts the piano, guide notes and note detection together; songs you already uploaded keep the setting they were analyzed with.</p>
+      </div>
+      <div class="flex flex-col gap-2">
+        <label class="label" for="sens">Mic sensitivity</label>
+        <div class="flex items-center gap-3">
+          <span class="text-xs muted">Less</span>
+          <input id="sens" type="range" min="1" max="10" step="1" value=${SETTINGS.sens} onInput=${(e) => set("sens", parseInt(e.target.value, 10))} onChange=${(e) => set("sens", parseInt(e.target.value, 10))} style=${{ flex: 1, accentColor: "var(--accent)" }} />
+          <span class="text-xs muted">More</span>
+          <span class="mono text-xs" style=${{ width: 20, textAlign: "right" }}>${SETTINGS.sens}</span>
+        </div>
+        ${listening && html`<div class="level" style=${{ height: 6 }} title="Input level"><div style=${{ width: level * 100 + "%" }}></div></div>`}
+        <p class="text-xs muted">Turn it up if the app misses your voice. Turn it down if it reacts to background noise.</p>
+      </div>
+      <div class="flex flex-col gap-2">
+        <label class="label" for="mic-pick">Microphone</label>
+        ${devices.length > 1
+          ? html`<select id="mic-pick" class="btn" style=${{ justifyContent: "flex-start", maxWidth: "100%" }} value=${SETTINGS.micId} onChange=${(e) => { set("micId", e.target.value); onMicChange && onMicChange(); }}>
+              <option value="">System default</option>
+              ${devices.map((d, i) => html`<option key=${d.deviceId || i} value=${d.deviceId}>${d.label || "Microphone " + (i + 1)}</option>`)}
+            </select>`
+          : html`<p class="text-sm muted">Using the default microphone.${devices.length === 0 ? " Other microphones show up here after you allow mic access." : ""}</p>`}
+      </div>
+    </section>`;
+  }
+
   /* ---------- app ---------- */
   function App() {
     const [tab, setTab] = useState("live");
+    const matchHook = useRef(null);
+    const [matchTarget, setMatchTarget] = useState(null);
+    const [showSettings, setShowSettings] = useState(false);
+    const [, bumpSettings] = useState(0);
     const [visited, setVisited] = useState({ live: true });
     // the acapella is shared by Learn and the Singing Analyst
     const [vocal, setVocal] = useState(null);
@@ -2332,8 +2645,9 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
       const recent = [];
       const tick = () => {
         analyser.getFloatTimeDomainData(buf);
-        const r = detectPitch(buf, ctx.sampleRate);
+        const r = detectPitch(buf, ctx.sampleRate, micGate());
         const now = performance.now();
+        if (matchHook.current) matchHook.current(r.freq > 0 ? 69 + 12 * Math.log2(r.freq / SETTINGS.a4) : null, now);
         setLevel(Math.min(1, r.rms * 6));
         if (r.freq > 0) {
           silentSince = 0;
@@ -2362,7 +2676,7 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
         return;
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+        const stream = await getMicStream();
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const src = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
@@ -2523,10 +2837,16 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
           <h1 class="display text-3xl sm:text-4xl font-bold">Pitch Staff</h1>
           <p class="muted text-sm">${tab === "live" ? "Sing, whistle or play one clean note. It lands on the staff as you hold it." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : "Compare your singing with the original vocal, phrase by phrase."}</p>
         </div>
-        <button class="btn btn-ghost" onClick=${() => setTheme(isDark ? "light" : "dark")} aria-label="Switch theme">
-          ${isDark ? "☀ Light" : "☾ Dark"}
-        </button>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost" onClick=${() => setShowSettings((v) => !v)} aria-expanded=${showSettings ? "true" : "false"}>⚙ Settings</button>
+          <button class="btn btn-ghost" onClick=${() => setTheme(isDark ? "light" : "dark")} aria-label="Switch theme">
+            ${isDark ? "☀ Light" : "☾ Dark"}
+          </button>
+        </div>
       </header>
+
+      ${showSettings && html`<${SettingsPanel} listening=${mode === "mic"} level=${level} onClose=${() => setShowSettings(false)}
+        onChange=${() => bumpSettings((n) => n + 1)} onMicChange=${() => { if (mode === "mic") startMic(); }} />`}
 
       <div class="tabs" role="tablist">
         ${[["live", "Pitch Staff"], ["learn", "Learn"], ["analyst", "Singing Analyst"]].map(([k, l]) => html`<button key=${k} class="tab" role="tab" aria-selected=${tab === k ? "true" : "false"}
@@ -2587,7 +2907,7 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
           </div>
 
           <div class="staff-box">
-            <${Staff} trail=${showExample ? EXAMPLE : trail} live=${live} example=${showExample} />
+            <${Staff} trail=${showExample ? EXAMPLE : trail} live=${live} example=${showExample} target=${matchTarget} />
           </div>
           <div class="flex items-center justify-between gap-3 text-xs muted">
             <span>${showExample ? "Example scale shown. Start the mic to replace it with your notes." : "Faded notes are your recent notes. The gold one is live."}</span>
@@ -2632,6 +2952,8 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
           </div>
         </aside>
       </div>
+
+      <${MatchTrainer} hookRef=${matchHook} listening=${mode === "mic"} onStartMic=${startMic} onTarget=${setMatchTarget} sung=${live ? live.midi : null} />
       <//>`}
       <div hidden=${tab !== "learn"}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
       <div hidden=${tab !== "analyst"}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
