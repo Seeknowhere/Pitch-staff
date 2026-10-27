@@ -145,6 +145,11 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
 .tuner-hit { border-color: var(--good); background: color-mix(in srgb, var(--good) 18%, var(--surface-2)); }
 .match-card.hit { border-color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--surface-2)); }
 select.btn { appearance: auto; }
+.stage { display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; padding: 18px 8px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); min-height: 150px; justify-content: center; }
+.kline { margin: 0; font-family: var(--font-display); font-weight: 700; line-height: 1.25; text-wrap: balance; max-width: 34ch; }
+.kline.dim { font-weight: 600; opacity: .55; }
+.kw { background: linear-gradient(90deg, var(--accent) var(--p, 0%), var(--fg) var(--p, 0%)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.kline.dim .kw { background: none; color: var(--muted); }
 .lyr-band { position: relative; height: 30px; border-bottom: 1px solid var(--line); }
 .lyr { position: absolute; top: 5px; height: 20px; line-height: 20px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-left: 2px solid var(--line); color: var(--muted); }
 .lyr.on { color: var(--fg); border-left-color: var(--accent); font-weight: 600; }
@@ -956,11 +961,23 @@ select.btn { appearance: auto; }
       while ((mm = rest.match(re))) { tags.push(parseInt(mm[1], 10) * 60 + parseFloat(mm[2].replace(":", "."))); rest = rest.slice(mm[0].length); }
       if (!tags.length) return;
       const words = rest.replace(/<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/g, "").replace(/\s+/g, " ").trim();
-      tags.forEach((t) => out.push({ t, text: words }));
+      // enhanced LRC: <mm:ss.xx> before each word gives word-by-word timing
+      let wordRel = null;
+      const parts = rest.split(/<(\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?)>/);
+      if (parts.length > 2) {
+        wordRel = [];
+        let tt = tags[0];
+        parts.forEach((part, i) => {
+          if (i % 2 === 1) { const m2 = part.match(/(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)/); tt = parseInt(m2[1], 10) * 60 + parseFloat(m2[2].replace(":", ".")); return; }
+          part.split(/\s+/).filter(Boolean).forEach((w) => wordRel.push({ dt: tt - tags[0], w }));
+        });
+        if (!wordRel.length) wordRel = null;
+      }
+      tags.forEach((t) => out.push({ t, text: words, words: wordRel ? wordRel.map((x) => ({ t: t + x.dt, w: x.w })) : null }));
     });
     out.sort((x, y) => x.t - y.t);
     // an [offset:] tag in ms makes lyrics appear sooner when positive
-    return out.map((l) => ({ t: Math.max(0, l.t - shift), text: l.text }));
+    return out.map((l) => ({ t: Math.max(0, l.t - shift), text: l.text, words: l.words ? l.words.map((w) => ({ t: Math.max(0, w.t - shift), w: w.w })) : null }));
   }
   function loadLyricsStore() { try { return JSON.parse(localStorage.getItem(LYR_KEY) || "{}") || {}; } catch (e) { return {}; } }
   function saveLyricsFor(song, entry) {
@@ -973,7 +990,7 @@ select.btn { appearance: auto; }
     for (let i = 0; i < L.length; i++) {
       if (!L[i].text) continue;
       const start = L[i].t + lyr.offset, end = (i + 1 < L.length ? L[i + 1].t + lyr.offset : dur);
-      if (end > 0 && start < dur) out.push({ start, end: Math.max(start + 0.2, end), text: L[i].text });
+      if (end > 0 && start < dur) out.push({ start, end: Math.max(start + 0.2, end), text: L[i].text, words: L[i].words ? L[i].words.map((w) => ({ t: w.t + lyr.offset, w: w.w })) : null });
     }
     return out;
   }
@@ -1628,11 +1645,11 @@ select.btn { appearance: auto; }
   function saveJSON(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
   const LEARNED_KEY = "pitchstaff.learned.v1";
 
-  function MelodyMap({ data, notes, tr, nameOf, phrases, lyrics, loop, cursor, curIdx, onTapNote, onSeek, themeKey, overlay }) {
+  function MelodyMap({ data, notes, tr, nameOf, phrases, lyrics, loop, cursor, curIdx, onTapNote, onSeek, themeKey, overlay, height, marks }) {
     const canvasRef = useRef(null), boxRef = useRef(null);
     const dur = data.duration;
     const pps = Math.min(70, 15000 / Math.max(1, dur));
-    const W = Math.ceil(dur * pps), H = 260;
+    const W = Math.ceil(dur * pps), H = height || 260;
     const range = useMemo(() => {
       let lo = Infinity, hi = -Infinity;
       notes.forEach((n) => { lo = Math.min(lo, n.midi + tr); hi = Math.max(hi, n.midi + tr); });
@@ -1733,6 +1750,7 @@ select.btn { appearance: auto; }
               return segs.map((sg, i) => html`<polyline key=${i} points=${sg.join(" ")} fill="none" stroke="var(--you)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />`);
             })()}
           </svg>`}
+          ${marks && marks.map((mk) => html`<div key=${"mk" + mk.i} style=${{ position: "absolute", left: mk.pos * pps, width: Math.max(3, (mk.end - mk.pos) * pps - 1.5), top: yOf(mk.midi + tr) + bh / 2 + 1, height: 3, borderRadius: 2, background: mk.ok ? "var(--good)" : "var(--bad)", pointerEvents: "none" }}></div>`)}
           ${cur && html`<div style=${{ position: "absolute", left: cur.pos * pps - 2, top: yOf(cur.midi + tr) - bh / 2 - 2, width: Math.max(3, (cur.end - cur.pos) * pps - 1.5) + 4, height: bh + 4, borderRadius: 6, background: "var(--accent)", boxShadow: "0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent)", pointerEvents: "none", display: "flex", alignItems: "center", paddingLeft: 6, overflow: "hidden" }}>
             <span class="mono" style=${{ fontSize: 10, fontWeight: 600, color: "var(--accent-ink)", whiteSpace: "nowrap" }}>${nameOf(cur.midi)}</span>
           </div>`}
@@ -2029,9 +2047,9 @@ select.btn { appearance: auto; }
 
     if (!data) {
       return html`<div class="grid gap-4 sm:grid-cols-2">
-        <${UploadSlot} id="learn-file" step="1" title="Song to learn" hint="Upload the acapella (vocal only) of the song you want to learn. It's shared with the Singing Analyst, so you only upload it once." slot=${orig} onPick=${onPickOrig} />
+        <${UploadSlot} id="learn-file" step="1" title="Song to learn" hint="Upload the acapella (vocal only) of the song you want to learn. It's shared with Karaoke and the Singing Analyst, so you only upload it once." slot=${orig} onPick=${onPickOrig} />
         <div class="panel p-5 flex flex-col gap-2">
-          <h3 class="display text-lg font-bold">How Learn works</h3>
+          <h3 class="display text-lg font-bold">How Practice works</h3>
           <p class="muted text-sm" style=${{ maxWidth: "62ch" }}>You'll see the melody as note bars with their names, split into phrases. Play it through or use Repeat after me, which plays a line and then leaves a gap for you to sing it back. Slow the guide notes down, move them into your key, loop the hard parts, and tick off phrases as you learn them. When you're ready, record yourself and check it in the Singing Analyst.</p>
         </div>
       </div>`;
@@ -2056,7 +2074,7 @@ select.btn { appearance: auto; }
         <div class="min-w-0">
           <span class="label">Learning</span>
           <h3 class="display text-xl font-bold" style=${{ overflowWrap: "anywhere" }}>${orig.name}</h3>
-          <p class="text-xs muted">Shared with the Singing Analyst</p>
+          <p class="text-xs muted">Shared with Karaoke and the Singing Analyst</p>
         </div>
         <button class="btn" onClick=${() => fileRef.current && fileRef.current.click()}>Change song</button>
         <input id="learn-change" ref=${fileRef} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPickOrig(f); }} />
@@ -2491,6 +2509,542 @@ select.btn { appearance: auto; }
     </section>`;
   }
 
+  /* ---------- karaoke ---------- */
+  const KARA_SYNC_KEY = "pitchstaff.karasync.v1";
+  const KARA_BEST_KEY = "pitchstaff.karabest.v1";
+
+  function monoHalf(audio) {
+    let data = audio.getChannelData(0);
+    if (audio.numberOfChannels > 1) {
+      const r = audio.getChannelData(1), m = new Float32Array(data.length);
+      for (let i = 0; i < data.length; i++) m[i] = (data[i] + r[i]) / 2;
+      data = m;
+    }
+    let sr = audio.sampleRate;
+    if (sr >= 44100) {
+      const h = new Float32Array(Math.floor(data.length / 2));
+      for (let i = 0; i < h.length; i++) h[i] = (data[2 * i] + data[2 * i + 1]) / 2;
+      data = h; sr = sr / 2;
+    }
+    return { data, sr };
+  }
+
+  // onset strength at 50 fps: how sharply the loudness rises
+  function onsetEnvelope(audio) {
+    const { data, sr } = monoHalf(audio);
+    const hop = Math.round(sr * GRID), n = Math.floor(data.length / hop);
+    const db = new Float32Array(n);
+    for (let k = 0; k < n; k++) {
+      let s = 0;
+      for (let i = k * hop; i < (k + 1) * hop; i++) s += data[i] * data[i];
+      db[k] = 10 * Math.log10(s / hop + 1e-10);
+    }
+    const on = new Float32Array(n);
+    for (let k = 1; k < n; k++) on[k] = Math.max(0, db[k] - db[k - 1]);
+    return on;
+  }
+
+  // find where the music lines up with the vocal: returns seconds to add to song time to get music time
+  function autoSync(a, b) {
+    const maxLag = 1000; // ±20 s
+    const ma = mean(Array.from(a)), mb = mean(Array.from(b));
+    const A = a.map((v) => v - ma), Bv = b.map((v) => v - mb);
+    const scores = [];
+    let best = -Infinity, bestL = 0;
+    for (let L = -maxLag; L <= maxLag; L++) {
+      let s = 0;
+      for (let k = 0; k < A.length; k++) { const j = k + L; if (j >= 0 && j < Bv.length) s += A[k] * Bv[j]; }
+      scores.push(s);
+      if (s > best) { best = s; bestL = L; }
+    }
+    const mu = mean(scores), sd = Math.sqrt(mean(scores.map((s) => (s - mu) ** 2))) || 1;
+    return { off: bestL * GRID, z: (best - mu) / sd };
+  }
+
+  function fftInPlace(re, im) {
+    const n = re.length;
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = (-2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang), half = len >> 1;
+      for (let i = 0; i < n; i += len) {
+        let cr = 1, ci = 0;
+        for (let j = 0; j < half; j++) {
+          const a = i + j, b = a + half;
+          const vr = re[b] * cr - im[b] * ci, vi = re[b] * ci + im[b] * cr;
+          re[b] = re[a] - vr; im[b] = im[a] - vi; re[a] += vr; im[a] += vi;
+          const nc = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nc;
+        }
+      }
+    }
+  }
+
+  // which notes the music uses most (12 note classes), to compare its key with the vocal's
+  async function chromaOf(audio, isCancelled) {
+    const { data, sr } = monoHalf(audio);
+    const N = 4096, hop = Math.round(sr * 0.5), df = sr / N;
+    const win = new Float32Array(N);
+    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
+    const h = new Array(12).fill(0);
+    const re = new Float32Array(N), im = new Float32Array(N);
+    const k0 = Math.ceil(100 / df), k1 = Math.floor(2000 / df);
+    let frame = 0;
+    for (let start = 0; start + N < data.length; start += hop) {
+      if (isCancelled()) return null;
+      for (let i = 0; i < N; i++) { re[i] = data[start + i] * win[i]; im[i] = 0; }
+      fftInPlace(re, im);
+      for (let k = k0; k <= k1; k++) {
+        const mag = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
+        const m = 69 + 12 * Math.log2((k * df) / SETTINGS.a4);
+        h[((Math.round(m) % 12) + 12) % 12] += mag;
+      }
+      if (++frame % 25 === 0) await new Promise((r) => setTimeout(r, 0));
+    }
+    const s = h.reduce((x, y) => x + y, 0) || 1;
+    return h.map((v) => v / s);
+  }
+  function pearson(x, y) {
+    const mx = mean(x), my = mean(y);
+    let a = 0, b = 0, c = 0;
+    for (let i = 0; i < x.length; i++) { a += (x[i] - mx) * (y[i] - my); b += (x[i] - mx) ** 2; c += (y[i] - my) ** 2; }
+    return b && c ? a / Math.sqrt(b * c) : 0;
+  }
+  // how many piano keys the music sits above the vocal (0 = same key)
+  function keyGap(notes, instChroma) {
+    const v = new Array(12).fill(0);
+    notes.forEach((n) => { v[((n.midi % 12) + 12) % 12] += n.end - n.pos; });
+    let best = 0, bc = -2;
+    const c0 = pearson(v, instChroma);
+    for (let r = 0; r < 12; r++) {
+      const rot = v.map((_, i) => v[(i - r + 12) % 12]);
+      const c = pearson(rot, instChroma);
+      if (c > bc) { bc = c; best = r; }
+    }
+    if (best !== 0 && bc - c0 > 0.15) return best > 6 ? best - 12 : best;
+    return 0;
+  }
+
+  // a line's words with start times; spreads them by length when the lyrics file has no word timing
+  function lineWords(line) {
+    if (line.words && line.words.length) return line.words.map((w, i, arr) => ({ ...w, end: i + 1 < arr.length ? arr[i + 1].t : line.end }));
+    const parts = (line.text || "").split(/\s+/).filter(Boolean);
+    const total = parts.reduce((s, p) => s + p.length + 1, 0) || 1;
+    const span = Math.max(0.3, (line.end - line.start) * 0.92);
+    let acc = 0;
+    return parts.map((w) => { const t = line.start + (span * acc) / total; acc += w.length + 1; return { t, w, end: line.start + (span * acc) / total }; });
+  }
+  function KaraokeLine({ line, t, size, dim }) {
+    if (!line) return html`<p class="kline" style=${{ fontSize: size, opacity: 0.0 }}>·</p>`;
+    const words = lineWords(line);
+    return html`<p class=${"kline" + (dim ? " dim" : "")} style=${{ fontSize: size }}>
+      ${words.map((w, i) => {
+        const p = t == null ? 0 : Math.max(0, Math.min(1, (t - w.t) / Math.max(0.05, w.end - w.t)));
+        return html`<span key=${i} class="kw" style=${{ "--p": p * 100 + "%" }}>${w.w}${" "}</span>`;
+      })}
+    </p>`;
+  }
+
+  function Karaoke({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics }) {
+    const data = orig && orig.data ? orig.data : null;
+    const notes = data ? data.notes : [];
+    const songName = data ? orig.name : null;
+    const [inst, setInst] = useState(null);
+    const [sync, setSync] = useState(0);
+    const [syncMsg, setSyncMsg] = useState("");
+    const [keyWarn, setKeyWarn] = useState(0);
+    const [hp, setHp] = useState("unknown"); // unknown | checking | ok | heard | override | nomic
+    const [mix, setMix] = useState(() => loadJSON("pitchstaff.karamix.v1", { m: 0.9, v: 0.25, g: 0 }));
+    const [playing, setPlaying] = useState(false);
+    const [cursor, setCursor] = useState(0);
+    const [overlay, setOverlay] = useState(null);
+    const [marks, setMarks] = useState([]);
+    const [lineScores, setLineScores] = useState({});
+    const [final, setFinal] = useState(null);
+    const [loop, setLoop] = useState(null);
+    const [best, setBest] = useState(null);
+    const mixRef = useRef(mix), syncRef = useRef(0), loopRef = useRef(null), hpRef = useRef("unknown");
+    const play = useRef({ ctx: null, srcs: [], guide: [], buses: [], raf: 0 });
+    const mic = useRef({});
+    const run = useRef({ her: null, lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {} });
+    const instJob = useRef(0), fileRef = useRef(null), instRef = useRef(null);
+
+    const spans = useMemo(() => (data ? lyricSpans(lyrics, data.duration) : []), [lyrics, data]);
+    const phrases = useMemo(() => buildPhrases(notes), [notes]);
+    const lines = useMemo(() => (spans.length ? spans : phrases.map((p) => ({ start: p.start, end: p.end, text: "", phrase: p.i }))), [spans, phrases]);
+    const songEnd = data ? Math.max(data.duration, inst && inst.buffer ? inst.buffer.duration - sync : 0) : 0;
+    const listening = hp === "ok" || hp === "override";
+
+    const ensureCtx = () => {
+      const p = play.current;
+      if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
+      if (p.ctx.state === "suspended") p.ctx.resume().catch(() => {});
+      return p.ctx;
+    };
+    const killSources = () => {
+      const p = play.current;
+      cancelAnimationFrame(p.raf);
+      [...p.srcs, ...p.guide].forEach((s) => { try { s.stop(); } catch (e) {} });
+      p.buses.forEach((g) => { try { g.disconnect(); } catch (e) {} });
+      p.srcs = []; p.guide = []; p.buses = [];
+    };
+    const stopAll = useCallback(() => { killSources(); setPlaying(false); }, []);
+    const closeMic = useCallback(() => {
+      const m = mic.current;
+      if (m.stream) m.stream.getTracks().forEach((t) => t.stop());
+      [m.src, m.an].forEach((n) => { if (n) { try { n.disconnect(); } catch (e) {} } });
+      mic.current = {};
+    }, []);
+    const ensureMic = async () => {
+      if (mic.current.an) return true;
+      try {
+        const ctx = ensureCtx();
+        const stream = await getMicStream();
+        const src = ctx.createMediaStreamSource(stream);
+        const an = ctx.createAnalyser(); an.fftSize = 2048;
+        src.connect(an);
+        mic.current = { stream, src, an };
+        return true;
+      } catch (e) { closeMic(); return false; }
+    };
+    useEffect(() => { if (!active) { stopAll(); closeMic(); } }, [active, stopAll, closeMic]);
+    useEffect(() => () => { killSources(); closeMic(); if (play.current.ctx) play.current.ctx.close().catch(() => {}); }, []);
+
+    // new song: reset the session and bring back saved timing/best score
+    useEffect(() => {
+      stopAll(); setCursor(0); setOverlay(null); setMarks([]); setLineScores({}); setFinal(null);
+      loopRef.current = null; setLoop(null);
+      setBest(songName ? (loadJSON(KARA_BEST_KEY, {})[songName] ?? null) : null);
+    }, [data, songName, stopAll]);
+
+    const saveSync = (v) => {
+      syncRef.current = v; setSync(v);
+      if (songName && instRef.current) { const all = loadJSON(KARA_SYNC_KEY, {}); all[songName] = { inst: instRef.current.name, sync: v }; saveJSON(KARA_SYNC_KEY, all); }
+    };
+    const runAutoSync = () => {
+      const i = instRef.current;
+      if (!data || !i || !i.onset) return;
+      const r = autoSync(onsetEnvelope(orig.buffer), i.onset);
+      if (r.z >= 6) { saveSync(Math.round(r.off * 100) / 100); setSyncMsg("Lined up automatically. Use Check timing to confirm by ear."); }
+      else { saveSync(0); setSyncMsg("Couldn't line them up automatically. Use Check timing and the nudge buttons."); }
+    };
+
+    // instrumental + vocal analysis once both are loaded
+    useEffect(() => {
+      if (!data || !inst || !inst.buffer) return;
+      const saved = loadJSON(KARA_SYNC_KEY, {})[songName];
+      if (saved && saved.inst === inst.name) { syncRef.current = saved.sync; setSync(saved.sync); setSyncMsg("Using the timing you saved for this song."); }
+      else runAutoSync();
+      setKeyWarn(inst.chroma ? keyGap(notes, inst.chroma) : 0);
+    }, [data, inst]);
+
+    const pickInst = async (file) => {
+      const job = ++instJob.current;
+      stopAll(); setSyncMsg(""); setKeyWarn(0);
+      setInst({ name: file.name, busy: true });
+      let buffer;
+      try { buffer = await decodeFile(file); }
+      catch (e) { if (instJob.current === job) setInst({ name: file.name, error: "That file couldn't be read as audio. Try an MP3, M4A or WAV." }); return; }
+      const onset = onsetEnvelope(buffer);
+      const chroma = await chromaOf(buffer, () => instJob.current !== job);
+      if (instJob.current !== job) return;
+      const next = { name: file.name, buffer, onset, chroma };
+      instRef.current = next;
+      setInst(next);
+    };
+
+    const runCheck = async () => {
+      stopAll();
+      setHp("checking"); hpRef.current = "checking";
+      const ok = await ensureMic();
+      if (!ok) { setHp("nomic"); hpRef.current = "nomic"; return; }
+      const ctx = ensureCtx(), an = mic.current.an, buf = new Float32Array(an.fftSize);
+      const f = SETTINGS.a4 * 2, t0 = ctx.currentTime + 0.05;
+      [0, 0.45, 0.9].forEach((d) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = f; g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.3, t0 + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.35);
+        o.connect(g); g.connect(ctx.destination); o.start(t0 + d); o.stop(t0 + d + 0.4);
+      });
+      let hits = 0;
+      await new Promise((res) => {
+        const loopFn = () => {
+          if (ctx.currentTime - t0 > 1.45) { res(); return; }
+          an.getFloatTimeDomainData(buf);
+          const d = detectPitch(buf, ctx.sampleRate, micGate());
+          if (d.freq > 0 && Math.abs(12 * Math.log2(d.freq / f)) < 0.5) hits++;
+          requestAnimationFrame(loopFn);
+        };
+        loopFn();
+      });
+      const st = hits >= 3 ? "heard" : "ok";
+      setHp(st); hpRef.current = st;
+    };
+
+    // ---- scoring as you sing ----
+    const SLACK0 = 5, SLACK1 = 20; // look 0.1 s early to 0.4 s late (headphone delay)
+    const matchAt = (k) => {
+      const a = data.grid[k], her = run.current.her;
+      if (a !== a || !her) return false;
+      for (let j = Math.max(0, k - SLACK0); j <= Math.min(her.length - 1, k + SLACK1); j++) {
+        const h = her[j];
+        if (h === h && Math.abs(foldOct(h - a)) <= 0.5) return true;
+      }
+      return false;
+    };
+    const judge = (songT) => {
+      const R = run.current;
+      const newMarks = [];
+      notes.forEach((n, i) => {
+        if (R.judgedNotes.has(i) || n.end + 0.45 > songT) return;
+        if (loopRef.current && (n.pos < loopRef.current.a - 0.3 || n.end > loopRef.current.b + 0.3)) return;
+        R.judgedNotes.add(i);
+        const k0 = Math.round(n.pos / GRID), k1 = Math.max(k0 + 1, Math.round(n.end / GRID));
+        const cut = Math.floor((k1 - k0) * 0.2);
+        let v = 0, ok = 0;
+        for (let k = k0 + cut; k < k1 - cut; k++) { if (data.grid[k] !== data.grid[k]) continue; v++; if (matchAt(k)) ok++; }
+        if (v) newMarks.push({ i, pos: n.pos, end: n.end, midi: n.midi, ok: ok / v >= 0.5 });
+      });
+      if (newMarks.length) setMarks((m) => [...m.filter((x) => !newMarks.some((y) => y.i === x.i)), ...newMarks]);
+      const upd = {};
+      lines.forEach((l, i) => {
+        if (R.judgedLines.has(i) || l.end + 0.45 > songT) return;
+        if (loopRef.current && (l.start < loopRef.current.a - 0.3 || l.end > loopRef.current.b + 0.3)) return;
+        R.judgedLines.add(i);
+        let v = 0, ok = 0;
+        for (let k = Math.round(l.start / GRID); k < Math.round(l.end / GRID); k++) { if (data.grid[k] !== data.grid[k]) continue; v++; if (matchAt(k)) ok++; }
+        if (v >= 10) { R.tally[i] = { v, ok }; upd[i] = Math.round((100 * ok) / v); }
+      });
+      if (Object.keys(upd).length) setLineScores((s) => ({ ...s, ...upd }));
+    };
+    const finish = () => {
+      const R = run.current;
+      const t = Object.values(R.tally);
+      const v = t.reduce((s, x) => s + x.v, 0), ok = t.reduce((s, x) => s + x.ok, 0);
+      if (!listening || v < 50) { setFinal(null); return; }
+      const score = Math.round((100 * ok) / v);
+      setFinal({ score, lines: Object.keys(R.tally).length });
+      if (songName) {
+        const all = loadJSON(KARA_BEST_KEY, {});
+        if (!(all[songName] >= score)) { all[songName] = score; saveJSON(KARA_BEST_KEY, all); setBest(score); }
+      }
+    };
+
+    const startAt = async (t, fresh, check) => {
+      if (!data) return;
+      killSources();
+      const ctx = ensureCtx();
+      if (listening) await ensureMic();
+      const p = play.current, mx = mixRef.current, sy = syncRef.current, lp = loopRef.current;
+      const end = lp ? lp.b : songEnd;
+      if (lp && (t < lp.a - 1 || t >= lp.b)) t = Math.max(0, lp.a - 0.6);
+      if (t >= end - 0.1) t = lp ? Math.max(0, lp.a - 0.6) : 0;
+      if (fresh || t < 0.05) {
+        run.current = { her: new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN), lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {} };
+        setMarks([]); setLineScores({}); setFinal(null); setOverlay(null);
+      } else if (!run.current.her) {
+        run.current.her = new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN);
+      }
+      if (lp) {
+        // forget earlier scores inside the loop so each pass is judged fresh
+        const R = run.current;
+        notes.forEach((n, i) => { if (n.pos >= lp.a - 0.3 && n.end <= lp.b + 0.3) R.judgedNotes.delete(i); });
+        lines.forEach((l, i) => { if (l.start >= lp.a - 0.3 && l.end <= lp.b + 0.3) { R.judgedLines.delete(i); delete R.tally[i]; } });
+        for (let k = Math.max(0, Math.round(lp.a / GRID) - 30); k < Math.min(R.her.length, Math.round(lp.b / GRID) + 30); k++) R.her[k] = NaN;
+      }
+      const now = ctx.currentTime + 0.08;
+      const bus = (v) => { const g = ctx.createGain(); g.gain.value = v; g.connect(ctx.destination); p.buses.push(g); return g; };
+      p.gM = bus(check ? Math.max(0.7, mx.m) : mx.m); p.gV = bus(check ? 1 : mx.v); p.gG = bus(check ? 0 : mx.g);
+      if (check) { p.gV.gain.setValueAtTime(1, now + 8); p.gV.gain.linearRampToValueAtTime(mx.v, now + 9); p.gG.gain.setValueAtTime(mx.g, now + 9); }
+      const start = (buf, at, dest) => { const s = ctx.createBufferSource(); s.buffer = buf; s.connect(dest); if (at >= 0) s.start(now, at); else s.start(now - at, 0); p.srcs.push(s); };
+      if (inst && inst.buffer) start(inst.buffer, t + sy, p.gM);
+      start(orig.buffer, t, p.gV);
+      p.guide = scheduleGuide(ctx, p.gG, notes, t, end, now, 0, 1);
+      setPlaying(true);
+      const an = listening ? mic.current.an : null, buf = an ? new Float32Array(an.fftSize) : null;
+      let frame = 0;
+      const tick = () => {
+        const songT = t + Math.max(0, ctx.currentTime - now);
+        if (an) {
+          an.getFloatTimeDomainData(buf);
+          const d = detectPitch(buf, ctx.sampleRate, micGate());
+          const m = d.freq > 0 ? 69 + 12 * Math.log2(d.freq / SETTINGS.a4) : NaN;
+          const R = run.current, k = Math.round(songT / GRID);
+          if (k < R.her.length) { for (let q = Math.max(R.lastK + 1, k - 4); q <= k; q++) R.her[q] = m; R.lastK = k; }
+          R.points.push({ t: songT, m });
+          if (R.points.length > 2400) R.points.splice(0, R.points.length - 2400);
+          if (++frame % 4 === 0) {
+            const recent = R.points.slice(-600).filter((x) => x.m === x.m);
+            const ks = recent.map((x) => { const kk = Math.round(x.t / GRID); return data.grid[kk] === data.grid[kk] ? x.m - data.grid[kk] : NaN; }).filter((x) => x === x);
+            const oct = ks.length ? 12 * Math.round(median(ks) / 12) : 0;
+            setOverlay({ start: 0, speed: 1, oct, points: R.points.filter((x) => x.t > songT - 25) });
+          }
+          if (frame % 10 === 0) judge(songT);
+        }
+        setCursor(songT);
+        if (songT >= end) {
+          if (an) judge(end + 1);
+          if (loopRef.current) { startAt(Math.max(0, loopRef.current.a - 0.6), false); return; }
+          killSources(); setPlaying(false); finish();
+          return;
+        }
+        p.raf = requestAnimationFrame(tick);
+      };
+      tick();
+    };
+
+    const setVol = (k, v) => {
+      const next = { ...mixRef.current, [k]: v };
+      mixRef.current = next; setMix(next); saveJSON("pitchstaff.karamix.v1", next);
+      const p = play.current, node = { m: p.gM, v: p.gV, g: p.gG }[k];
+      if (node && p.ctx) node.gain.setTargetAtTime(v, p.ctx.currentTime, 0.02);
+    };
+    const nudge = (d) => { const v = Math.round((syncRef.current + d) * 100) / 100; saveSync(v); setSyncMsg(""); if (playing) startAt(cursor, false); };
+    const checkTiming = () => {
+      const first = notes.length ? notes[0].pos : 0;
+      loopRef.current = null; setLoop(null);
+      startAt(Math.max(0, first - 1), false, true);
+    };
+    const loopLine = (l) => { const lp = { a: Math.max(0, l.start), b: l.end + 0.3 }; loopRef.current = lp; setLoop(lp); startAt(Math.max(0, lp.a - 0.6), false); };
+    const clearLoop = () => { loopRef.current = null; setLoop(null); };
+
+    if (!data) {
+      return html`<div class="grid gap-4 sm:grid-cols-2">
+        <${UploadSlot} id="kara-file" step="1" title="Song vocal (acapella)" hint="Upload the acapella of the song. It's shared with Practice and the Singing Analyst, so you only upload it once. Then add the instrumental." slot=${orig} onPick=${onPickOrig} />
+        <div class="panel p-5 flex flex-col gap-2">
+          <h3 class="display text-lg font-bold">How Karaoke works</h3>
+          <p class="muted text-sm" style=${{ maxWidth: "62ch" }}>Add the song's acapella and its instrumental (karaoke version). The music plays with big scrolling lyrics while the app listens through your headphones, draws your voice over the melody and scores every line. At the end you get a final score and your weakest lines to practice.</p>
+        </div>
+      </div>`;
+    }
+
+    const curLineIdx = lines.findIndex((l) => cursor >= l.start && cursor < l.end);
+    const nextIdx = curLineIdx >= 0 ? curLineIdx + 1 : lines.findIndex((l) => l.start > cursor);
+    const prevIdx = curLineIdx >= 0 ? curLineIdx - 1 : nextIdx > 0 ? nextIdx - 1 : -1;
+    const showLine = curLineIdx >= 0 ? lines[curLineIdx] : null;
+    const curIdx = notes.findIndex((n) => cursor >= n.pos && cursor < n.end);
+    const nameOf = (m) => pretty(midiInfo(m).label);
+    const scored = Object.entries(lineScores).map(([i, s]) => ({ i: +i, s })).sort((a, b) => a.s - b.s);
+    const lineLabel = (i) => (lines[i].text ? "“" + lines[i].text + "”" : "Phrase " + (i + 1));
+    const small = { padding: "5px 10px", fontSize: 13 };
+    const hpText = {
+      unknown: "Run a quick check so the app knows the mic can't hear the music.",
+      checking: "Playing three beeps and listening…",
+      ok: "All good: the mic can't hear the music. Scoring is on.",
+      heard: "The mic heard the test beeps, so it would hear the music too. Plug in headphones and check again.",
+      override: "Scoring is on without headphones. Expect messy results.",
+      nomic: "The microphone isn't available here, so you can sing along but without scoring. Use your GitHub Pages site or Chrome on your computer for scoring.",
+    }[hp];
+
+    return html`<div class="flex flex-col gap-5">
+      <div class="panel p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="min-w-0">
+          <span class="label">Karaoke</span>
+          <h3 class="display text-xl font-bold" style=${{ overflowWrap: "anywhere" }}>${orig.name}</h3>
+          <p class="text-xs muted">${best != null ? "Your best score: " + best : "Shared with Practice and the Singing Analyst"}</p>
+        </div>
+        <button class="btn" onClick=${() => fileRef.current && fileRef.current.click()}>Change song</button>
+        <input id="kara-change" ref=${fileRef} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPickOrig(f); }} />
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div class="panel p-4 flex flex-col gap-2 min-w-0">
+          <span class="label">Music</span>
+          <h3 class="display text-lg font-bold">Instrumental</h3>
+          ${inst && inst.buffer
+            ? html`<p class="text-sm" style=${{ overflowWrap: "anywhere" }}><b>${inst.name}</b> <span class="muted mono text-xs">· ${fmt(inst.buffer.duration)}</span></p>`
+            : inst && inst.busy ? html`<p class="text-sm muted">Reading the music…</p>`
+            : html`<p class="text-sm muted">The karaoke version of the song (no vocals). Without it, Karaoke plays the guide vocal and guide notes instead.</p>`}
+          ${inst && inst.error && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${inst.error}</p>`}
+          ${keyWarn !== 0 && html`<div class="notice">This instrumental seems to be ${pianoKeys(Math.abs(keyWarn))} ${keyWarn > 0 ? "higher" : "lower"} than the acapella, so they'll clash. Look for a version in the original key.</div>`}
+          <div><button class=${"btn" + (inst && inst.buffer ? "" : " btn-primary")} disabled=${inst && inst.busy} onClick=${() => document.getElementById("inst-file").click()}>${inst && inst.buffer ? "Replace music" : "Upload instrumental"}</button></div>
+          <input id="inst-file" type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) pickInst(f); }} />
+        </div>
+        <div class="panel p-4 flex flex-col gap-2 min-w-0">
+          <span class="label">Before you sing</span>
+          <h3 class="display text-lg font-bold">Headphone check</h3>
+          <p class=${"text-sm" + (hp === "ok" ? "" : " muted")} style=${{ color: hp === "ok" ? "var(--good)" : hp === "heard" ? "var(--warn)" : undefined }}>${hpText}</p>
+          <div class="flex flex-wrap gap-2">
+            <button class=${"btn" + (hp === "ok" ? "" : " btn-primary")} disabled=${hp === "checking"} onClick=${runCheck}>${hp === "unknown" ? "Run headphone check" : "Check again"}</button>
+            ${hp === "heard" && html`<button class="btn btn-ghost" onClick=${() => { setHp("override"); hpRef.current = "override"; }}>Score anyway</button>`}
+          </div>
+        </div>
+      </div>
+
+      <${LyricsCard} orig=${orig} lyrics=${lyrics} updateLyrics=${updateLyrics} count=${spans.length} hint="Shows big scrolling lyrics. Files with word-by-word timing light up one word at a time. Saved for this song on this device." />
+
+      ${inst && inst.buffer && html`<div class="panel p-4 flex flex-wrap items-center gap-3">
+        <span class="label">Music timing</span>
+        <button class="btn" style=${small} onClick=${() => nudge(-0.1)} aria-label="Music earlier">−0.1 s</button>
+        <span class="mono text-xs" style=${{ minWidth: 110, textAlign: "center" }}>${sync === 0 ? "No shift" : "Music " + (sync > 0 ? "skips " + sync.toFixed(2) + " s" : "waits " + (-sync).toFixed(2) + " s")}</span>
+        <button class="btn" style=${small} onClick=${() => nudge(0.1)} aria-label="Music later">+0.1 s</button>
+        <button class="btn btn-ghost" style=${small} onClick=${runAutoSync}>Auto-sync</button>
+        <button class="btn" style=${small} onClick=${checkTiming}>▶ Check timing</button>
+        <span class="text-xs muted" style=${{ flexBasis: "100%" }}>${syncMsg || "Check timing plays the music with the original voice up loud. Nudge until they line up."}</span>
+      </div>`}
+
+      <section class="panel p-4 sm:p-5 flex flex-col gap-4 min-w-0">
+        <div class="stage">
+          <${KaraokeLine} line=${prevIdx >= 0 ? lines[prevIdx] : null} t=${null} size=${15} dim=${true} />
+          <${KaraokeLine} line=${showLine || (nextIdx >= 0 ? lines[nextIdx] : null)} t=${showLine ? cursor : null} size=${30} />
+          <${KaraokeLine} line=${showLine && nextIdx >= 0 ? lines[nextIdx] : null} t=${null} size=${17} dim=${true} />
+          ${!spans.length && html`<p class="text-xs muted">Add a lyrics file above to see the words here.</p>`}
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="btn btn-primary" onClick=${() => (playing ? stopAll() : startAt(cursor >= songEnd - 0.2 ? 0 : cursor, cursor < 0.05))}>${playing ? "❚❚ Pause" : cursor > 0.05 && cursor < songEnd - 0.2 ? "▶ Resume" : "▶ Start"}</button>
+          <button class="btn" onClick=${() => { clearLoop(); setCursor(0); startAt(0, true); }}>↺ From the top</button>
+          <span class="mono text-xs muted">${fmt(cursor)} / ${fmt(songEnd)}</span>
+          ${listening ? html`<span class="flex items-center gap-2 text-xs muted"><span class="rec-dot"></span>Scoring</span>` : html`<span class="text-xs muted">Not scoring</span>`}
+          ${loop && html`<span class="chip" style=${{ borderColor: "var(--accent)" }}><span class="text-xs">↻ Looping</span><b class="mono text-xs">${fmt(loop.a)}–${fmt(loop.b)}</b>
+            <button class="text-xs" style=${{ color: "var(--accent)", background: "none", border: 0, cursor: "pointer", fontWeight: 600 }} onClick=${clearLoop} aria-label="Stop looping">✕</button></span>`}
+        </div>
+
+        <${MelodyMap} data=${data} notes=${notes} tr=${0} nameOf=${nameOf} phrases=${phrases} lyrics=${[]} loop=${loop} cursor=${cursor} curIdx=${curIdx}
+          onTapNote=${(n) => { setCursor(n.pos); if (playing) startAt(n.pos, false); }} onSeek=${(t) => { setCursor(t); if (playing) startAt(t, false); }} themeKey=${themeKey} overlay=${overlay} height=${170} marks=${marks} />
+
+        <div class="mixer">
+          ${[["m", "Music"], ["v", "Guide vocal"], ["g", "Guide notes"]].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"kmix-" + k}>
+            <span class="text-xs font-semibold">${l}</span>
+            <input id=${"kmix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
+            <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
+          </label>`)}
+        </div>
+        <p class="text-xs muted">Guide vocal is the original singer, quietly, like the guide button on a karaoke machine. Turn it off once you know the song. Any octave counts when scoring.</p>
+
+        ${scored.length > 0 && html`<div class="flex flex-wrap gap-2">
+          ${Object.entries(lineScores).sort((a, b) => a[0] - b[0]).slice(-6).map(([i, s]) => html`<span key=${i} class=${"tag tag-" + (s >= 80 ? "good" : s >= 50 ? "warn" : "bad")}>${lines[i].text ? (lines[i].text.length > 18 ? lines[i].text.slice(0, 18) + "…" : lines[i].text) : "Phrase " + (+i + 1)} · ${s}%</span>`)}
+        </div>`}
+      </section>
+
+      ${final && html`<section class="panel p-4 sm:p-5 flex flex-col gap-4">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div class="flex items-end gap-3">
+            <span class="display font-bold" style=${{ fontSize: 72, lineHeight: 1, color: "var(--accent)" }}>${final.score}</span>
+            <div class="flex flex-col pb-2">
+              <span class="label">Karaoke score</span>
+              <span class="text-xs muted">${final.lines} lines scored${best != null && best === final.score ? " · new best!" : best != null ? " · best " + best : ""}</span>
+            </div>
+          </div>
+          <button class="btn btn-primary" onClick=${() => { clearLoop(); setCursor(0); startAt(0, true); }}>↺ Sing again</button>
+        </div>
+        ${scored.length > 0 && html`<div class="grid gap-3 sm:grid-cols-2">
+          <div class="flex flex-col gap-2">
+            <span class="label">Needs work</span>
+            ${scored.slice(0, 3).map(({ i, s }) => html`<div key=${i} class="spot"><span class="mono text-sm font-semibold">${s}%</span><span class="text-sm">${lineLabel(i)}</span>
+              <span><button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => loopLine(lines[i])}>↻ Loop</button></span></div>`)}
+          </div>
+          <div class="flex flex-col gap-2">
+            <span class="label">Your best lines</span>
+            ${scored.slice(-3).reverse().map(({ i, s }) => html`<div key=${i} class="spot"><span class="mono text-sm font-semibold" style=${{ color: "var(--good)" }}>${s}%</span><span class="text-sm">${lineLabel(i)}</span><span></span></div>`)}
+          </div>
+        </div>`}
+      </section>`}
+    </div>`;
+  }
+
   /* ---------- app ---------- */
   function App() {
     const [tab, setTab] = useState("live");
@@ -2500,7 +3054,7 @@ select.btn { appearance: auto; }
     const [showSettings, setShowSettings] = useState(false);
     const [, bumpSettings] = useState(0);
     const [visited, setVisited] = useState({ live: true });
-    // the acapella is shared by Learn and the Singing Analyst
+    // the acapella is shared by Practice, Karaoke and the Singing Analyst
     const [vocal, setVocal] = useState(null);
     const vocalJob = useRef(0);
     const pickVocal = useCallback(async (file) => {
@@ -2835,7 +3389,7 @@ select.btn { appearance: auto; }
       <header class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 class="display text-3xl sm:text-4xl font-bold">Tono</h1>
-          <p class="muted text-sm">${tab === "live" ? "Sing, whistle or play one clean note and see exactly which note it is." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : "Compare your singing with the original vocal, phrase by phrase."}</p>
+          <p class="muted text-sm">${tab === "live" ? "Sing, whistle or play one clean note and see exactly which note it is." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : tab === "karaoke" ? "Sing along to the music with scrolling lyrics and a live score." : "Compare your singing with the original vocal, phrase by phrase."}</p>
         </div>
         <div class="flex gap-2">
           <button class="btn btn-ghost" onClick=${() => setShowSettings((v) => !v)} aria-expanded=${showSettings ? "true" : "false"}>⚙ Settings</button>
@@ -2849,7 +3403,7 @@ select.btn { appearance: auto; }
         onChange=${() => bumpSettings((n) => n + 1)} onMicChange=${() => { if (mode === "mic") startMic(); }} />`}
 
       <div class="tabs" role="tablist">
-        ${[["live", "Tuner"], ["learn", "Learn"], ["analyst", "Singing Analyst"]].map(([k, l]) => html`<button key=${k} class="tab" role="tab" aria-selected=${tab === k ? "true" : "false"}
+        ${[["live", "Tuner"], ["learn", "Practice"], ["karaoke", "Karaoke"], ["analyst", "Singing Analyst"]].map(([k, l]) => html`<button key=${k} class="tab" role="tab" aria-selected=${tab === k ? "true" : "false"}
           onClick=${() => { if (k !== "live") stop(); setTab(k); setVisited((v) => ({ ...v, [k]: true })); }}>${l}</button>`)}
       </div>
 
@@ -2907,6 +3461,7 @@ select.btn { appearance: auto; }
       <${MatchTrainer} hookRef=${matchHook} listening=${mode === "mic"} onStartMic=${startMic} onTarget=${setMatchTarget} onStatus=${setMatchStatus} sung=${live ? live.midi : null} />
       <//>`}
       <div hidden=${tab !== "learn"}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
+      <div hidden=${tab !== "karaoke"}>${visited.karaoke && html`<${Karaoke} themeKey=${isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
       <div hidden=${tab !== "analyst"}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
     </div>`;
   }
