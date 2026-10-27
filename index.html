@@ -1,0 +1,2645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<title>Pitch Staff</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Noto+Music&display=swap">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+/* Layout: one working surface — controls bar, live readout + staff, history log beside it (stacks on phones) */
+:root {
+  --bg: #0f1218;
+  --surface: #161b24;
+  --surface-2: #1d2430;
+  --line: #2a3240;
+  --fg: #e8ebf1;
+  --muted: #8b93a3;
+  --accent: #e2b65c;
+  --accent-ink: #1a1408;
+  --good: #5fd39a;
+  --you: #7fb2ff;
+  --warn: #e7a54b;
+  --bad: #ef6f6c;
+  --rec: #ff5d5d;
+  --font-display: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
+  --font-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-music: "Noto Music", "Bravura Text", "Segoe UI Symbol", serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #eef1f5; --surface: #ffffff; --surface-2: #f4f6f9; --line: #d7dce4;
+    --fg: #151a22; --muted: #5d6676; --accent: #9a6a12; --accent-ink: #ffffff;
+    --good: #16865a; --warn: #a86a12; --bad: #c43b38; --rec: #d63a3a; --you: #2b62c4;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #eef1f5; --surface: #ffffff; --surface-2: #f4f6f9; --line: #d7dce4;
+  --fg: #151a22; --muted: #5d6676; --accent: #9a6a12; --accent-ink: #ffffff;
+  --good: #16865a; --warn: #a86a12; --bad: #c43b38; --rec: #d63a3a; --you: #2b62c4;
+  color-scheme: light;
+}
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap {
+  max-width: 1100px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 40px;
+}
+.display { font-family: var(--font-display); letter-spacing: -0.02em; text-wrap: balance; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); font-weight: 600; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; border-radius: 10px; padding: 9px 14px;
+  font-weight: 600; font-size: 14px; border: 1px solid var(--line); background: var(--surface-2);
+  color: var(--fg); cursor: pointer; transition: transform .08s, background .15s, border-color .15s;
+}
+.btn:hover { border-color: var(--muted); }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible, .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn-primary:hover { border-color: var(--fg); }
+.btn-ghost { background: transparent; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.switch {
+  display: inline-flex; align-items: center; gap: 10px; padding: 7px 12px 7px 8px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); cursor: pointer; font-weight: 600; font-size: 14px;
+}
+.switch .track { width: 34px; height: 20px; border-radius: 999px; background: var(--line); position: relative; transition: background .15s; }
+.switch .knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--fg); transition: left .15s; }
+.switch[aria-checked="true"] .track { background: var(--rec); }
+.switch[aria-checked="true"] .knob { left: 16px; background: #fff; }
+.rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rec); animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+.tuner { position: relative; height: 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); }
+.tuner .zone { position: absolute; top: 0; bottom: 0; left: 40%; width: 20%; background: color-mix(in srgb, var(--good) 22%, transparent); border-radius: 999px; }
+.tuner .center { position: absolute; top: -4px; bottom: -4px; left: 50%; width: 2px; margin-left: -1px; background: var(--muted); }
+.tuner .needle { position: absolute; top: -5px; width: 4px; height: 18px; margin-left: -2px; border-radius: 2px; transition: left .08s linear; }
+.level { height: 4px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.level > div { height: 100%; background: var(--accent); transition: width .06s linear; }
+.chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
+.row { display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: center; padding: 9px 4px; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
+.notice { border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line)); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
+.history-list { max-height: 460px; overflow-y: auto; }
+.staff-box { overflow-x: auto; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { padding: 7px 12px; font-weight: 600; font-size: 13px; background: var(--surface-2); color: var(--muted); border: 0; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:focus-visible, .tab:focus-visible, .spot:focus-visible, .nt-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tab { padding: 10px 14px; font-weight: 600; font-size: 14px; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.spot { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); }
+.spot:hover { border-color: var(--muted); }
+.note-table { max-height: 380px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.nt-row { display: grid; grid-template-columns: 48px 1fr 1fr 64px minmax(96px, 1.4fr); gap: 8px; align-items: center; width: 100%; min-width: 420px; padding: 8px 12px; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); color: var(--fg); cursor: pointer; font: inherit; }
+.nt-row.nt-plain { grid-template-columns: 48px 1fr 1fr minmax(150px, 2fr); }
+.nt-row:last-child { border-bottom: 0; }
+.nt-head { position: sticky; top: 0; background: var(--surface); cursor: default; z-index: 1; }
+.nt-now { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+@media (max-width: 480px) { .spot { grid-template-columns: 1fr auto; } .spot > span:nth-child(2) { grid-column: 1 / -1; grid-row: 2; } }
+.mixer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.mix-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; min-width: 0; }
+.mix-row input { width: 100%; min-width: 0; }
+@media (max-width: 640px) { .mixer { grid-template-columns: 1fr; } .mix-row { grid-template-columns: 92px 1fr auto; } }
+.tech { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.tag-good { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.tag-warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.tag-bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.phrase { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.phrase.now { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.phrase.done .ph-num { background: var(--good); color: var(--bg); }
+.ph-num { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--line); color: var(--fg); }
+@media (max-width: 560px) { .phrase { grid-template-columns: 32px minmax(0, 1fr); } .phrase > span:last-child { grid-column: 1 / -1; justify-content: flex-start; } }
+.attempt { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--surface-2); }
+.nchip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; border: 1px solid var(--line); }
+.nchip.ok { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, var(--line)); }
+.nchip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+.nchip.miss { color: var(--muted); }
+.switch[disabled] { opacity: .45; cursor: not-allowed; }
+.lyr-band { position: relative; height: 30px; border-bottom: 1px solid var(--line); }
+.lyr { position: absolute; top: 5px; height: 20px; line-height: 20px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-left: 2px solid var(--line); color: var(--muted); }
+.lyr.on { color: var(--fg); border-left-color: var(--accent); font-weight: 600; }
+.karaoke { display: flex; flex-direction: column; gap: 2px; min-height: 52px; }
+.karaoke .cur { font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 1.25; text-wrap: balance; }
+.karaoke .nxt { font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script>
+(function () {
+  const { useState, useEffect, useRef, useCallback, useMemo } = React;
+  const html = htm.bind(React.createElement);
+
+  /* ---------- music helpers ---------- */
+  const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const LETTERS = "CDEFGAB";
+  function midiInfo(m) {
+    const name = NAMES[((m % 12) + 12) % 12];
+    const octave = Math.floor(m / 12) - 1;
+    const letter = name[0];
+    return { name, letter, sharp: name.length > 1, octave, label: name + octave, step: octave * 7 + LETTERS.indexOf(letter) };
+  }
+  function freqToMidi(f) {
+    const exact = 69 + 12 * Math.log2(f / 440);
+    const midi = Math.round(exact);
+    return { midi, cents: Math.round((exact - midi) * 100) };
+  }
+  const pretty = (s) => s.replace("#", "♯");
+  const fmt = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+
+  /* ---------- autocorrelation pitch detection ---------- */
+  function detectPitch(buf, sr) {
+    const n = buf.length;
+    let rms = 0;
+    for (let i = 0; i < n; i++) rms += buf[i] * buf[i];
+    rms = Math.sqrt(rms / n);
+    if (rms < 0.01) return { freq: -1, rms };
+
+    const minLag = Math.floor(sr / 1400);             // highest pitch ~1400 Hz
+    const maxLag = Math.min(Math.floor(sr / 65), n - 2); // lowest pitch ~65 Hz
+    const c = new Float32Array(maxLag + 2);
+    let c0 = 0;
+    for (let j = 0; j < n; j++) c0 += buf[j] * buf[j];
+    for (let lag = minLag; lag <= maxLag + 1; lag++) {
+      let s = 0;
+      for (let j = 0; j < n - lag; j++) s += buf[j] * buf[j + lag];
+      c[lag] = s;
+    }
+    // skip the initial downward slope from lag 0
+    let d = minLag;
+    while (d < maxLag && c[d] > c[d + 1]) d++;
+    let max = -Infinity, pos = -1;
+    for (let i = d; i <= maxLag; i++) if (c[i] > max) { max = c[i]; pos = i; }
+    if (pos < 0) return { freq: -1, rms };
+    // prefer the first strong peak (avoids octave-down errors)
+    for (let i = d + 1; i < maxLag; i++) {
+      if (c[i] >= 0.9 * max && c[i] >= c[i - 1] && c[i] >= c[i + 1]) { pos = i; break; }
+    }
+    const clarity = (c[pos] * n) / ((n - pos) * c0);
+    if (clarity < 0.8) return { freq: -1, rms };
+    // parabolic interpolation for sub-sample accuracy
+    let T = pos;
+    const x1 = c[pos - 1], x2 = c[pos], x3 = c[pos + 1];
+    const a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
+    if (a) T = pos - b / (2 * a);
+    return { freq: sr / T, rms, clarity };
+  }
+
+  /* ---------- storage ---------- */
+  const KEY = "pitchstaff.history.v1";
+  const THEME_KEY = "pitchstaff.theme";
+  function loadHistory() {
+    try { const v = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(v) ? v : []; }
+    catch (e) { return []; }
+  }
+  function saveHistory(h) { try { localStorage.setItem(KEY, JSON.stringify(h)); } catch (e) {} }
+
+  /* ---------- staff ---------- */
+  const BOTTOM = 140, HALF = 7; // E4 bottom line; half a line gap = one diatonic step
+  const yOf = (step) => BOTTOM - (step - 30) * HALF;
+
+  function NoteHead({ x, step, sharp, color, opacity }) {
+    const s = Math.max(12, Math.min(50, step));
+    const y = yOf(s);
+    const ledgers = [];
+    if (s <= 28) for (let k = 28; k >= s; k -= 2) ledgers.push(k);
+    if (s >= 40) for (let k = 40; k <= s; k += 2) ledgers.push(k);
+    const up = s < 34;
+    return html`<g opacity=${opacity}>
+      ${ledgers.map((k) => html`<line key=${k} x1=${x - 12} x2=${x + 12} y1=${yOf(k)} y2=${yOf(k)} stroke="var(--muted)" stroke-width="1.3" />`)}
+      ${sharp && html`<text x=${x - 22} y=${y + 5} font-size="17" fill=${color} font-family="var(--font-music)">♯</text>`}
+      <ellipse cx=${x} cy=${y} rx="7.6" ry="5.4" transform=${`rotate(-22 ${x} ${y})`} fill=${color} />
+      <line x1=${up ? x + 6.8 : x - 6.8} x2=${up ? x + 6.8 : x - 6.8} y1=${y} y2=${up ? y - 36 : y + 36} stroke=${color} stroke-width="1.6" />
+    </g>`;
+  }
+
+  function Staff({ trail, live, example }) {
+    const lines = [30, 32, 34, 36, 38];
+    const slots = trail.slice(-7);
+    const startX = 108, gap = 32;
+    return html`<svg viewBox="0 -4 400 276" width="100%" style=${{ minWidth: 320, display: "block" }} role="img"
+        aria-label=${live ? "Staff showing " + midiInfo(live.midi).label : "Treble clef staff"}>
+      ${lines.map((s) => html`<line key=${s} x1="8" x2="392" y1=${yOf(s)} y2=${yOf(s)} stroke="var(--muted)" stroke-opacity="0.75" stroke-width="1.2" />`)}
+      <line x1="8" x2="8" y1=${yOf(38)} y2=${yOf(30)} stroke="var(--muted)" stroke-opacity="0.75" stroke-width="1.2" />
+      <text x="14" y=${yOf(30) + 15} font-size="76" fill="var(--fg)" font-family="var(--font-music)">𝄞</text>
+      <line x1="338" x2="338" y1="10" y2="262" stroke="var(--accent)" stroke-opacity="0.25" stroke-dasharray="3 5" />
+      ${slots.map((t, i) => {
+        const info = midiInfo(t.midi);
+        const x = startX + i * gap;
+        return html`<g key=${t.id}>
+          <${NoteHead} x=${x} step=${info.step} sharp=${info.sharp} color="var(--fg)" opacity=${example ? 0.35 : 0.45 + (0.5 * (i + 1)) / slots.length} />
+          <text x=${x} y="270" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--font-mono)">${info.label}</text>
+        </g>`;
+      })}
+      ${live && (() => {
+        const info = midiInfo(live.midi);
+        return html`<g>
+          <${NoteHead} x=${360} step=${info.step} sharp=${info.sharp} color="var(--accent)" opacity=${1} />
+          <text x="360" y="270" text-anchor="middle" font-size="10" font-weight="600" fill="var(--accent)" font-family="var(--font-mono)">${info.label}</text>
+        </g>`;
+      })()}
+    </svg>`;
+  }
+
+  const EXAMPLE = [60, 62, 64, 65, 67, 69, 71].map((m, i) => ({ id: "ex" + i, midi: m }));
+
+  /* ---------- singing analyst ---------- */
+  const GRID = 0.02; // pitch track resolution: 50 frames per second
+  const SESS_KEY = "pitchstaff.sessions.v1";
+  const median = (arr) => { if (!arr.length) return NaN; const s = [...arr].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+  const foldOct = (d) => d - 12 * Math.round(d / 12);
+  const signed = (c) => (c > 0 ? "+" : "") + c;
+
+  async function decodeFile(file) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    try {
+      const ab = await file.arrayBuffer();
+      return await new Promise((res, rej) => {
+        const p = ctx.decodeAudioData(ab, res, rej);
+        if (p && p.then) p.then(res, rej);
+      });
+    } finally { if (ctx.close) ctx.close().catch(() => {}); }
+  }
+
+  // Full pitch track (50 fps grid of fractional MIDI, NaN = silence) plus the list of held notes.
+  async function trackPitch(audio, onProgress, isCancelled) {
+    let data = audio.getChannelData(0);
+    if (audio.numberOfChannels > 1) {
+      const r = audio.getChannelData(1), m = new Float32Array(data.length);
+      for (let i = 0; i < data.length; i++) m[i] = (data[i] + r[i]) / 2;
+      data = m;
+    }
+    let sr = audio.sampleRate;
+    if (sr >= 44100) {
+      const h = new Float32Array(Math.floor(data.length / 2));
+      for (let i = 0; i < h.length; i++) h[i] = (data[2 * i] + data[2 * i + 1]) / 2;
+      data = h; sr = sr / 2;
+    }
+    const N = 1024, hop = 512, total = Math.max(1, Math.floor((data.length - N) / hop));
+    const raw = new Float32Array(total).fill(NaN), rawL = new Float32Array(total).fill(-100);
+    const notes = [];
+    let cand = { midi: null, since: 0 }, confirmed = null, silentSince = -1;
+    const recent = [];
+    for (let f = 0; f < total; f++) {
+      if (isCancelled()) return null;
+      const t = (f * hop) / sr;
+      const r = detectPitch(data.subarray(f * hop, f * hop + N), sr);
+      rawL[f] = 20 * Math.log10(r.rms + 1e-5);
+      if (r.freq > 0) {
+        raw[f] = 69 + 12 * Math.log2(r.freq / 440);
+        silentSince = -1;
+        recent.push(r.freq); if (recent.length > 5) recent.shift();
+        const med = median(recent);
+        const { midi, cents } = freqToMidi(med);
+        if (midi !== cand.midi) cand = { midi, since: t };
+        if (t - cand.since >= 0.15 && confirmed !== midi) {
+          if (notes.length && notes[notes.length - 1].end == null) notes[notes.length - 1].end = cand.since;
+          confirmed = midi; notes.push({ midi, freq: med, cents, pos: cand.since, end: null });
+        }
+      } else {
+        if (silentSince < 0) silentSince = t;
+        if (t - silentSince > 0.12) {
+          if (confirmed !== null && notes.length && notes[notes.length - 1].end == null) notes[notes.length - 1].end = silentSince;
+          confirmed = null; cand = { midi: null, since: 0 }; recent.length = 0;
+        }
+      }
+      if (f % 150 === 0) { onProgress(f / total); await new Promise((res) => setTimeout(res, 0)); }
+    }
+    if (notes.length && notes[notes.length - 1].end == null) notes[notes.length - 1].end = data.length / sr;
+    // light 3-frame median to remove single-frame glitches
+    const smooth = new Float32Array(total).fill(NaN);
+    for (let f = 0; f < total; f++) {
+      const w = [raw[f - 1], raw[f], raw[f + 1]].filter((v) => v === v && v !== undefined);
+      if (w.length >= 2 && raw[f] === raw[f]) smooth[f] = median(w);
+    }
+    const len = Math.ceil(audio.duration / GRID);
+    const grid = new Float32Array(len).fill(NaN), loud = new Float32Array(len).fill(-100);
+    for (let k = 0; k < len; k++) {
+      const f = Math.round((k * GRID * sr) / hop);
+      if (f < total) { grid[k] = smooth[f]; loud[k] = rawL[f]; }
+    }
+    onProgress(1);
+    return { duration: audio.duration, grid, loud, notes };
+  }
+
+  // simple piano-like guide tones for the original's notes, shifted into the singer's key
+  function scheduleGuide(ctx, dest, notes, from, to, when, semis, speed = 1) {
+    const out = [];
+    notes.forEach((n) => {
+      const s = Math.max(n.pos, from), e = Math.min(n.end, to);
+      if (e - s < 0.06) return;
+      const st = when + (s - from) / speed, en = when + (e - from) / speed;
+      const f = 440 * Math.pow(2, (n.midi + semis - 69) / 12);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.exponentialRampToValueAtTime(0.3, st + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.15, Math.max(st + 0.03, en - 0.05));
+      g.gain.exponentialRampToValueAtTime(0.0001, en);
+      g.connect(dest);
+      const o1 = ctx.createOscillator(); o1.type = "triangle"; o1.frequency.value = f; o1.connect(g);
+      const o2 = ctx.createOscillator(); o2.type = "sine"; o2.frequency.value = f * 2;
+      const g2 = ctx.createGain(); g2.gain.value = 0.25; o2.connect(g2); g2.connect(g);
+      o1.start(st); o2.start(st); o1.stop(en + 0.02); o2.stop(en + 0.02);
+      out.push(o1, o2);
+    });
+    return out;
+  }
+
+  // Which key did the singer use? Compare note-class histograms, then confirm with alignment.
+  function keyCandidates(o, t) {
+    const hist = (g) => {
+      const h = new Float64Array(12); let n = 0;
+      for (let k = 0; k < g.length; k++) {
+        const v = g[k]; if (v !== v) continue;
+        const pc = ((v % 12) + 12) % 12, i = Math.floor(pc), f = pc - i;
+        h[i % 12] += 1 - f; h[(i + 1) % 12] += f; n++;
+      }
+      if (n) for (let i = 0; i < 12; i++) h[i] /= n;
+      return h;
+    };
+    const A = hist(o.grid), B = hist(t.grid);
+    const sc = [];
+    for (let r = 0; r < 12; r++) { let s = 0; for (let i = 0; i < 12; i++) s += A[i] * B[(i + r) % 12]; sc.push({ r: r > 6 ? r - 12 : r, s }); }
+    sc.sort((x, y) => y.s - x.s);
+    const c = [0];
+    sc.slice(0, 2).forEach((x) => { if (!c.includes(x.r)) c.push(x.r); });
+    return c;
+  }
+  function detectKeyAndOffset(o, t, keyFree) {
+    const cands = keyFree ? keyCandidates(o, t) : [0];
+    let best = null;
+    cands.forEach((ks) => {
+      const r = autoAlign(o, t, ks);
+      if (!best || r.score > best.score * (ks === 0 ? 0.95 : 1.05)) best = { ks, off: r.off, score: r.score };
+    });
+    return best;
+  }
+
+  function autoAlign(o, t, ks = 0) {
+    const a = o.grid, b = t.grid, maxLag = 750; // ±15 s
+    let best = -1, bestL = 0;
+    for (let L = -maxLag; L <= maxLag; L++) {
+      let m = 0;
+      for (let k = 0; k < a.length; k += 2) {
+        const ak = a[k];
+        if (ak !== ak) continue;
+        const j = k + L;
+        if (j < 0 || j >= b.length) continue;
+        const bj = b[j];
+        if (bj !== bj) continue;
+        if (Math.abs(foldOct(bj - ak - ks)) < 0.6) m++;
+      }
+      if (m > best || (m === best && Math.abs(L) < Math.abs(bestL))) { best = m; bestL = L; }
+    }
+    return { off: bestL, score: best };
+  }
+
+  function fixedMap(len, off) {
+    const m = new Int32Array(len);
+    for (let k = 0; k < len; k++) m[k] = k + off;
+    return m;
+  }
+
+  // Dynamic time warping on 10 fps features (note class, voicing, loudness, onsets).
+  // Returns a 50 fps map: take frame index for each original frame, or null if it fails.
+  function warpMap(o, t, off, ks = 0) {
+    const S = 5, B = 120, PEN = 0.3; // 10 fps, ±12 s band around the tempo line
+    const feat = (tr) => {
+      const n = Math.floor(tr.grid.length / S);
+      const p = new Float32Array(n).fill(NaN), L = new Float32Array(n), on = new Float32Array(n);
+      const ls = Array.from(tr.loud).filter((v) => isFinite(v)).sort((x, y) => x - y);
+      const ref = ls.length ? ls[Math.floor(ls.length * 0.95)] : 0;
+      for (let i = 0; i < n; i++) {
+        const vals = []; let sum = 0;
+        for (let r = 0; r < S; r++) {
+          const k = i * S + r, g = tr.grid[k];
+          if (g === g) vals.push(g);
+          const l = tr.loud[k];
+          sum += isFinite(l) ? Math.max(-60, l - ref) : -60;
+        }
+        if (vals.length >= 3) p[i] = median(vals);
+        L[i] = sum / S;
+      }
+      for (let i = 1; i < n; i++) on[i] = Math.max(0, L[i] - L[i - 1]);
+      return { p, L, on, n };
+    };
+    const A = feat(o), T = feat(t);
+    if (A.n < 10 || T.n < 10) return null;
+    const ext = (F) => {
+      const ok = (i) => { let c = 0; for (let r = 0; r < 5 && i + r < F.n; r++) if (F.p[i + r] === F.p[i + r]) c++; return c >= 3; };
+      let a = -1, b = -1;
+      for (let i = 0; i < F.n; i++) if (ok(i)) { a = i; break; }
+      for (let i = F.n - 5; i >= 0; i--) if (ok(i)) { b = i + 4; break; }
+      return [a, b];
+    };
+    const [oa, ob] = ext(A), [ta, tb] = ext(T);
+    let slope = 1, inter = off / S;
+    if (oa >= 0 && ta >= 0 && ob > oa + 20 && tb > ta + 20) {
+      slope = Math.min(2, Math.max(0.5, (tb - ta) / (ob - oa)));
+      inter = ta - oa * slope;
+    }
+    const W = 2 * B + 1;
+    const lo = (i) => Math.min(Math.max(Math.round(inter + i * slope) - B, 0), Math.max(0, T.n - W));
+    const cost = (i, j) => {
+      const pa = A.p[i], pb = T.p[j];
+      let pc;
+      if (pa === pa && pb === pb) pc = Math.min(Math.abs(foldOct(pb - pa - ks)), 3) / 3;
+      else if (pa === pa || pb === pb) pc = 0.6;
+      else pc = 0.1;
+      const lc = Math.min(1, Math.abs(A.L[i] - T.L[j]) / 20);
+      const oc = Math.min(1, Math.abs(A.on[i] - T.on[j]) / 10);
+      return 0.6 * pc + 0.25 * lc + 0.15 * oc;
+    };
+    const D = new Float32Array(A.n * W).fill(Infinity), P = new Uint8Array(A.n * W);
+    for (let i = 0; i < A.n; i++) {
+      const l = lo(i), lp = i ? lo(i - 1) : 0;
+      for (let w = 0; w < W; w++) {
+        const j = l + w;
+        if (j < 0 || j >= T.n) continue;
+        const c = cost(i, j);
+        if (i === 0) { D[w] = c; continue; } // free start anywhere in the take
+        let best = Infinity, ptr = 0;
+        const wd = j - 1 - lp, wu = j - lp;
+        if (wd >= 0 && wd < W && D[(i - 1) * W + wd] < best) { best = D[(i - 1) * W + wd]; ptr = 1; }
+        if (wu >= 0 && wu < W && D[(i - 1) * W + wu] + PEN < best) { best = D[(i - 1) * W + wu] + PEN; ptr = 2; }
+        if (w >= 1 && D[i * W + w - 1] + PEN < best) { best = D[i * W + w - 1] + PEN; ptr = 3; }
+        if (ptr) { D[i * W + w] = c + best; P[i * W + w] = ptr; }
+      }
+    }
+    let w = -1, bestEnd = Infinity;
+    for (let x = 0; x < W; x++) { const v = D[(A.n - 1) * W + x]; if (v < bestEnd) { bestEnd = v; w = x; } }
+    if (w < 0) return null;
+    const Mc = new Float32Array(A.n), cnt = new Uint16Array(A.n);
+    let i = A.n - 1, guard = A.n * W;
+    while (i >= 0 && guard-- > 0) {
+      const j = lo(i) + w;
+      Mc[i] += j; cnt[i]++;
+      const ptr = P[i * W + w];
+      if (ptr === 1) { i--; if (i < 0) break; w = j - 1 - lo(i); }
+      else if (ptr === 2) { i--; if (i < 0) break; w = j - lo(i); }
+      else if (ptr === 3) { w--; }
+      else break;
+    }
+    for (let x = 0; x < A.n; x++) if (!cnt[x]) return null; else Mc[x] /= cnt[x];
+    // back to 50 fps, smoothed and kept moving forward
+    const len = o.grid.length, raw = new Float32Array(len);
+    for (let k = 0; k < len; k++) {
+      const x = Math.max(0, Math.min(A.n - 1, (k - 2) / S));
+      const i0 = Math.floor(x), i1 = Math.min(A.n - 1, i0 + 1), fr = x - i0;
+      raw[k] = (Mc[i0] + (Mc[i1] - Mc[i0]) * fr) * S + 2;
+    }
+    const out = new Int32Array(len);
+    let run = -Infinity;
+    for (let k = 0; k < len; k++) {
+      let s = 0, c = 0;
+      for (let q = Math.max(0, k - 10); q <= Math.min(len - 1, k + 10); q++) { s += raw[q]; c++; }
+      run = Math.max(run, Math.round(s / c));
+      out[k] = run;
+    }
+    return out;
+  }
+
+  // map an original-timeline time (s) to take time (s), and back
+  function mapTime(map, tO) {
+    const k = Math.max(0, Math.min(map.length - 1, Math.round(tO / GRID)));
+    return map[k] * GRID + (tO - k * GRID);
+  }
+  function invTime(map, tT) {
+    const n = map.length;
+    if (tT <= map[0] * GRID) return tT - map[0] * GRID;
+    if (tT >= map[n - 1] * GRID) return (n - 1) * GRID + (tT - map[n - 1] * GRID);
+    let lo = 0, hi = n - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (map[mid] * GRID <= tT) lo = mid; else hi = mid - 1; }
+    return lo * GRID + Math.min(GRID, tT - map[lo] * GRID);
+  }
+
+  function compare(o, t, map, octaveFree, warped, off, ks = 0) {
+    const a = o.grid, b = t.grid;
+    const fold = octaveFree ? foldOct : (d) => d;
+    const rawD = [];
+    for (let k = 0; k < a.length; k += 3) { const j = map[k]; if (a[k] === a[k] && j >= 0 && j < b.length && b[j] === b[j]) rawD.push(b[j] - a[k]); }
+    const med0 = rawD.length ? median(rawD) : 0;
+    const shift = octaveFree ? ks + 12 * Math.round((med0 - ks) / 12) : ks;
+    // with warping, allow ±40 ms of slack so tiny boundary errors don't count as wrong notes
+    const reach = warped ? 2 : 0;
+    const takeAt = (k) => {
+      const j = map[k];
+      let best = NaN, bd = Infinity;
+      for (let q = j - reach; q <= j + reach; q++) {
+        if (q < 0 || q >= b.length) continue;
+        const v = b[q];
+        if (v !== v) continue;
+        const dd = Math.abs(fold(v - a[k] - shift));
+        if (dd < bd) { bd = dd; best = v; }
+      }
+      return best;
+    };
+    const d = new Float32Array(a.length).fill(NaN);
+    let voiced = 0, both = 0, w50 = 0, w25 = 0, sum = 0, sumN = 0;
+    for (let k = 0; k < a.length; k++) {
+      if (a[k] !== a[k]) continue;
+      voiced++;
+      const v = takeAt(k);
+      if (v !== v) continue;
+      both++;
+      const dd = fold(v - a[k] - shift);
+      d[k] = dd;
+      const c = Math.abs(dd) * 100;
+      if (c <= 50) w50++;
+      if (c <= 25) w25++;
+      if (c <= 300) { sum += dd * 100; sumN++; }
+    }
+    // timing: how far the take drifts from the original's timing (warped mode)
+    let dev = null, drift = null;
+    if (warped) {
+      const offs = [];
+      for (let k = 0; k < a.length; k += 2) if (a[k] === a[k]) offs.push(map[k] - k);
+      const base = offs.length ? median(offs) : 0;
+      dev = new Float32Array(a.length);
+      const absd = [];
+      for (let k = 0; k < a.length; k++) { dev[k] = (map[k] - k - base) * GRID; if (a[k] === a[k]) absd.push(Math.abs(dev[k])); }
+      drift = absd.length ? Math.round(median(absd) * 1000) : 0;
+    }
+    const offSec = off * GRID;
+    const timings = [];
+    const rows = o.notes.map((n) => {
+      const k0 = Math.round(n.pos / GRID), k1 = Math.max(k0 + 1, Math.round(n.end / GRID));
+      const vals = [];
+      for (let k = k0; k < k1 && k < d.length; k++) if (d[k] === d[k]) vals.push(d[k]);
+      let timing = null;
+      if (dev) timing = dev[Math.min(dev.length - 1, k0)];
+      else {
+        t.notes.forEach((m) => {
+          const dt = m.pos - offSec - n.pos;
+          const same = octaveFree ? foldOct(m.midi - n.midi) === 0 : m.midi === n.midi;
+          if (same && Math.abs(dt) < 0.6 && (timing === null || Math.abs(dt) < Math.abs(timing))) timing = dt;
+        });
+        if (timing !== null) timings.push(timing);
+      }
+      if (vals.length < 0.3 * (k1 - k0)) return { n, missed: true, timing };
+      const med = median(vals);
+      const cents = Math.round(med * 100);
+      const yours = Math.round(n.midi + med) + shift;
+      let verdict, tone;
+      if (Math.abs(cents) <= 25) { verdict = "On pitch"; tone = "good"; }
+      else if (Math.abs(cents) <= 50) { verdict = cents > 0 ? "A bit sharp" : "A bit flat"; tone = "warn"; }
+      else { const st = Math.round(med); verdict = "Off by " + Math.abs(st) + (Math.abs(st) === 1 ? " half step" : " half steps"); tone = "bad"; }
+      return { n, cents, yours, verdict, tone, timing };
+    });
+    // phrases to practice: 3 s windows, step 1 s, flagged for pitch or timing
+    const cand = [];
+    for (let s = 0; s + 150 <= a.length; s += 50) {
+      let v = 0, bad = 0, missing = 0, sc = 0, scN = 0, dv = 0;
+      for (let k = s; k < s + 150; k++) {
+        if (a[k] !== a[k]) continue;
+        v++;
+        if (dev) dv += dev[k];
+        if (d[k] !== d[k]) { bad++; missing++; continue; }
+        if (Math.abs(d[k]) > 0.5) bad++;
+        if (Math.abs(d[k]) <= 3) { sc += d[k] * 100; scN++; }
+      }
+      if (v < 40) continue;
+      const rate = bad / v, meanDev = dev ? dv / v : 0;
+      const late = Math.abs(meanDev) >= 0.25;
+      if (rate < 0.25 && !late) continue;
+      const avg = scN ? sc / scN : 0;
+      const parts = [];
+      const kind = rate >= 0.25 ? (missing / v > 0.5 ? "missing" : Math.abs(avg) >= 30 ? "lean" : "wrong") : null;
+      if (rate >= 0.25) {
+        if (missing / v > 0.5) parts.push("Mostly missing here. You may be too quiet.");
+        else if (Math.abs(avg) >= 30) parts.push("Mostly " + (avg > 0 ? "sharp" : "flat") + " by about " + Math.round(Math.abs(avg)) + "¢.");
+        else parts.push("Several wrong notes in this phrase.");
+      }
+      if (late) parts.push("You're about " + Math.abs(meanDev).toFixed(1) + " s " + (meanDev > 0 ? "behind" : "ahead") + " here.");
+      cand.push({ start: s * GRID, end: (s + 150) * GRID, rate: Math.max(rate, late ? Math.min(0.9, Math.abs(meanDev)) : 0), why: parts.join(" "), kind, avg, late, meanDev });
+    }
+    cand.sort((x, y) => y.rate - x.rate);
+    const spots = [];
+    cand.forEach((c) => { if (spots.length < 3 && spots.every((s) => c.end <= s.start || c.start >= s.end)) spots.push(c); });
+    spots.sort((x, y) => x.start - y.start);
+    return {
+      d, dev, drift, shift, keyShift: ks, octShift: shift - ks, rows, spots, map,
+      score: voiced ? Math.round((100 * w50) / voiced) : 0,
+      inTune: both ? Math.round((100 * w25) / both) : 0,
+      rightNote: both ? Math.round((100 * w50) / both) : 0,
+      coverage: voiced ? Math.round((100 * both) / voiced) : 0,
+      tendency: sumN ? Math.round(sum / sumN) : 0,
+      timing: dev ? null : timings.length ? Math.round(median(timings) * 1000) : null,
+    };
+  }
+
+  /* ---------- plain-language wording ---------- */
+  const howMuch = (c) => { const a = Math.abs(c); return a < 10 ? "right on" : a < 25 ? "a tiny bit" : a < 50 ? "a little" : a < 100 ? "quite a bit" : "a lot"; };
+  const lowHigh = (c) => (c > 0 ? "high (sharp)" : "low (flat)");
+  const pianoKeys = (n) => n + (n === 1 ? " piano key" : " piano keys");
+  function plainVerdict(r) {
+    if (r.missed) return "Not sung";
+    const a = Math.abs(r.cents);
+    if (a <= 25) return "Right on";
+    if (a <= 50) return "A little too " + (r.cents > 0 ? "high" : "low");
+    return "Wrong note, " + pianoKeys(Math.abs(Math.round(r.cents / 100))) + " too " + (r.cents > 0 ? "high" : "low");
+  }
+  function spotText(s, plain) {
+    if (!plain) return s.why;
+    const parts = [];
+    if (s.kind === "missing") parts.push("It's hard to hear you here. Sing a bit louder, or check that you come in on time.");
+    else if (s.kind === "lean") parts.push("You're singing " + howMuch(s.avg) + " too " + lowHigh(s.avg) + " in this part.");
+    else if (s.kind === "wrong") parts.push("A few wrong notes in this part.");
+    if (s.late) parts.push(s.meanDev > 0 ? "You're coming in late here, about " + Math.abs(s.meanDev).toFixed(1) + " seconds behind." : "You're rushing here, about " + Math.abs(s.meanDev).toFixed(1) + " seconds ahead.");
+    return parts.join(" ");
+  }
+
+  /* ---------- vocal technique ---------- */
+  // bridge dropouts of up to 3 frames inside a sung note
+  function fillGaps(g) {
+    const f = Float32Array.from(g);
+    let k = 0;
+    while (k < f.length) {
+      if (f[k] === f[k]) { k++; continue; }
+      let e = k;
+      while (e < f.length && f[e] !== f[e]) e++;
+      if (k > 0 && e < f.length && e - k <= 3) {
+        const a = f[k - 1], b = f[e];
+        for (let q = k; q < e; q++) f[q] = a + ((b - a) * (q - k + 1)) / (e - k + 1);
+      }
+      k = e;
+    }
+    return f;
+  }
+  const mean = (arr) => arr.reduce((s, v) => s + v, 0) / (arr.length || 1);
+
+  // sliding up into notes that start after a breath
+  function scoopStats(tr) {
+    const g = fillGaps(tr.grid);
+    let n = 0, sc = 0, depthSum = 0;
+    const ex = [];
+    tr.notes.forEach((note) => {
+      const k = Math.round(note.pos / GRID), k1 = Math.round(note.end / GRID);
+      let s = k;
+      while (s > 0 && k - s < 15 && g[s - 1] === g[s - 1]) s--;
+      if (s > 0 && g[s - 1] === g[s - 1]) return; // joined from a previous note: legato, not a scoop
+      const mid = [];
+      for (let q = k + 8; q < k1 - 2; q++) if (g[q] === g[q]) mid.push(g[q]);
+      if (mid.length < 5) return;
+      const first = [g[s], g[s + 1], g[s + 2]].filter((v) => v === v);
+      if (!first.length) return;
+      const depth = median(mid) - median(first);
+      n++;
+      if (depth >= 0.6 && depth < 4) { sc++; depthSum += depth; ex.push(note.pos); }
+    });
+    return { count: n, scoops: sc, rate: n ? sc / n : 0, depth: sc ? Math.round((depthSum / sc) * 100) : 0, examples: ex };
+  }
+
+  // vibrato, steadiness and drift on held notes
+  function holdStats(tr) {
+    const g = fillGaps(tr.grid);
+    const out = [];
+    tr.notes.forEach((note) => {
+      const k0 = Math.round(note.pos / GRID) + 8, k1 = Math.round(note.end / GRID) - 3;
+      if (k1 - k0 < 22) return;
+      const seg = [];
+      for (let q = k0; q < k1; q++) { if (g[q] !== g[q]) return; seg.push(g[q]); }
+      const N = seg.length, mx = (N - 1) / 2, my = mean(seg);
+      let cov = 0, vx = 0;
+      for (let i = 0; i < N; i++) { cov += (i - mx) * (seg[i] - my); vx += (i - mx) * (i - mx); }
+      const slope = vx ? cov / vx : 0;
+      const r = seg.map((v, i) => v - (my + slope * (i - mx)));
+      const v0 = r.reduce((s, v) => s + v * v, 0);
+      const std = Math.sqrt(v0 / N);
+      let bestL = 0, bestC = -1;
+      for (let L = 5; L <= 13 && L < N - 4; L++) {
+        let c = 0;
+        for (let i = 0; i + L < N; i++) c += r[i] * r[i + L];
+        c = v0 ? (c / v0) * (N / (N - L)) : 0;
+        if (c > bestC) { bestC = c; bestL = L; }
+      }
+      const ext = Math.SQRT2 * std * 100; // approx. half-width in cents
+      const vib = bestC >= 0.45 && ext >= 12;
+      out.push({ pos: note.pos, vib, rate: vib ? 50 / bestL : 0, ext: vib ? ext : 0, std: std * 100, drift: slope * (N - 1) * 100 });
+    });
+    return out;
+  }
+  function summarizeHolds(h) {
+    const vib = h.filter((x) => x.vib), straight = h.filter((x) => !x.vib);
+    return {
+      count: h.length,
+      vibShare: h.length ? vib.length / h.length : 0,
+      rate: vib.length ? mean(vib.map((x) => x.rate)) : 0,
+      ext: vib.length ? mean(vib.map((x) => x.ext)) : 0,
+      wobble: straight.length ? median(straight.map((x) => x.std)) : null,
+      drift: h.length ? median(h.map((x) => x.drift)) : 0,
+      straight, all: h,
+    };
+  }
+
+  function technique(o, t, result) {
+    const toOrig = (tt) => Math.max(0, invTime(result.map, tt));
+    const pct = (x) => Math.round(x * 100) + "%";
+    const out = [];
+
+    // 1. scoops
+    const sy = scoopStats(t), so = scoopStats(o);
+    if (sy.count >= 4) {
+      const extra = sy.rate - so.rate;
+      out.push({
+        key: "scoop", title: "Landing on notes",
+        value: sy.scoops ? pct(sy.rate) + " scooped" : "Clean",
+        compare: "Original: " + pct(so.rate) + " of fresh starts",
+        tone: extra > 0.35 ? "bad" : extra > 0.15 ? "warn" : "good",
+        detail: sy.scoops
+          ? "You slide up into " + sy.scoops + " of " + sy.count + " notes that start after a breath, from about " + sy.depth + "¢ below the note."
+          : "You land notes that start after a breath right on pitch.",
+        tip: extra > 0.15 ? "Hear the note in your head before you breathe in, then aim for the middle of it. Starting on a light, clear vowel helps you land instead of slide." : "",
+        p: {
+          title: "Hitting notes cleanly",
+          value: sy.scoops ? sy.scoops + " of " + sy.count + " slid in" : "Clean starts",
+          compare: so.scoops ? "The original singer slides into " + pct(so.rate) + " of notes" : "The original singer starts notes cleanly",
+          detail: sy.scoops ? "Sometimes you start a note too low and slide up to it. Singers call this a scoop, and it can make you sound unsure." : "You start your notes right on pitch instead of sliding up to them.",
+          tip: extra > 0.15 ? "Before you sing, hear the note in your head, then aim straight for it. Starting softly on the vowel sound helps." : "",
+        },
+        examples: sy.examples.slice(0, 3).map(toOrig),
+      });
+    }
+
+    // 2. phrase endings
+    const og = fillGaps(o.grid), runs = [];
+    let s = -1;
+    for (let k = 0; k <= og.length; k++) {
+      const v = k < og.length && og[k] === og[k];
+      if (v && s < 0) s = k;
+      if (!v && s >= 0) { if (k - s >= 50) runs.push([s, k]); s = -1; }
+    }
+    // compare how your pitch moves over the last 0.3 s of each phrase with how the original's moves
+    const tg = fillGaps(t.grid);
+    const herAt = (k) => { const j = result.map[k]; return j >= 0 && j < tg.length ? tg[j] : NaN; };
+    const origAt = (k) => og[k];
+    const win = (k0, k1, f) => { const v = []; for (let k = Math.max(0, k0); k < k1; k++) { const x = f(k); if (x === x) v.push(x); } return v; };
+    const drops = [];
+    runs.forEach(([a, b]) => {
+      const oE = win(b - 15, b, origAt), oP = win(b - 30, b - 15, origAt), hE = win(b - 15, b, herAt), hP = win(b - 30, b - 15, herAt);
+      if (oE.length < 8 || oP.length < 8 || hE.length < 8 || hP.length < 8) return;
+      drops.push({ at: b * GRID, drop: ((mean(hE) - mean(hP)) - (mean(oE) - mean(oP))) * 100 });
+    });
+    if (drops.length >= 2) {
+      const avg = Math.round(mean(drops.map((x) => x.drop)));
+      const flatOnes = drops.filter((x) => x.drop <= -25);
+      out.push({
+        key: "ends", title: "Phrase endings",
+        value: Math.abs(avg) < 12 ? "Steady" : Math.abs(avg) + "¢ " + (avg < 0 ? "flatter" : "sharper"),
+        compare: flatOnes.length + " of " + drops.length + " phrases end noticeably flat",
+        tone: avg <= -25 ? "bad" : avg <= -12 || avg >= 20 ? "warn" : "good",
+        detail: Math.abs(avg) < 12
+          ? "You hold your pitch through the ends of phrases."
+          : "The last words of your phrases are about " + Math.abs(avg) + "¢ " + (avg < 0 ? "flatter" : "sharper") + " than the rest of the phrase.",
+        tip: avg <= -12 ? "Going flat at the end of a phrase usually means you're running low on air. Take your breath a little earlier and keep the support going through the last word." : "",
+        p: {
+          title: "Ends of lines",
+          value: Math.abs(avg) < 12 ? "Steady" : "Drops " + (avg < 0 ? "low" : "high"),
+          compare: flatOnes.length + " of " + drops.length + " lines end too low",
+          detail: Math.abs(avg) < 12 ? "You keep your pitch steady right to the end of each line." : avg < 0 ? "At the end of your lines, your voice drops " + howMuch(avg) + " too low (goes flat)." : "At the end of your lines, your voice creeps " + howMuch(avg) + " too high (goes sharp).",
+          tip: avg <= -12 ? "This usually happens when you're running out of breath. Breathe a bit earlier and keep a gentle, steady push of air through the last word." : "",
+        },
+        examples: flatOnes.sort((x, y) => x.drop - y.drop).slice(0, 3).map((x) => Math.max(0, x.at - 1.5)),
+      });
+    }
+
+    // 3. vibrato and 4. long-note steadiness
+    const hy = summarizeHolds(holdStats(t)), ho = summarizeHolds(holdStats(o));
+    if (hy.count >= 2) {
+      let tone = "good", detail, tip = "";
+      if (hy.vibShare === 0) {
+        detail = "You hold your long notes straight, without vibrato.";
+        if (ho.vibShare >= 0.3) { tone = "warn"; tip = "The original uses vibrato on " + pct(ho.vibShare) + " of long notes. Try letting the note relax and wave slightly after you've landed it, instead of holding it rigid."; }
+      } else {
+        detail = "Vibrato on " + pct(hy.vibShare) + " of your long notes, about " + hy.rate.toFixed(1) + " waves per second and ±" + Math.round(hy.ext) + "¢ wide.";
+        if (hy.ext > 70 || (ho.ext && hy.ext > ho.ext + 25)) { tone = "warn"; tip = "Your vibrato is wider than the original's. Ease off the pressure and let it get narrower and more even."; }
+        else if (hy.rate > 7.5) { tone = "warn"; tip = "Your vibrato is fast and can sound tight. Relax the throat and jaw so it slows down."; }
+        else if (hy.rate < 4.5) { tone = "warn"; tip = "Your vibrato is slow and can sound wobbly. More steady breath support usually tightens it up."; }
+      }
+      const speedW = (r) => (r < 4.5 ? "slow" : r > 7.5 ? "fast" : "normal speed");
+      const widthW = (e) => (e < 25 ? "small" : e < 60 ? "medium" : "big");
+      let pTip = "";
+      if (tip) pTip = hy.vibShare === 0 ? "The original singer lets long notes wave a little. Once you've landed a note, relax and let it move naturally instead of holding it stiff."
+        : (hy.ext > 70 || (ho.ext && hy.ext > ho.ext + 25)) ? "Your wave is bigger than the original's, which can sound shaky. Use a little less force and let it settle."
+        : hy.rate > 7.5 ? "Your wave is quick and can sound tense. Relax your jaw and throat." : "Your wave is slow and can sound wobbly. Steady breathing helps.";
+      out.push({
+        p: {
+          title: "Vibrato (the wave in a long note)",
+          value: hy.vibShare ? widthW(hy.ext)[0].toUpperCase() + widthW(hy.ext).slice(1) + " wave, " + speedW(hy.rate) : "No wave",
+          compare: ho.count ? (ho.vibShare ? "Original: " + widthW(ho.ext) + " wave, " + speedW(ho.rate) : "Original: no wave") : "",
+          detail: hy.vibShare ? "Vibrato is the gentle wave you hear in a held note. You use it on " + pct(hy.vibShare) + " of your long notes." : "You hold your long notes perfectly straight, with no wave.",
+          tip: pTip,
+        },
+        key: "vib", title: "Vibrato",
+        value: hy.vibShare ? hy.rate.toFixed(1) + " Hz · ±" + Math.round(hy.ext) + "¢" : "None",
+        compare: ho.count ? (ho.vibShare ? "Original: " + ho.rate.toFixed(1) + " Hz · ±" + Math.round(ho.ext) + "¢ on " + pct(ho.vibShare) : "Original: none") : "",
+        tone, detail, tip,
+        examples: hy.all.filter((x) => x.vib).slice(0, 3).map((x) => toOrig(x.pos)),
+      });
+
+      const wob = hy.wobble, drift = Math.round(hy.drift);
+      const wobOrig = ho.wobble;
+      let stTone = "good", stDetail, stTip = "";
+      const parts = [];
+      if (wob != null) parts.push("Your straight long notes waver by about ±" + Math.round(wob) + "¢" + (wobOrig != null ? " (original ±" + Math.round(wobOrig) + "¢)" : "") + ".");
+      if (Math.abs(drift) >= 20) parts.push("Over a long note you typically drift " + Math.abs(drift) + "¢ " + (drift < 0 ? "flat" : "sharp") + ".");
+      stDetail = parts.join(" ") || "Your long notes stay put.";
+      if ((wob != null && wob > 22) || Math.abs(drift) >= 35) { stTone = "bad"; }
+      else if ((wob != null && wob > 12) || Math.abs(drift) >= 20) { stTone = "warn"; }
+      if (stTone !== "good") stTip = drift <= -20 ? "Sagging flat on long notes is usually lost breath support. Keep the air flowing steadily and think of the note staying up." : drift >= 20 ? "Creeping sharp often comes from pushing more air or tension as the note goes on. Keep it relaxed and even." : "An unsteady long note usually needs steadier airflow. Practice holding single notes against the guide tone.";
+      const worst = [...hy.straight].sort((x, y) => (Math.abs(y.drift) + y.std) - (Math.abs(x.drift) + x.std));
+      const pParts = [];
+      if (wob != null && wob > 12) pParts.push("Your long notes shake a little" + (wobOrig != null && wobOrig < wob - 5 ? ", more than the original singer's" : "") + ".");
+      if (drift <= -20) pParts.push("As you hold a note, your voice slowly sinks lower (goes flat).");
+      if (drift >= 20) pParts.push("As you hold a note, your voice slowly rises higher (goes sharp).");
+      out.push({
+        p: {
+          title: "Holding long notes",
+          value: stTone === "good" ? "Steady" : drift <= -20 ? "Sinks low" : drift >= 20 ? "Creeps high" : "A bit shaky",
+          compare: hy.count + " long notes checked",
+          detail: pParts.join(" ") || "You hold your long notes nice and steady.",
+          tip: stTone === "good" ? "" : drift <= -20 ? "Your voice sinks when the air runs low. Keep a steady flow of breath until the note ends." : drift >= 20 ? "Your voice rises when you push harder. Keep it relaxed and even." : "Practice holding one note at a time along with the guide notes.",
+        },
+        key: "hold", title: "Long notes",
+        value: wob != null ? "±" + Math.round(wob) + "¢" + (Math.abs(drift) >= 20 ? ", " + Math.abs(drift) + "¢ " + (drift < 0 ? "flat" : "sharp") : "") : (Math.abs(drift) >= 20 ? Math.abs(drift) + "¢ drift" : "Steady"),
+        compare: hy.count + " long notes measured",
+        tone: stTone, detail: stDetail, tip: stTip,
+        examples: (worst.length ? worst : hy.all).slice(0, 3).map((x) => toOrig(x.pos)),
+      });
+    }
+    return out;
+  }
+
+  function loadSessions() {
+    try { const v = JSON.parse(localStorage.getItem(SESS_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888"; }
+
+
+  const LYR_KEY = "pitchstaff.lyrics.v1";
+  const MIX_KEY = "pitchstaff.mix.v1";
+  function parseLrc(text) {
+    let shift = 0;
+    const out = [];
+    text.split(/\r?\n/).forEach((rawLine) => {
+      const om = rawLine.match(/^\s*\[offset:\s*([+-]?\d+)\s*\]/i);
+      if (om) { shift = parseInt(om[1], 10) / 1000; return; }
+      const re = /^\s*\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/;
+      const tags = [];
+      let rest = rawLine, mm;
+      while ((mm = rest.match(re))) { tags.push(parseInt(mm[1], 10) * 60 + parseFloat(mm[2].replace(":", "."))); rest = rest.slice(mm[0].length); }
+      if (!tags.length) return;
+      const words = rest.replace(/<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/g, "").replace(/\s+/g, " ").trim();
+      tags.forEach((t) => out.push({ t, text: words }));
+    });
+    out.sort((x, y) => x.t - y.t);
+    // an [offset:] tag in ms makes lyrics appear sooner when positive
+    return out.map((l) => ({ t: Math.max(0, l.t - shift), text: l.text }));
+  }
+  function loadLyricsStore() { try { return JSON.parse(localStorage.getItem(LYR_KEY) || "{}") || {}; } catch (e) { return {}; } }
+  function saveLyricsFor(song, entry) {
+    try { const all = loadLyricsStore(); if (entry) all[song] = entry; else delete all[song]; localStorage.setItem(LYR_KEY, JSON.stringify(all)); } catch (e) {}
+  }
+  // timed lines with start/end on the original's timeline (break markers removed)
+  function lyricSpans(lyr, dur) {
+    if (!lyr) return [];
+    const L = lyr.lines, out = [];
+    for (let i = 0; i < L.length; i++) {
+      if (!L[i].text) continue;
+      const start = L[i].t + lyr.offset, end = (i + 1 < L.length ? L[i + 1].t + lyr.offset : dur);
+      if (end > 0 && start < dur) out.push({ start, end: Math.max(start + 0.2, end), text: L[i].text });
+    }
+    return out;
+  }
+
+  function RollChart({ orig, take, result, cursor, onSeek, themeKey, lyrics, loop }) {
+    const canvasRef = useRef(null), boxRef = useRef(null);
+    const dur = orig.duration;
+    const pps = Math.min(50, 12000 / Math.max(1, dur));
+    const W = Math.ceil(dur * pps), MH = 250, H = result.dev ? 296 : 250;
+    const range = useMemo(() => {
+      let lo = Infinity, hi = -Infinity;
+      orig.grid.forEach((v) => { if (v === v) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
+      for (let k = 0; k < orig.grid.length; k++) {
+        const j = result.map[k];
+        if (j >= 0 && j < take.grid.length) { const v = take.grid[j] - result.shift; if (v === v) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }
+      }
+      if (!isFinite(lo)) { lo = 55; hi = 79; }
+      lo = Math.floor(lo) - 2; hi = Math.ceil(hi) + 2;
+      if (hi - lo < 14) { const mid = (hi + lo) / 2; lo = Math.floor(mid - 7); hi = Math.ceil(mid + 7); }
+      return { lo, hi };
+    }, [orig, take, result]);
+    const yOfM = (m) => MH - 16 - ((m - range.lo) / (range.hi - range.lo)) * (MH - 30);
+
+    useEffect(() => {
+      const cv = canvasRef.current;
+      if (!cv) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      cv.width = W * dpr; cv.height = H * dpr;
+      cv.style.width = W + "px"; cv.style.height = H + "px";
+      const g = cv.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, W, H);
+      const col = { line: cssVar("--line"), muted: cssVar("--muted"), fg: cssVar("--fg"), accent: cssVar("--accent"), good: cssVar("--good"), warn: cssVar("--warn"), bad: cssVar("--bad") };
+      // trouble spots
+      g.fillStyle = col.bad; g.globalAlpha = 0.09;
+      result.spots.forEach((s) => g.fillRect(s.start * pps, 0, (s.end - s.start) * pps, H));
+      g.globalAlpha = 1;
+      // semitone grid with C labels
+      for (let m = range.lo; m <= range.hi; m++) {
+        const y = yOfM(m), isC = ((m % 12) + 12) % 12 === 0;
+        g.strokeStyle = isC ? col.muted : col.line; g.globalAlpha = isC ? 0.5 : 0.45; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+        if (isC) {
+          g.globalAlpha = 0.9; g.fillStyle = col.muted; g.font = "10px " + cssVar("--font-mono");
+          for (let x = 4; x < W; x += 8 * pps) g.fillText("C" + (Math.floor(m / 12) - 1), x, y - 3);
+        }
+      }
+      g.globalAlpha = 1;
+      // seconds ticks
+      g.fillStyle = col.muted; g.font = "10px " + cssVar("--font-mono");
+      for (let s = 0; s < dur; s += 5) g.fillText(fmt(s), s * pps + 3, MH - 3);
+      // original melody
+      g.strokeStyle = col.fg; g.globalAlpha = 0.28; g.lineWidth = 6; g.lineCap = "round"; g.lineJoin = "round";
+      const a = orig.grid;
+      g.beginPath();
+      let pen = false;
+      for (let k = 0; k < a.length; k++) {
+        const v = a[k];
+        if (v !== v) { pen = false; continue; }
+        if (pen && Math.abs(v - a[k - 1]) > 1.5) pen = false;
+        const x = k * GRID * pps, y = yOfM(v);
+        if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+      }
+      g.stroke();
+      g.globalAlpha = 1;
+      // your take, colored by accuracy
+      g.lineWidth = 2.4;
+      const b = take.grid;
+      for (let k = 1; k < a.length; k++) {
+        const j = result.map[k], j0 = result.map[k - 1];
+        if (j < 0 || j >= b.length || j0 < 0 || j0 >= b.length) continue;
+        const v0 = b[j0], v1 = b[j];
+        if (v0 !== v0 || v1 !== v1 || Math.abs(v1 - v0) > 1.5) continue;
+        const dk = result.d[k];
+        g.strokeStyle = dk !== dk ? col.accent : Math.abs(dk) <= 0.25 ? col.good : Math.abs(dk) <= 0.5 ? col.warn : col.bad;
+        g.beginPath();
+        g.moveTo((k - 1) * GRID * pps, yOfM(v0 - result.shift));
+        g.lineTo(k * GRID * pps, yOfM(v1 - result.shift));
+        g.stroke();
+      }
+      if (result.dev) {
+        const y0 = MH + 23;
+        g.strokeStyle = col.line; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(0, y0); g.lineTo(W, y0); g.stroke();
+        g.fillStyle = col.muted; g.font = "10px " + cssVar("--font-mono");
+        for (let x = 4; x < W; x += 8 * pps) { g.fillText("late", x, MH + 10); g.fillText("early", x, H - 2); }
+        for (let k = 0; k < a.length; k += 5) {
+          if (a[k] !== a[k]) continue;
+          const dv = result.dev[k], h = Math.max(-1, Math.min(1, dv / 0.5)) * 18;
+          g.fillStyle = Math.abs(dv) < 0.1 ? col.good : Math.abs(dv) < 0.25 ? col.warn : col.bad;
+          g.fillRect(k * GRID * pps, h > 0 ? y0 - h : y0, Math.max(1, 5 * GRID * pps - 1), Math.max(1, Math.abs(h)));
+        }
+      }
+    }, [orig, take, result, range, W, H, pps, themeKey]);
+
+    // keep the playhead in view
+    useEffect(() => {
+      const box = boxRef.current;
+      if (!box || cursor == null) return;
+      const x = cursor * pps;
+      if (x < box.scrollLeft + 30 || x > box.scrollLeft + box.clientWidth - 60) box.scrollLeft = Math.max(0, x - 60);
+    }, [cursor, pps]);
+
+    return html`<div ref=${boxRef} style=${{ overflowX: "auto", position: "relative", borderRadius: 10, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+      <div style=${{ position: "relative", width: W }}>
+        ${lyrics && lyrics.length > 0 && html`<div class="lyr-band">
+          ${lyrics.map((l, i) => html`<div key=${i} class=${"lyr" + (cursor != null && cursor >= l.start && cursor < l.end ? " on" : "")}
+            style=${{ left: l.start * pps, width: Math.max(8, (l.end - l.start) * pps - 2) }} title=${l.text}
+            onClick=${() => onSeek(l.start)}>${l.text}</div>`)}
+        </div>`}
+        <canvas ref=${canvasRef} style=${{ display: "block", cursor: "pointer" }}
+          onClick=${(e) => { const r = e.currentTarget.getBoundingClientRect(); onSeek(Math.max(0, (e.clientX - r.left) / pps)); }}></canvas>
+        ${loop && html`<div style=${{ position: "absolute", top: 0, bottom: 0, left: loop.a * pps, width: (loop.b - loop.a) * pps, background: "color-mix(in srgb, var(--accent) 12%, transparent)", borderLeft: "1px solid var(--accent)", borderRight: "1px solid var(--accent)", pointerEvents: "none" }}></div>`}
+        ${cursor != null && html`<div style=${{ position: "absolute", top: 0, bottom: 0, left: cursor * pps, width: 2, marginLeft: -1, background: "var(--accent)", pointerEvents: "none" }}></div>`}
+      </div>
+    </div>`;
+  }
+
+
+  function UploadSlot({ id, step, title, hint, slot, onPick }) {
+    const ref = useRef(null);
+    const busy = slot && slot.busy;
+    return html`<div class="panel p-4 flex flex-col gap-3 min-w-0">
+      <div class="flex items-center justify-between gap-2">
+        <span class="label">Step ${step}</span>
+        ${slot && slot.data && html`<span class="mono text-xs" style=${{ color: "var(--good)" }}>Ready</span>`}
+      </div>
+      <h3 class="display text-lg font-bold">${title}</h3>
+      ${slot && slot.data
+        ? html`<div class="text-sm min-w-0">
+            <p class="font-semibold" style=${{ overflowWrap: "anywhere" }}>${slot.name}</p>
+            <p class="muted mono text-xs">${fmt(slot.data.duration)} · ${slot.data.notes.length} notes found</p>
+          </div>`
+        : html`<p class="muted text-sm">${hint}</p>`}
+      ${busy && html`<div class="flex flex-col gap-1">
+        <div class="level"><div style=${{ width: Math.round(slot.progress * 100) + "%" }}></div></div>
+        <span class="mono text-xs muted">${slot.progress < 0.01 ? "Reading file…" : "Analyzing " + Math.round(slot.progress * 100) + "%"}</span>
+      </div>`}
+      ${slot && slot.error && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${slot.error}</p>`}
+      <div>
+        <button class=${"btn" + (slot && slot.data ? "" : " btn-primary")} disabled=${busy} onClick=${() => ref.current && ref.current.click()}>
+          ${slot && slot.data ? "Replace file" : "Upload audio"}
+        </button>
+      </div>
+      <input id=${id} ref=${ref} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPick(f); }} />
+    </div>`;
+  }
+
+  function Stat({ label, value, note, tone }) {
+    return html`<div class="flex flex-col gap-1 min-w-0">
+      <span class="label">${label}</span>
+      <span class="mono text-lg font-semibold" style=${{ color: tone ? "var(--" + tone + ")" : "var(--fg)" }}>${value}</span>
+      ${note && html`<span class="text-xs muted">${note}</span>`}
+    </div>`;
+  }
+
+  function Analyst({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics }) {
+    const [take, setTake] = useState(null);
+    const [off, setOff] = useState(0);
+    const [octaveFree, setOctaveFree] = useState(true);
+    const [warp, setWarp] = useState(true);
+    const [keyFree, setKeyFree] = useState(true);
+    const [ks, setKs] = useState(0);
+    const [plain, setPlain] = useState(() => { try { return localStorage.getItem("pitchstaff.plain") !== "0"; } catch (e) { return true; } });
+    const choosePlain = (v) => { setPlain(v); try { localStorage.setItem("pitchstaff.plain", v ? "1" : "0"); } catch (e) {} };
+    const [mix, setMix] = useState(() => { try { const v = JSON.parse(localStorage.getItem(MIX_KEY) || "null"); if (v && typeof v.o === "number") return v; } catch (e) {} return { o: 0.8, g: 0, t: 0.9 }; });
+    const mixRef = useRef(mix);
+    const [loop, setLoop] = useState(null);
+    const loopRef = useRef(null);
+    const [playing, setPlaying] = useState(false);
+    const [cursor, setCursor] = useState(null);
+    const [sessions, setSessions] = useState(loadSessions);
+    const [saved, setSaved] = useState(false);
+    const [confirmClear, setConfirmClear] = useState(false);
+    const play = useRef({ ctx: null, origSrc: null, takeSrc: null, startCtx: 0, t0: 0, takeT0: 0, takeStart: 0, raf: 0, lastCt: 0 });
+    const jobs = useRef({ orig: 0, take: 0 });
+
+    useEffect(() => { try { localStorage.setItem(SESS_KEY, JSON.stringify(sessions)); } catch (e) {} }, [sessions]);
+
+    const stopPlay = useCallback(() => {
+      const p = play.current;
+      cancelAnimationFrame(p.raf);
+      [p.origSrc, p.takeSrc, ...(p.guide || [])].forEach((s) => { if (s) { s.onended = null; try { s.stop(); } catch (e) {} } });
+      [p.gO, p.gG, p.gT].forEach((g) => { if (g) { try { g.disconnect(); } catch (e) {} } });
+      p.origSrc = null; p.takeSrc = null; p.guide = []; p.gO = p.gG = p.gT = null;
+      setPlaying(false);
+    }, []);
+    useEffect(() => () => { stopPlay(); if (play.current.ctx) play.current.ctx.close().catch(() => {}); }, [stopPlay]);
+
+    const pick = useCallback(async (which, file) => {
+      const setter = setTake;
+      const job = ++jobs.current[which];
+      stopPlay(); setCursor(null); setSaved(false);
+      setter({ name: file.name, busy: true, progress: 0 });
+      let buffer, data;
+      try { buffer = await decodeFile(file); }
+      catch (e) { if (jobs.current[which] === job) setter({ name: file.name, error: "That file couldn't be read as audio. Try an MP3, M4A or WAV." }); return; }
+      data = await trackPitch(buffer, (pr) => { if (jobs.current[which] === job) setter((s) => (s ? { ...s, progress: pr } : s)); }, () => jobs.current[which] !== job);
+      if (!data || jobs.current[which] !== job) return;
+      setter({ name: file.name, buffer, data });
+    }, [stopPlay]);
+
+    const ready = orig && orig.data && take && take.data;
+
+    // auto-align whenever a new pair is ready
+    const realign = useCallback(() => {
+      if (!ready) return;
+      const r = detectKeyAndOffset(orig.data, take.data, keyFree);
+      setKs(r.ks); setOff(r.off);
+    }, [ready, orig, take, keyFree]);
+    useEffect(() => { realign(); }, [realign]);
+    useEffect(() => { loopRef.current = null; setLoop(null); }, [orig, take]);
+    useEffect(() => { stopPlay(); setCursor(null); setSaved(false); }, [orig, stopPlay]);
+    useEffect(() => { if (!active) stopPlay(); }, [active, stopPlay]);
+
+    const alignment = useMemo(() => {
+      if (!ready) return null;
+      const w = warp ? warpMap(orig.data, take.data, off, ks) : null;
+      return { map: w || fixedMap(orig.data.grid.length, off), warped: !!w };
+    }, [ready, orig, take, warp, off, ks]);
+    const result = useMemo(() => (alignment ? compare(orig.data, take.data, alignment.map, octaveFree, alignment.warped, off, ks) : null), [alignment, octaveFree, ks]);
+    const phraseStarts = useMemo(() => {
+      if (!ready) return [];
+      const a = orig.data.grid, out = [];
+      let sil = 99;
+      for (let k = 0; k < a.length; k++) { if (a[k] !== a[k]) sil++; else { if (sil >= 12) out.push(k * GRID); sil = 0; } }
+      return out;
+    }, [ready, orig]);
+    useEffect(() => setSaved(false), [off, octaveFree, warp, ks]);
+
+    const startPlay = (t) => {
+      if (!result) return;
+      stopPlay();
+      const p = play.current, mx = mixRef.current, loop = loopRef.current;
+      if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
+      const ctx = p.ctx;
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      const map = result.map, takeOnly = mx.o === 0 && mx.g === 0;
+      let end = takeOnly ? invTime(map, take.data.duration) : orig.data.duration;
+      if (loop) {
+        end = Math.min(end, loop.b);
+        if (t < loop.a - 0.5 || t >= loop.b) t = loop.a - 0.3;
+      }
+      if (t >= end - 0.05 || t < 0) t = loop ? Math.max(0, loop.a - 0.3) : 0;
+      const now = ctx.currentTime + 0.05;
+      const bus = (v) => { const g = ctx.createGain(); g.gain.value = v; g.connect(ctx.destination); return g; };
+      p.gO = bus(mx.o); p.gG = bus(mx.g); p.gT = bus(mx.t);
+      const make = (buf, at, when, dest) => {
+        const src = ctx.createBufferSource(); src.buffer = buf; src.connect(dest);
+        if (at >= 0) src.start(when, at); else src.start(when - at, 0);
+        return src;
+      };
+      const startTake = (at, when) => {
+        if (p.takeSrc) { try { p.takeSrc.stop(); } catch (e) {} }
+        p.takeSrc = make(take.buffer, at, when, p.gT);
+        p.takeT0 = at; p.takeStart = when;
+      };
+      if (!takeOnly) {
+        p.origSrc = make(orig.buffer, t, now, p.gO);
+        p.guide = scheduleGuide(ctx, p.gG, orig.data.notes, t, end, now, result.shift);
+      }
+      startTake(mapTime(map, t), now);
+      p.startCtx = now; p.t0 = t; p.lastCt = t; p.takeOnly = takeOnly;
+      setPlaying(true);
+      const tick = () => {
+        const ct = takeOnly
+          ? invTime(map, p.takeT0 + Math.max(0, ctx.currentTime - p.takeStart))
+          : p.t0 + Math.max(0, ctx.currentTime - p.startCtx);
+        if (ct >= end) {
+          if (loopRef.current) { startPlay(Math.max(0, loopRef.current.a - 0.3)); return; }
+          stopPlay(); setCursor(end); return;
+        }
+        // keep your take in step with the original: re-sync at each phrase start
+        if (!takeOnly && result.dev) {
+          for (const ps of phraseStarts) {
+            if (ps > p.lastCt && ps <= ct) {
+              const exp = mapTime(map, ct), act = p.takeT0 + (ctx.currentTime - p.takeStart);
+              if (Math.abs(exp - act) > 0.08) startTake(exp, ctx.currentTime);
+              break;
+            }
+          }
+        }
+        p.lastCt = ct;
+        setCursor(Math.max(0, ct));
+        p.raf = requestAnimationFrame(tick);
+      };
+      tick();
+    };
+    const seek = (t) => { setCursor(t); if (playing) startPlay(t); };
+    const setVol = (key, v) => {
+      const next = { ...mixRef.current, [key]: v };
+      const wasTakeOnly = play.current.takeOnly;
+      mixRef.current = next; setMix(next);
+      try { localStorage.setItem(MIX_KEY, JSON.stringify(next)); } catch (e) {}
+      const p = play.current, node = { o: p.gO, g: p.gG, t: p.gT }[key];
+      if (node && p.ctx) node.gain.setTargetAtTime(v, p.ctx.currentTime, 0.02);
+      if (playing && (next.o === 0 && next.g === 0) !== wasTakeOnly) startPlay(cursor || 0);
+    };
+    const startLoop = (a, b) => {
+      const lp = { a: Math.max(0, a), b };
+      loopRef.current = lp; setLoop(lp);
+      setCursor(Math.max(0, a - 0.3));
+      startPlay(Math.max(0, a - 0.3));
+    };
+    const clearLoop = () => { loopRef.current = null; setLoop(null); };
+    const nudge = (frames) => { setOff((o) => o + frames); if (playing) stopPlay(); };
+
+    const saveAttempt = () => {
+      if (!result) return;
+      setSessions((s) => [{ id: Date.now(), t: Date.now(), song: orig.name, take: take.name, score: result.score, inTune: result.inTune, tendency: result.tendency, timing: result.timing, drift: result.drift, coverage: result.coverage }, ...s].slice(0, 200));
+      setSaved(true);
+    };
+
+    const spans = useMemo(() => (orig && orig.data ? lyricSpans(lyrics, orig.data.duration) : []), [lyrics, orig]);
+    const curLine = cursor != null ? spans.findIndex((l) => cursor >= l.start && cursor < l.end) : -1;
+    const nextLine = cursor != null ? spans.find((l) => l.start > (cursor || 0)) : spans[0];
+    const linesIn = (a, b) => spans.filter((l) => l.start < b && l.end > a).map((l) => l.text);
+
+    const offSec = off * GRID;
+    const past = orig ? sessions.filter((s) => s.song === orig.name) : sessions;
+    const bestScore = past.reduce((m, s) => Math.max(m, s.score), -1);
+    const curNote = result && cursor != null ? result.rows.find((r) => cursor >= r.n.pos && cursor < r.n.end) : null;
+    const tech = useMemo(() => (result ? technique(orig.data, take.data, result) : []), [result]);
+
+    return html`<div class="flex flex-col gap-5">
+      <div class="grid gap-4 sm:grid-cols-2">
+        <${UploadSlot} id="orig-file" step="1" title="Original acapella" hint="The isolated vocal of the song. One lead voice works best; harmonies make the melody harder to read." slot=${orig} onPick=${onPickOrig} />
+        <${UploadSlot} id="take-file" step="2" title="Your singing" hint="A recording of you singing the same part, like a Voice Memo. Record somewhere quiet, ideally with headphones so the music isn't picked up." slot=${take} onPick=${(f) => pick("take", f)} />
+      </div>
+
+      <${LyricsCard} orig=${orig} lyrics=${lyrics} updateLyrics=${updateLyrics} count=${spans.length} hint="Shows the words above the chart and names the line in each practice tip. Saved for this song on this device." />
+
+      ${!ready && html`<div class="panel p-5 flex flex-col gap-2">
+        <h3 class="display text-lg font-bold">Your results will appear here</h3>
+        <p class="muted text-sm" style=${{ maxWidth: "62ch" }}>Once both files are analyzed you get a score, a pitch chart with the original melody and your line on top of it, playback of either or both, the phrases to practice, and a note-by-note breakdown.</p>
+      </div>`}
+
+      ${ready && result && html`<section class="panel p-4 sm:p-5 flex flex-col gap-5 min-w-0">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div class="flex items-end gap-3">
+            <span class="display font-bold" style=${{ fontSize: 72, lineHeight: 1, color: "var(--accent)" }}>${result.score}</span>
+            <div class="flex flex-col pb-2">
+              <span class="label">Melody score</span>
+              <span class="text-xs muted">${plain ? "Out of 100: how much of the melody you sang on the right notes" : "Share of the melody you sang on the right note"}</span>
+            </div>
+          </div>
+          <div class="seg" role="group" aria-label="Wording">
+            <button aria-pressed=${plain ? "true" : "false"} onClick=${() => choosePlain(true)}>Simple words</button>
+            <button aria-pressed=${plain ? "false" : "true"} onClick=${() => choosePlain(false)}>Detailed</button>
+          </div>
+          <button class="btn" onClick=${saveAttempt} disabled=${saved}>${saved ? "Saved to attempts" : "Save this attempt"}</button>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <${Stat} label="In tune" value=${result.inTune + "%"} note=${plain ? "How often you were right on the note" : "Within 25¢ when singing"} tone=${result.inTune >= 60 ? "good" : result.inTune >= 35 ? "warn" : "bad"} />
+          <${Stat} label=${plain ? "High or low?" : "Tendency"} value=${plain ? (Math.abs(result.tendency) < 10 ? "Right in the middle" : (howMuch(result.tendency) === "a tiny bit" ? "A tiny bit " : howMuch(result.tendency)[0].toUpperCase() + howMuch(result.tendency).slice(1) + " ") + (result.tendency > 0 ? "high" : "low")) : (Math.abs(result.tendency) < 8 ? "Centered" : Math.abs(result.tendency) + "¢ " + (result.tendency > 0 ? "sharp" : "flat"))} note=${plain ? "Do you usually sing a bit too high (sharp) or too low (flat)?" : "Average lean"} tone=${Math.abs(result.tendency) < 15 ? "good" : Math.abs(result.tendency) < 30 ? "warn" : "bad"} />
+          ${result.dev
+            ? html`<${Stat} label="Timing" value=${plain ? (result.drift < 80 ? "On time" : result.drift < 200 ? "A little off" : result.drift < 400 ? "Often off the beat" : "Way off the beat") : result.drift < 80 ? "On time" : "~" + result.drift + " ms off"} note=${plain ? "How closely you follow the original's rhythm" : "Typical drift from the original"} tone=${result.drift < 80 ? "good" : result.drift < 200 ? "warn" : "bad"} />`
+            : html`<${Stat} label="Timing" value=${result.timing == null ? "—" : Math.abs(result.timing) < 60 ? "On time" : (plain ? "Usually " + (result.timing > 0 ? "late" : "early") : Math.abs(result.timing) + " ms " + (result.timing > 0 ? "late" : "early"))} note=${plain ? "Do you come in on time?" : "Typical note entry"} tone=${result.timing == null ? null : Math.abs(result.timing) < 60 ? "good" : Math.abs(result.timing) < 150 ? "warn" : "bad"} />`}
+          <${Stat} label=${plain ? "Sung" : "Coverage"} value=${result.coverage + "%"} note=${plain ? "How much of the melody you sang" : "Of the melody you sang"} tone=${result.coverage >= 80 ? "good" : result.coverage >= 50 ? "warn" : "bad"} />
+        </div>
+
+        ${result.coverage < 40 && html`<div class="notice">Your take doesn't line up well with the original. Check that it's the same song section, then try Auto-align or the nudge buttons.</div>`}
+
+        <div class="flex flex-col gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="btn btn-primary" onClick=${() => (playing ? stopPlay() : startPlay(cursor || 0))}>${playing ? "❚❚ Pause" : "▶ Play"}</button>
+            ${loop && html`<span class="chip" style=${{ borderColor: "var(--accent)" }}><span class="text-xs">↻ Looping</span><b class="mono text-xs">${fmt(loop.a)}–${fmt(loop.b)}</b>
+              <button class="text-xs" style=${{ color: "var(--accent)", background: "none", border: 0, cursor: "pointer", fontWeight: 600 }} onClick=${clearLoop} aria-label="Stop looping">✕</button></span>`}
+            <span class="mono text-xs muted">${fmt(cursor || 0)} / ${fmt(orig.data.duration)}</span>
+            ${curNote && html`<span class="chip"><span class="muted text-xs">Now</span><b class="mono">${pretty(midiInfo(curNote.n.midi).label)}</b>${!curNote.missed && html`<span class="mono text-xs" style=${{ color: "var(--" + curNote.tone + ")" }}>${signed(curNote.cents)}¢</span>`}</span>`}
+          </div>
+          <div class="mixer">
+            ${[["o", "Original"], ["g", "Guide notes"], ["t", "My take"]].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"mix-" + k}>
+              <span class="text-xs font-semibold">${l}</span>
+              <input id=${"mix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
+              <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
+            </label>`)}
+          </div>
+          <p class="text-xs muted">Guide notes play the original melody as clean tones${result.shift !== 0 ? " in your key" : ""}. Turn Original and Guide off to hear only your take at your own pace.</p>
+          ${spans.length > 0 && html`<div class="karaoke" aria-live="polite">
+            <div class="flex items-start justify-between gap-3">
+              <p class="cur">${curLine >= 0 ? spans[curLine].text : "♪"}</p>
+              ${curLine >= 0 && html`<button class="btn btn-ghost" style=${{ padding: "4px 10px", fontSize: 12, flexShrink: 0 }} onClick=${() => startLoop(spans[curLine].start, spans[curLine].end)}>↻ Loop line</button>`}
+            </div>
+            <p class="nxt">${nextLine ? "Next: " + nextLine.text : ""}</p>
+          </div>`}
+          <${RollChart} orig=${orig.data} take=${take.data} result=${result} cursor=${cursor} onSeek=${seek} themeKey=${themeKey} lyrics=${spans} loop=${loop} />
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs muted">
+            <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 6, borderRadius: 3, background: "var(--fg)", opacity: 0.3 }}></span>Original</span>
+            <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--good)" }}></span>You, in tune</span>
+            <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--warn)" }}></span>Slightly off</span>
+            <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--bad)" }}></span>Wrong note</span>
+            ${result.dev && html`<span>Strip at the bottom: bars up mean you're behind the original, down means ahead.</span>`}
+            <span>Tap the chart to jump there.</span>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 text-sm">
+          <span class="label">Alignment</span>
+          <button class="switch" role="switch" aria-checked=${warp ? "true" : "false"} onClick=${() => { stopPlay(); setWarp((v) => !v); }} style=${{ fontSize: 13 }}>
+            <span class="track"><span class="knob"></span></span>Follow my timing
+          </button>
+          ${warp
+            ? html`<span class="text-xs muted">${alignment.warped ? "Lined up phrase by phrase" : "Couldn't follow your timing on this take, so a fixed offset is used"}</span>`
+            : html`<${React.Fragment}>
+                <button class="btn" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => nudge(-5)}>−0.1 s</button>
+                <span class="mono text-xs">${offSec === 0 ? "Starts together" : "Your take " + (offSec > 0 ? "starts " + offSec.toFixed(2) + " s later" : "starts " + (-offSec).toFixed(2) + " s earlier")}</span>
+                <button class="btn" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => nudge(5)}>+0.1 s</button>
+              <//>`}
+          <button class="btn btn-ghost" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => { stopPlay(); realign(); }}>Auto-align</button>
+          <button class="switch" role="switch" aria-checked=${octaveFree ? "true" : "false"} onClick=${() => setOctaveFree((v) => !v)} style=${{ fontSize: 13 }}>
+            <span class="track"><span class="knob"></span></span>Ignore octave
+          </button>
+          <button class="switch" role="switch" aria-checked=${keyFree ? "true" : "false"} onClick=${() => { stopPlay(); setKeyFree((v) => !v); }} style=${{ fontSize: 13 }}>
+            <span class="track"><span class="knob"></span></span>Match my key
+          </button>
+        </div>
+        ${result.keyShift !== 0 && html`<div class="notice" style=${{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
+          <b>${plain ? "You sang the whole song " + pianoKeys(Math.abs(result.keyShift)) + " " + (result.keyShift > 0 ? "higher" : "lower") + " than the original (a different key)." : "You sang it " + Math.abs(result.keyShift) + " half step" + (Math.abs(result.keyShift) > 1 ? "s" : "") + " " + (result.keyShift > 0 ? "higher" : "lower") + " than the original."}</b>
+          ${plain ? "That's completely fine. " : ""}You're being scored in your own key. The guide tones play in your key too. Turn off Match my key to score against the original key.
+        </div>`}
+        ${result.octShift !== 0 && html`<p class="text-xs muted">${plain
+          ? "You're singing the same tune " + (Math.abs(result.octShift) > 12 ? Math.abs(result.octShift / 12) + " octaves" : "an octave") + " " + (result.octShift > 0 ? "higher" : "lower") + " than the original, the way women and men often sing the same song. That counts as correct."
+          : "You're singing " + Math.abs(result.octShift / 12) + " octave" + (Math.abs(result.octShift) > 12 ? "s" : "") + " " + (result.octShift > 0 ? "above" : "below") + " the original. That's scored as correct while Ignore octave is on."}</p>`}
+
+        <div class="flex flex-col gap-2">
+          <h3 class="display text-lg font-bold">Phrases to practice</h3>
+          ${result.spots.length === 0
+            ? html`<p class="text-sm muted">No weak phrases stood out. Nice.</p>`
+            : result.spots.map((s) => html`<div key=${s.start} class="spot">
+                <span class="mono text-sm font-semibold">${fmt(s.start)}–${fmt(s.end)}</span>
+                <span class="text-sm">${spotText(s, plain)}${linesIn(s.start, s.end).length > 0 && html`<br /><span class="text-xs muted">“${linesIn(s.start, s.end).slice(0, 2).join(" / ")}”</span>`}</span>
+                <span class="flex gap-2">
+                  <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { clearLoop(); setCursor(s.start); startPlay(s.start); }}>▶ Play</button>
+                  <button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => startLoop(s.start, s.end)}>↻ Loop</button>
+                </span>
+              </div>`)}
+        </div>
+
+        ${tech.length > 0 && html`<div class="flex flex-col gap-2">
+          <h3 class="display text-lg font-bold">Vocal technique</h3>
+          <p class="text-xs muted">${plain ? "Compared with the original singer, so you're not marked down for copying their style." : "Measured on your take and compared with the original singer, so a style the original uses on purpose doesn't count against you."}</p>
+          <div class="grid gap-3 sm:grid-cols-2">
+            ${tech.map((f0) => { const f = plain ? { ...f0, ...f0.p } : f0; return html`<div key=${f.key} class="tech">
+              <div class="flex items-start justify-between gap-2">
+                <span class="label">${f.title}</span>
+                <span class=${"tag tag-" + f.tone}>${f.tone === "good" ? "Good" : f.tone === "warn" ? "Work on it" : "Focus here"}</span>
+              </div>
+              <span class=${(plain ? "display" : "mono") + " text-lg font-semibold"} style=${{ color: "var(--" + f.tone + ")" }}>${f.value}</span>
+              ${f.compare && html`<span class="text-xs muted">${f.compare}</span>`}
+              <p class="text-sm">${f.detail}</p>
+              ${f.tip && html`<p class="text-sm muted">${f.tip}</p>`}
+              ${f.examples.length > 0 && html`<div class="flex flex-wrap gap-2 items-center">
+                <span class="text-xs muted">Hear it:</span>
+                ${f.examples.map((x, i) => html`<button key=${i} class="btn" style=${{ padding: "4px 9px", fontSize: 12 }} onClick=${() => startLoop(Math.max(0, x - 0.4), x + 2.2)}>↻ ${fmt(x)}</button>`)}
+              </div>`}
+            </div>`; })}
+          </div>
+        </div>`}
+
+        <div class="flex flex-col gap-2">
+          <h3 class="display text-lg font-bold">Note by note</h3>
+          <div class="note-table">
+            <div class=${"nt-row nt-head label" + (plain ? " nt-plain" : "")}><span>Time</span><span>Original</span><span>You</span>${!plain && html`<span>Off</span>`}<span>${plain ? "How close" : "Verdict"}</span></div>
+            ${result.rows.map((r, i) => html`<button key=${i} class=${"nt-row" + (plain ? " nt-plain" : "") + (curNote === r ? " nt-now" : "")} onClick=${() => seek(r.n.pos)}>
+              <span class="mono text-xs muted">${fmt(r.n.pos)}</span>
+              <span class="font-semibold">${pretty(midiInfo(r.n.midi).label)}</span>
+              <span>${r.missed ? "—" : pretty(midiInfo(r.yours).label)}</span>
+              ${!plain && html`<span class="mono text-xs">${r.missed ? "" : signed(r.cents) + "¢"}</span>`}
+              <span class="text-xs font-semibold" style=${{ color: r.missed ? "var(--muted)" : "var(--" + r.tone + ")" }}>${plain ? plainVerdict(r) : r.missed ? "Missed" : r.verdict}</span>
+            </button>`)}
+          </div>
+        </div>
+      </section>`}
+
+      <section class="panel p-4 sm:p-5 flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 class="display text-lg font-bold">Past attempts</h3>
+            <p class="text-xs muted">${orig && orig.data ? "For " + orig.name : "All songs"} · saved on this device</p>
+          </div>
+          ${sessions.length > 0 && (confirmClear
+            ? html`<button class="btn" style=${{ padding: "6px 10px", fontSize: 13, borderColor: "var(--bad)", color: "var(--bad)" }} onClick=${() => { setSessions([]); setConfirmClear(false); }}>Confirm clear all</button>`
+            : html`<button class="btn btn-ghost" style=${{ padding: "6px 10px", fontSize: 13 }} onClick=${() => { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 4000); }}>Clear</button>`)}
+        </div>
+        ${past.length === 0
+          ? html`<p class="text-sm muted">No saved attempts yet. After a comparison, tap Save this attempt to track your progress on the song.</p>`
+          : html`<div class="flex flex-col">${past.map((s) => html`<div key=${s.id} class="row" style=${{ gridTemplateColumns: "56px 1fr auto" }}>
+              <span class="display font-bold text-xl" style=${{ color: s.score === bestScore ? "var(--accent)" : "var(--fg)" }}>${s.score}</span>
+              <span class="text-xs min-w-0" style=${{ overflowWrap: "anywhere" }}>
+                <span class="font-semibold">${s.take}</span><br />
+                <span class="muted">${orig && orig.data ? "" : s.song + " · "}${new Date(s.t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+              </span>
+              <span class="mono text-xs text-right">${s.inTune}% in tune<br /><span class="muted">${Math.abs(s.tendency) < 8 ? "centered" : Math.abs(s.tendency) + "¢ " + (s.tendency > 0 ? "sharp" : "flat")}</span></span>
+            </div>`)}</div>`}
+      </section>
+    </div>`;
+  }
+
+
+  /* ---------- shared song pieces ---------- */
+  function LyricsCard({ orig, lyrics, updateLyrics, count, hint }) {
+    const [err, setErr] = useState("");
+    const ref = useRef(null);
+    const origName = orig && orig.data ? orig.name : null;
+    useEffect(() => setErr(""), [origName]);
+    const pickLyrics = async (file) => {
+      setErr("");
+      let text = "";
+      try { text = await file.text(); } catch (e) { setErr("That file couldn't be read."); return; }
+      const lines = parseLrc(text);
+      if (!lines.filter((l) => l.text).length) { setErr("No timed lines found. An .lrc file has lines like [00:12.30] followed by the words."); return; }
+      updateLyrics({ name: file.name, lines, offset: 0 });
+    };
+    const btn = { padding: "5px 10px", fontSize: 13 };
+    return html`<div class="panel p-4 flex flex-wrap items-center gap-3">
+      <div class="flex-1 min-w-0" style=${{ minWidth: 200 }}>
+        <span class="label">Optional</span>
+        <h3 class="display text-lg font-bold">Timed lyrics (.lrc)</h3>
+        ${lyrics
+          ? html`<p class="text-sm" style=${{ overflowWrap: "anywhere" }}><b>${lyrics.name}</b> <span class="muted mono text-xs">· ${count} lines · saved for this song</span></p>`
+          : html`<p class="muted text-sm">${origName ? hint : "Upload the song first, then add its lyrics file."}</p>`}
+        ${err && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${err}</p>`}
+      </div>
+      ${lyrics && html`<div class="flex items-center gap-2">
+        <button class="btn" style=${btn} onClick=${() => updateLyrics({ ...lyrics, offset: Math.round((lyrics.offset - 0.25) * 100) / 100 })}>−0.25 s</button>
+        <span class="mono text-xs" style=${{ minWidth: 92, textAlign: "center" }}>${lyrics.offset === 0 ? "No shift" : "Shift " + signed(lyrics.offset.toFixed(2)) + " s"}</span>
+        <button class="btn" style=${btn} onClick=${() => updateLyrics({ ...lyrics, offset: Math.round((lyrics.offset + 0.25) * 100) / 100 })}>+0.25 s</button>
+        <button class="btn btn-ghost" style=${btn} onClick=${() => updateLyrics(null)}>Remove</button>
+      </div>`}
+      <button class=${"btn" + (lyrics ? "" : " btn-primary")} disabled=${!origName} onClick=${() => ref.current && ref.current.click()}>${lyrics ? "Replace .lrc" : "Upload .lrc"}</button>
+      <input ref=${ref} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) pickLyrics(f); }} />
+    </div>`;
+  }
+
+  /* ---------- sing-back scoring (Learn) ---------- */
+  const BEST_KEY = "pitchstaff.phrasebest.v1";
+  function scorePhrase(ph, her, speed, tr) {
+    const len = Math.ceil((ph.end - ph.start) / speed / GRID) + 1;
+    const grid = new Float32Array(len).fill(NaN), loud = new Float32Array(len).fill(-100);
+    for (let k = 0; k < len; k++) {
+      const st = ph.start + k * GRID * speed;
+      const n = ph.notes.find((x) => st >= x.pos && st < x.end);
+      if (n) { grid[k] = n.midi + tr; loud[k] = -10; }
+    }
+    const tgt = { grid, loud, notes: [], duration: len * GRID };
+    let kd = detectKeyAndOffset(tgt, her, true);
+    // a one-key difference is more likely singing flat or sharp than a new key
+    if (Math.abs(kd.ks) === 1) kd = detectKeyAndOffset(tgt, her, false);
+    let map = len >= 60 ? warpMap(tgt, her, kd.off, kd.ks) : null;
+    if (!map) map = fixedMap(len, kd.off);
+    const b = her.grid;
+    const rows = ph.notes.map((n) => {
+      const k0 = Math.round((n.pos - ph.start) / speed / GRID), k1 = Math.max(k0 + 1, Math.round((n.end - ph.start) / speed / GRID));
+      const cut = Math.floor((k1 - k0) * 0.2), i0 = k0 + cut, i1 = Math.max(i0 + 1, k1 - cut);
+      const ds = [], raw = [];
+      for (let k = i0; k < i1 && k < len; k++) {
+        const j = map[k];
+        let best = NaN, bd = Infinity;
+        for (let q = j - 2; q <= j + 2; q++) {
+          if (q < 0 || q >= b.length || b[q] !== b[q]) continue;
+          const d = foldOct(b[q] - (n.midi + tr) - kd.ks);
+          if (Math.abs(d) < bd) { bd = Math.abs(d); best = q; }
+        }
+        if (best === best) { ds.push(foldOct(b[best] - (n.midi + tr) - kd.ks)); raw.push(b[best]); }
+      }
+      if (ds.length < Math.max(1, 0.3 * (i1 - i0))) return { n, missed: true, ok: false };
+      const cents = Math.round(median(ds) * 100);
+      return { n, missed: false, cents, ok: Math.abs(cents) <= 50, sung: Math.round(median(raw)) };
+    });
+    const sung = rows.filter((r) => !r.missed && Math.abs(r.cents) <= 150);
+    return {
+      rows,
+      right: rows.filter((r) => r.ok).length,
+      score: Math.round((100 * rows.filter((r) => r.ok).length) / rows.length),
+      lean: sung.length ? Math.round(mean(sung.map((r) => r.cents))) : 0,
+      keyShift: kd.ks,
+    };
+  }
+
+  /* ---------- learn mode ---------- */
+  const KEY_MAJ = ["C", "D♭", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
+  const KEY_MIN = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "G♯", "A", "B♭", "B"];
+  const SOLFEGE = ["Do", "Di", "Re", "Ri", "Mi", "Fa", "Fi", "Sol", "Si", "La", "Li", "Ti"];
+  const PROF_MAJ = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+  const PROF_MIN = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+
+  // likely key from note durations (Krumhansl–Schmuckler profiles)
+  function estimateKey(notes) {
+    const h = new Array(12).fill(0);
+    notes.forEach((n) => { h[((n.midi % 12) + 12) % 12] += n.end - n.pos; });
+    const corr = (prof, r) => {
+      const xs = h, ys = prof.map((_, i) => prof[(i - r + 12) % 12]);
+      const mx = mean(xs), my = mean(ys);
+      let a = 0, b = 0, c = 0;
+      for (let i = 0; i < 12; i++) { a += (xs[i] - mx) * (ys[i] - my); b += (xs[i] - mx) ** 2; c += (ys[i] - my) ** 2; }
+      return b && c ? a / Math.sqrt(b * c) : 0;
+    };
+    let best = { r: 0, minor: false, c: -2 };
+    for (let r = 0; r < 12; r++) {
+      const cM = corr(PROF_MAJ, r), cm = corr(PROF_MIN, r);
+      if (cM > best.c) best = { r, minor: false, c: cM };
+      if (cm > best.c) best = { r, minor: true, c: cm };
+    }
+    return { tonic: best.r, minor: best.minor, conf: best.c, doPc: (best.r + (best.minor ? 3 : 0)) % 12 };
+  }
+  const keyName = (k, tr) => { const pc = (((k.tonic + tr) % 12) + 12) % 12; return (k.minor ? KEY_MIN[pc] : KEY_MAJ[pc]) + (k.minor ? " minor" : " major"); };
+
+  function buildPhrases(notes) {
+    if (!notes.length) return [];
+    const groups = [[notes[0]]];
+    for (let i = 1; i < notes.length; i++) {
+      if (notes[i].pos - notes[i - 1].end > 0.35) groups.push([notes[i]]);
+      else groups[groups.length - 1].push(notes[i]);
+    }
+    const merged = [];
+    groups.forEach((g) => {
+      const len = g[g.length - 1].end - g[0].pos;
+      const prev = merged[merged.length - 1];
+      if (prev && (g.length < 2 || len < 0.8) && g[0].pos - prev[prev.length - 1].end < 1.2) prev.push(...g);
+      else merged.push(g.slice());
+    });
+    const out = [];
+    const split = (g) => {
+      const len = g[g.length - 1].end - g[0].pos;
+      if (len <= 12 || g.length < 4) { out.push(g); return; }
+      let bi = 1, bg = -1;
+      for (let i = 1; i < g.length; i++) { const gap = g[i].pos - g[i - 1].end; if (gap > bg) { bg = gap; bi = i; } }
+      split(g.slice(0, bi)); split(g.slice(bi));
+    };
+    merged.forEach(split);
+    let hi = -Infinity, lo = Infinity;
+    notes.forEach((n) => { hi = Math.max(hi, n.midi); lo = Math.min(lo, n.midi); });
+    const wide = hi - lo >= 7;
+    return out.map((g, i) => {
+      const tags = [];
+      let jump = 0;
+      for (let j = 1; j < g.length; j++) if (g[j].pos - g[j - 1].end < 0.35) jump = Math.max(jump, Math.abs(g[j].midi - g[j - 1].midi));
+      if (jump >= 5) tags.push("Big jump");
+      let fast = false;
+      for (let j = 0; j < g.length && !fast; j++) { let c = 0; for (let q = j; q < g.length && g[q].pos < g[j].pos + 1; q++) c++; if (c >= 5) fast = true; }
+      if (fast) tags.push("Fast run");
+      if (wide && g.some((n) => n.midi >= hi - 1)) tags.push("High note");
+      if (wide && g.some((n) => n.midi <= lo + 1)) tags.push("Low note");
+      if (g.some((n) => n.end - n.pos >= 1.5)) tags.push("Long hold");
+      return { i, start: g[0].pos, end: g[g.length - 1].end, notes: g, tags };
+    });
+  }
+
+  function loadJSON(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key) || "null"); return v == null ? fallback : v; } catch (e) { return fallback; } }
+  function saveJSON(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
+  const LEARNED_KEY = "pitchstaff.learned.v1";
+
+  function MelodyMap({ data, notes, tr, nameOf, phrases, lyrics, loop, cursor, curIdx, onTapNote, onSeek, themeKey, overlay }) {
+    const canvasRef = useRef(null), boxRef = useRef(null);
+    const dur = data.duration;
+    const pps = Math.min(70, 15000 / Math.max(1, dur));
+    const W = Math.ceil(dur * pps), H = 260;
+    const range = useMemo(() => {
+      let lo = Infinity, hi = -Infinity;
+      notes.forEach((n) => { lo = Math.min(lo, n.midi + tr); hi = Math.max(hi, n.midi + tr); });
+      if (!isFinite(lo)) { lo = 60; hi = 72; }
+      lo -= 2; hi += 2;
+      if (hi - lo < 14) { const m = (hi + lo) / 2; lo = Math.floor(m - 7); hi = Math.ceil(m + 7); }
+      return { lo, hi };
+    }, [notes, tr]);
+    const rowH = (H - 30) / (range.hi - range.lo + 1);
+    const yOf = (m) => H - 18 - (m - range.lo + 0.5) * rowH;
+
+    useEffect(() => {
+      const cv = canvasRef.current;
+      if (!cv) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      cv.width = W * dpr; cv.height = H * dpr;
+      cv.style.width = W + "px"; cv.style.height = H + "px";
+      const g = cv.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, W, H);
+      const col = { line: cssVar("--line"), muted: cssVar("--muted"), fg: cssVar("--fg"), bg: cssVar("--surface-2"), accent: cssVar("--accent") };
+      const mono = "10px " + cssVar("--font-mono");
+      // alternate phrase shading
+      g.fillStyle = col.fg;
+      phrases.forEach((p, i) => { if (i % 2) { g.globalAlpha = 0.04; g.fillRect(p.start * pps, 0, (p.end - p.start) * pps, H); } });
+      g.globalAlpha = 1;
+      // pitch rows, C labels
+      for (let m = range.lo; m <= range.hi; m++) {
+        const y = yOf(m), isC = ((m % 12) + 12) % 12 === 0;
+        g.strokeStyle = isC ? col.muted : col.line; g.globalAlpha = isC ? 0.5 : 0.35; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+        if (isC) { g.globalAlpha = 0.9; g.fillStyle = col.muted; g.font = mono; for (let x = 4; x < W; x += 8 * pps) g.fillText("C" + (Math.floor(m / 12) - 1), x, y - 3); }
+      }
+      g.globalAlpha = 1;
+      g.fillStyle = col.muted; g.font = mono;
+      for (let s = 0; s < dur; s += 5) g.fillText(fmt(s), s * pps + 3, H - 3);
+      // the singer's real pitch line, faint
+      g.strokeStyle = col.fg; g.globalAlpha = 0.18; g.lineWidth = 1.5;
+      g.beginPath();
+      let pen = false;
+      const a = data.grid;
+      for (let k = 0; k < a.length; k++) {
+        const v = a[k];
+        if (v !== v) { pen = false; continue; }
+        if (pen && Math.abs(v - a[k - 1]) > 1.5) pen = false;
+        const x = k * GRID * pps, y = yOf(v + tr);
+        if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+      }
+      g.stroke();
+      g.globalAlpha = 1;
+      // note bars with names
+      const bh = Math.max(7, Math.min(18, rowH * 0.85));
+      g.font = "600 10px " + cssVar("--font-mono"); g.textBaseline = "middle";
+      notes.forEach((n) => {
+        const x = n.pos * pps, w = Math.max(3, (n.end - n.pos) * pps - 1.5), y = yOf(n.midi + tr);
+        g.fillStyle = col.fg; g.globalAlpha = 0.78;
+        const r = Math.min(4, bh / 2, w / 2);
+        g.beginPath();
+        if (g.roundRect) g.roundRect(x, y - bh / 2, w, bh, r); else g.rect(x, y - bh / 2, w, bh);
+        g.fill();
+        g.globalAlpha = 1;
+        const label = nameOf(n.midi);
+        if (w >= label.length * 6.5 + 6 && bh >= 10) { g.fillStyle = col.bg; g.fillText(label, x + 4, y + 0.5); }
+      });
+    }, [data, notes, tr, nameOf, phrases, range, W, pps, themeKey]);
+
+    useEffect(() => {
+      const box = boxRef.current;
+      if (!box || cursor == null) return;
+      const x = cursor * pps;
+      if (x < box.scrollLeft + 30 || x > box.scrollLeft + box.clientWidth - 60) box.scrollLeft = Math.max(0, x - 60);
+    }, [cursor, pps]);
+
+    const cur = curIdx >= 0 ? notes[curIdx] : null;
+    const bh = Math.max(7, Math.min(18, rowH * 0.85));
+    const tap = (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - r.left, y = e.clientY - r.top, t = x / pps;
+      const hit = notes.find((n) => t >= n.pos - 0.05 && t <= n.end + 0.05 && Math.abs(y - yOf(n.midi + tr)) <= Math.max(10, bh));
+      if (hit) onTapNote(hit); else onSeek(Math.max(0, t));
+    };
+    return html`<div ref=${boxRef} style=${{ overflowX: "auto", position: "relative", borderRadius: 10, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+      <div style=${{ position: "relative", width: W }}>
+        ${lyrics.length > 0 && html`<div class="lyr-band">
+          ${lyrics.map((l, i) => html`<div key=${i} class=${"lyr" + (cursor != null && cursor >= l.start && cursor < l.end ? " on" : "")}
+            style=${{ left: l.start * pps, width: Math.max(8, (l.end - l.start) * pps - 2) }} title=${l.text} onClick=${() => onSeek(l.start)}>${l.text}</div>`)}
+        </div>`}
+        <div style=${{ position: "relative", height: H }}>
+          <canvas ref=${canvasRef} style=${{ display: "block", cursor: "pointer" }} onClick=${tap}></canvas>
+          ${overlay && overlay.points.length > 1 && html`<svg width=${W} height=${H} style=${{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }} aria-hidden="true">
+            ${(() => {
+              const segs = []; let cur = [];
+              overlay.points.forEach((pt) => {
+                if (pt.m !== pt.m) { if (cur.length > 1) segs.push(cur); cur = []; return; }
+                cur.push(((overlay.start + pt.t * overlay.speed) * pps).toFixed(1) + "," + yOf(pt.m - overlay.oct).toFixed(1));
+              });
+              if (cur.length > 1) segs.push(cur);
+              return segs.map((sg, i) => html`<polyline key=${i} points=${sg.join(" ")} fill="none" stroke="var(--you)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />`);
+            })()}
+          </svg>`}
+          ${cur && html`<div style=${{ position: "absolute", left: cur.pos * pps - 2, top: yOf(cur.midi + tr) - bh / 2 - 2, width: Math.max(3, (cur.end - cur.pos) * pps - 1.5) + 4, height: bh + 4, borderRadius: 6, background: "var(--accent)", boxShadow: "0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent)", pointerEvents: "none", display: "flex", alignItems: "center", paddingLeft: 6, overflow: "hidden" }}>
+            <span class="mono" style=${{ fontSize: 10, fontWeight: 600, color: "var(--accent-ink)", whiteSpace: "nowrap" }}>${nameOf(cur.midi)}</span>
+          </div>`}
+        </div>
+        ${loop && html`<div style=${{ position: "absolute", top: 0, bottom: 0, left: loop.a * pps, width: (loop.b - loop.a) * pps, background: "color-mix(in srgb, var(--accent) 12%, transparent)", borderLeft: "1px solid var(--accent)", borderRight: "1px solid var(--accent)", pointerEvents: "none" }}></div>`}
+        ${cursor != null && html`<div style=${{ position: "absolute", top: 0, bottom: 0, left: cursor * pps, width: 2, marginLeft: -1, background: "var(--accent)", pointerEvents: "none" }}></div>`}
+      </div>
+    </div>`;
+  }
+
+  function Learn({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics }) {
+    const data = orig && orig.data ? orig.data : null;
+    const notes = data ? data.notes : [];
+    const [playing, setPlaying] = useState(false);
+    const [cursor, setCursor] = useState(null);
+    const [mix, setMix] = useState(() => loadJSON("pitchstaff.learnmix.v1", { o: 0.8, g: 0.45 }));
+    const [speed, setSpeed] = useState(1);
+    const [tr, setTr] = useState(0);
+    const [names, setNames] = useState(() => loadJSON("pitchstaff.names.v1", "letters"));
+    const [mode, setModeState] = useState("play");
+    const [loop, setLoop] = useState(null);
+    const [turn, setTurn] = useState(null);
+    const [learned, setLearned] = useState([]);
+    const [listen, setListen] = useState(false);
+    const [micMsg, setMicMsg] = useState("");
+    const [mastery, setMastery] = useState(() => loadJSON("pitchstaff.mastery.v1", false));
+    const [moreTime, setMoreTime] = useState(() => loadJSON("pitchstaff.moretime.v1", 0));
+    const [liveLine, setLiveLine] = useState(null);
+    const [attempt, setAttempt] = useState(null);
+    const [review, setReview] = useState(null);
+    const [scoring, setScoring] = useState(false);
+    const [best, setBest] = useState({});
+    const [toast, setToast] = useState("");
+    const listenRef = useRef(false), masteryRef = useRef(mastery), moreTimeRef = useRef(moreTime);
+    const mic = useRef({}), rec = useRef({ on: false, chunks: [], live: [], t0: 0 }), flow = useRef(0), streak = useRef({}), lastTake = useRef(null);
+    const mixRef = useRef(mix), speedRef = useRef(1), trRef = useRef(0), modeRef = useRef("play"), loopRef = useRef(null);
+    const play = useRef({ ctx: null, origSrc: null, guide: [], gO: null, gG: null, raf: 0 });
+    const fileRef = useRef(null);
+
+    const key = useMemo(() => (notes.length ? estimateKey(notes) : null), [notes]);
+    const phrases = useMemo(() => buildPhrases(notes), [notes]);
+    const spans = useMemo(() => (data ? lyricSpans(lyrics, data.duration) : []), [lyrics, data]);
+    const songName = data ? orig.name : null;
+
+    const nameOf = useCallback((m) => {
+      if (names === "solfege" && key) return SOLFEGE[(((m - key.doPc) % 12) + 12) % 12];
+      return pretty(midiInfo(m + tr).label);
+    }, [names, key, tr]);
+
+    const killSources = () => {
+      const p = play.current;
+      cancelAnimationFrame(p.raf);
+      [p.origSrc, p.replay, ...(p.guide || [])].forEach((s) => { if (s) { try { s.stop(); } catch (e) {} } });
+      [p.gO, p.gG].forEach((g) => { if (g) { try { g.disconnect(); } catch (e) {} } });
+      p.origSrc = null; p.replay = null; p.guide = []; p.gO = p.gG = null;
+    };
+    const stopAll = useCallback(() => {
+      flow.current++;
+      rec.current.on = false;
+      killSources(); setPlaying(false); setTurn(null); setReview(null);
+    }, []);
+
+    // ---- microphone (only works where the page is allowed to use it) ----
+    const closeMic = useCallback(() => {
+      const m = mic.current;
+      if (m.stream) m.stream.getTracks().forEach((t) => t.stop());
+      [m.src, m.an, m.proc, m.sink].forEach((n) => { if (n) { try { n.disconnect(); } catch (e) {} } });
+      if (m.proc) m.proc.onaudioprocess = null;
+      mic.current = {};
+    }, []);
+    const openMic = async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("unsupported");
+      const ctx = ensureCtx();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      const src = ctx.createMediaStreamSource(stream);
+      const an = ctx.createAnalyser(); an.fftSize = 2048;
+      const proc = ctx.createScriptProcessor(4096, 1, 1);
+      const sink = ctx.createGain(); sink.gain.value = 0;
+      src.connect(an); src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+      proc.onaudioprocess = (e) => { const r = rec.current; if (r.on) r.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+      mic.current = { stream, src, an, proc, sink };
+    };
+    const MIC_BLOCKED = "The microphone is blocked on this page, so listening is off. It works when you open the Pitch Staff file in Chrome on your computer, or put the file on a website (https) to use it on your phone.";
+    const ensureMic = async () => {
+      if (mic.current.stream) return true;
+      try { await openMic(); return true; }
+      catch (e) { closeMic(); listenRef.current = false; setListen(false); setMicMsg(MIC_BLOCKED); return false; }
+    };
+    const toggleListen = async () => {
+      if (listenRef.current) { listenRef.current = false; setListen(false); closeMic(); return; }
+      setMicMsg("");
+      const ok = await ensureMic();
+      if (ok) { listenRef.current = true; setListen(true); }
+    };
+    useEffect(() => { if (!active) { stopAll(); closeMic(); } }, [active, stopAll, closeMic]);
+    useEffect(() => () => { killSources(); closeMic(); if (play.current.ctx) play.current.ctx.close().catch(() => {}); }, []);
+    useEffect(() => {
+      stopAll(); setCursor(null); loopRef.current = null; setLoop(null);
+      setAttempt(null); setLiveLine(null); streak.current = {}; lastTake.current = null;
+      setLearned(songName ? (loadJSON(LEARNED_KEY, {})[songName] || []) : []);
+      setBest(songName ? (loadJSON(BEST_KEY, {})[songName] || {}) : {});
+    }, [data, songName, stopAll]);
+
+    const ensureCtx = () => {
+      const p = play.current;
+      if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
+      if (p.ctx.state === "suspended") p.ctx.resume().catch(() => {});
+      return p.ctx;
+    };
+    const bus = (ctx, v) => { const g = ctx.createGain(); g.gain.value = v; g.connect(ctx.destination); return g; };
+
+    // play the song from t to end, then call onDone
+    const playRange = (t, end, onDone) => {
+      killSources();
+      const p = play.current, ctx = ensureCtx();
+      const mx = mixRef.current, sp = speedRef.current;
+      const now = ctx.currentTime + 0.05;
+      p.gO = bus(ctx, mx.o); p.gG = bus(ctx, mx.g);
+      if (sp === 1) {
+        const s = ctx.createBufferSource(); s.buffer = orig.buffer; s.connect(p.gO);
+        s.start(now, Math.max(0, t)); p.origSrc = s;
+      }
+      p.guide = scheduleGuide(ctx, p.gG, notes, t, end, now, trRef.current, sp);
+      setPlaying(true);
+      const tick = () => {
+        const ct = t + Math.max(0, ctx.currentTime - now) * sp;
+        if (ct >= end) { killSources(); setCursor(Math.min(end, data.duration)); onDone(); return; }
+        setCursor(ct);
+        p.raf = requestAnimationFrame(tick);
+      };
+      tick();
+    };
+
+    const phraseAt = (t) => { const i = phrases.findIndex((p) => p.end > t); return i < 0 ? 0 : i; };
+
+    const addLearned = (i) => {
+      setLearned((prev) => {
+        if (prev.includes(i)) return prev;
+        const next = [...prev, i];
+        const all = loadJSON(LEARNED_KEY, {}); all[songName] = next; saveJSON(LEARNED_KEY, all);
+        return next;
+      });
+    };
+    const flash = (msg) => { setToast(msg); setTimeout(() => setToast((t) => (t === msg ? "" : t)), 3500); };
+
+    // after a phrase: short pause showing the result, then the next phrase (or the same one again)
+    const nextAfter = (idx, token, res) => {
+      let next = idx + 1, again = false;
+      if (loopRef.current) { next = idx; again = true; }
+      else if (res && masteryRef.current && res.score < 80) { next = idx; again = true; }
+      if (next >= phrases.length) { stopAll(); return; }
+      if (!res) { runRepeat(next); return; }
+      const ctx = play.current.ctx, total = 2.6, until = ctx.currentTime + total;
+      setPlaying(true);
+      const w = () => {
+        if (flow.current !== token) return;
+        const left = until - ctx.currentTime;
+        if (left <= 0) { setReview(null); runRepeat(next); return; }
+        setReview({ left, total, next, again });
+        play.current.raf = requestAnimationFrame(w);
+      };
+      w();
+    };
+
+    const finishAttempt = async (idx, token) => {
+      const ctx = play.current.ctx, chunks = rec.current.chunks;
+      const len = chunks.reduce((n, c) => n + c.length, 0);
+      if (len < ctx.sampleRate * 0.3) { nextAfter(idx, token, null); return; }
+      const pcm = new Float32Array(len);
+      let o = 0; chunks.forEach((c) => { pcm.set(c, o); o += c.length; });
+      const sr = ctx.sampleRate;
+      const ab = ctx.createBuffer(1, len, sr); ab.getChannelData(0).set(pcm);
+      lastTake.current = { idx, buffer: ab };
+      setScoring(true);
+      const her = await trackPitch({ getChannelData: () => pcm, numberOfChannels: 1, sampleRate: sr, duration: len / sr }, () => {}, () => flow.current !== token);
+      setScoring(false);
+      if (!her || flow.current !== token) return;
+      const res = scorePhrase(phrases[idx], her, speedRef.current, trRef.current);
+      setAttempt({ ...res, idx });
+      if (songName) {
+        const all = loadJSON(BEST_KEY, {}), sb = all[songName] || {};
+        if (!(sb[idx] >= res.score)) { sb[idx] = res.score; all[songName] = sb; saveJSON(BEST_KEY, all); setBest({ ...sb }); }
+      }
+      streak.current[idx] = res.score >= 85 ? (streak.current[idx] || 0) + 1 : 0;
+      if (streak.current[idx] >= 2) { addLearned(idx); if (streak.current[idx] === 2) flash("Phrase " + (idx + 1) + " marked learned: two good tries in a row."); }
+      nextAfter(idx, token, res);
+    };
+
+    // your turn: silence (and listening, if on) for as long as the phrase lasted
+    const turnPhase = (idx, token) => {
+      if (flow.current !== token) return;
+      const ph = phrases[idx], p = play.current, ctx = p.ctx, sp = speedRef.current;
+      const total = (ph.end - ph.start) / sp + 0.8 + moreTimeRef.current;
+      const until = ctx.currentTime + total;
+      const an = listenRef.current ? mic.current.an : null;
+      const r = rec.current;
+      const buf = an ? new Float32Array(an.fftSize) : null;
+      const tgtMed = median(ph.notes.map((n) => n.midi + trRef.current));
+      if (an) { r.on = true; r.chunks = []; r.live = []; r.t0 = ctx.currentTime; setLiveLine({ start: ph.start, speed: sp, oct: 0, points: [] }); }
+      let frame = 0;
+      setPlaying(true);
+      const wait = () => {
+        if (flow.current !== token) return;
+        const left = until - ctx.currentTime;
+        if (an) {
+          an.getFloatTimeDomainData(buf);
+          const d = detectPitch(buf, ctx.sampleRate);
+          r.live.push({ t: ctx.currentTime - r.t0, m: d.freq > 0 ? 69 + 12 * Math.log2(d.freq / 440) : NaN });
+          if (++frame % 3 === 0) {
+            const ms = r.live.filter((x) => x.m === x.m).map((x) => x.m);
+            setLiveLine({ start: ph.start, speed: sp, oct: ms.length ? 12 * Math.round((median(ms) - tgtMed) / 12) : 0, points: r.live.slice() });
+          }
+        }
+        if (left <= 0) {
+          setTurn(null);
+          if (an) { r.on = false; finishAttempt(idx, token); return; }
+          nextAfter(idx, token, null);
+          return;
+        }
+        setTurn({ idx, left, total, listening: !!an });
+        p.raf = requestAnimationFrame(wait);
+      };
+      wait();
+    };
+
+    const runRepeat = async (idx) => {
+      const ph = phrases[idx];
+      if (!ph) { stopAll(); return; }
+      const token = ++flow.current;
+      setTurn(null); setReview(null);
+      if (listenRef.current) { await ensureMic(); if (flow.current !== token) return; }
+      playRange(Math.max(0, ph.start - 0.2), ph.end + 0.15, () => turnPhase(idx, token));
+    };
+
+    const startPlay = (t) => {
+      if (!data) return;
+      if (modeRef.current === "repeat") { runRepeat(phraseAt(t)); return; }
+      const lp = loopRef.current;
+      let from = Math.max(0, t), end = data.duration;
+      if (lp) { end = lp.b; if (from < lp.a - 0.5 || from >= lp.b) from = Math.max(0, lp.a - 0.3); }
+      if (from >= end - 0.05) from = lp ? Math.max(0, lp.a - 0.3) : 0;
+      flow.current++;
+      playRange(from, end, () => { if (loopRef.current) startPlay(Math.max(0, loopRef.current.a - 0.3)); else stopAll(); });
+    };
+    const restartIfPlaying = () => { if (playing) startPlay(turn ? phrases[turn.idx].start : cursor || 0); };
+
+    const setVol = (k, v) => {
+      const next = { ...mixRef.current, [k]: v };
+      mixRef.current = next; setMix(next); saveJSON("pitchstaff.learnmix.v1", next);
+      const p = play.current, node = k === "o" ? p.gO : p.gG;
+      if (node && p.ctx) node.gain.setTargetAtTime(v, p.ctx.currentTime, 0.02);
+    };
+    const chooseSpeed = (s) => { speedRef.current = s; setSpeed(s); restartIfPlaying(); };
+    const shiftKey = (d) => { const v = Math.max(-7, Math.min(7, trRef.current + d)); trRef.current = v; setTr(v); restartIfPlaying(); };
+    const resetKey = () => { trRef.current = 0; setTr(0); restartIfPlaying(); };
+    const chooseMode = (m) => { modeRef.current = m; setModeState(m); setLiveLine(null); if (playing) { stopAll(); } };
+    const chooseNames = (n) => { setNames(n); saveJSON("pitchstaff.names.v1", n); };
+    const toggleMastery = () => { const v = !masteryRef.current; masteryRef.current = v; setMastery(v); saveJSON("pitchstaff.mastery.v1", v); };
+    const chooseMoreTime = (v) => { moreTimeRef.current = v; setMoreTime(v); saveJSON("pitchstaff.moretime.v1", v); };
+    const startLoop = (a, b) => { const lp = { a: Math.max(0, a), b }; loopRef.current = lp; setLoop(lp); startPlay(Math.max(0, a - 0.3)); };
+    const clearLoop = () => { loopRef.current = null; setLoop(null); };
+    const seek = (t) => { setCursor(t); if (playing) startPlay(t); };
+    const tapNote = (n) => {
+      setCursor(n.pos);
+      if (playing) { startPlay(n.pos); return; }
+      const ctx = ensureCtx(), p = play.current;
+      killSources();
+      p.gG = bus(ctx, Math.max(0.35, mixRef.current.g || 0.6));
+      p.guide = scheduleGuide(ctx, p.gG, [{ ...n, end: n.pos + Math.min(1.2, Math.max(0.4, n.end - n.pos)) }], n.pos, n.pos + 1.3, ctx.currentTime + 0.02, trRef.current, 1);
+    };
+    const hearSelf = () => {
+      const lt = lastTake.current;
+      if (!lt) return;
+      stopAll();
+      const ctx = ensureCtx(), p = play.current;
+      const s = ctx.createBufferSource(); s.buffer = lt.buffer; s.connect(ctx.destination); s.start(); p.replay = s;
+    };
+    const hearPhrase = (idx) => {
+      stopAll();
+      const ph = phrases[idx];
+      flow.current++;
+      playRange(Math.max(0, ph.start - 0.2), ph.end + 0.15, () => stopAll());
+    };
+    const tryAgain = (idx) => { stopAll(); runRepeat(idx); };
+    const toggleLearned = (i) => {
+      const next = learned.includes(i) ? learned.filter((x) => x !== i) : [...learned, i];
+      setLearned(next);
+      const all = loadJSON(LEARNED_KEY, {}); all[songName] = next; saveJSON(LEARNED_KEY, all);
+    };
+    const sungName = (m, ks) => {
+      if (names === "solfege" && key) return SOLFEGE[(((m - trRef.current - ks - key.doPc) % 12) + 12) % 12];
+      return pretty(midiInfo(m).label);
+    };
+
+    if (!data) {
+      return html`<div class="grid gap-4 sm:grid-cols-2">
+        <${UploadSlot} id="learn-file" step="1" title="Song to learn" hint="Upload the acapella (vocal only) of the song you want to learn. It's shared with the Singing Analyst, so you only upload it once." slot=${orig} onPick=${onPickOrig} />
+        <div class="panel p-5 flex flex-col gap-2">
+          <h3 class="display text-lg font-bold">How Learn works</h3>
+          <p class="muted text-sm" style=${{ maxWidth: "62ch" }}>You'll see the melody as note bars with their names, split into phrases. Play it through or use Repeat after me, which plays a line and then leaves a gap for you to sing it back. Slow the guide notes down, move them into your key, loop the hard parts, and tick off phrases as you learn them. When you're ready, record yourself and check it in the Singing Analyst.</p>
+        </div>
+      </div>`;
+    }
+
+    const curIdx = cursor != null ? notes.findIndex((n) => cursor >= n.pos && cursor < n.end) : -1;
+    const nextNotes = (() => {
+      const from = cursor || 0;
+      return notes.filter((n) => n.pos > from).slice(0, 5);
+    })();
+    const curPh = turn ? turn.idx : cursor != null ? phrases.findIndex((p) => cursor >= p.start - 0.2 && cursor < p.end + 0.3) : -1;
+    const curLine = cursor != null ? spans.findIndex((l) => cursor >= l.start && cursor < l.end) : -1;
+    let lo = Infinity, hi = -Infinity;
+    notes.forEach((n) => { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); });
+    const span = hi - lo;
+    const spanText = span >= 12 ? Math.floor(span / 12) + " octave" + (span >= 24 ? "s" : "") + (span % 12 ? " + " + pianoKeys(span % 12) : "") : pianoKeys(span);
+    const linesIn = (a, b) => spans.filter((l) => l.start < b && l.end > a).map((l) => l.text);
+    const btn = { padding: "5px 10px", fontSize: 13 };
+
+    return html`<div class="flex flex-col gap-5">
+      <div class="panel p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="min-w-0">
+          <span class="label">Learning</span>
+          <h3 class="display text-xl font-bold" style=${{ overflowWrap: "anywhere" }}>${orig.name}</h3>
+          <p class="text-xs muted">Shared with the Singing Analyst</p>
+        </div>
+        <button class="btn" onClick=${() => fileRef.current && fileRef.current.click()}>Change song</button>
+        <input id="learn-change" ref=${fileRef} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPickOrig(f); }} />
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 panel p-4">
+        <${Stat} label="Key" value=${key ? keyName(key, tr) : "—"} note=${tr ? "Moved " + signed(tr) + " for you" : key && key.conf < 0.6 ? "Best guess" : "Likely key"} />
+        <${Stat} label="Range" value=${pretty(midiInfo(lo + tr).label) + " – " + pretty(midiInfo(hi + tr).label)} note=${spanText + " from lowest to highest"} />
+        <${Stat} label="Phrases" value=${String(phrases.length)} note=${notes.length + " notes in total"} />
+        <div class="flex flex-col gap-1 min-w-0">
+          <span class="label">Learned</span>
+          <span class="mono text-lg font-semibold">${learned.length} of ${phrases.length}</span>
+          <div class="level" style=${{ height: 6 }}><div style=${{ width: (phrases.length ? (100 * learned.length) / phrases.length : 0) + "%", background: "var(--good)" }}></div></div>
+        </div>
+      </div>
+
+      <${LyricsCard} orig=${orig} lyrics=${lyrics} updateLyrics=${updateLyrics} count=${spans.length} hint="Shows the words above the melody and on each phrase. Saved for this song on this device." />
+
+      <section class="panel p-4 sm:p-5 flex flex-col gap-4 min-w-0">
+        <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] items-start">
+          <div class="flex flex-col gap-1 min-w-0">
+            <span class="label">${turn ? "Your turn" : "Now singing"}</span>
+            ${turn
+              ? html`<div class="flex flex-col gap-2">
+                  <p class="display font-bold" style=${{ fontSize: 30, lineHeight: 1.1, color: "var(--accent)" }}>Sing it back${turn.listening ? html` <span class="rec-dot" style=${{ display: "inline-block", verticalAlign: "middle" }}></span>` : ""}</p>
+                  <div class="level" style=${{ height: 6 }}><div style=${{ width: Math.max(0, (100 * turn.left) / turn.total) + "%" }}></div></div>
+                  <p class="text-xs muted">Phrase ${turn.idx + 1}${linesIn(phrases[turn.idx].start, phrases[turn.idx].end).length ? " · “" + linesIn(phrases[turn.idx].start, phrases[turn.idx].end).join(" / ") + "”" : ""}</p>
+                </div>`
+              : html`<div class="flex items-end gap-3 flex-wrap">
+                  <span class="display font-bold" style=${{ fontSize: 48, lineHeight: 1, color: curIdx >= 0 ? "var(--accent)" : "var(--muted)" }}>${curIdx >= 0 ? nameOf(notes[curIdx].midi) : "—"}</span>
+                  ${nextNotes.length > 0 && html`<span class="text-sm muted pb-1">Coming up: <span class="mono" style=${{ color: "var(--fg)" }}>${nextNotes.map((n) => nameOf(n.midi)).join("  ")}</span></span>`}
+                </div>`}
+            ${spans.length > 0 && !turn && html`<p class="display font-bold" style=${{ fontSize: 19, lineHeight: 1.3, marginTop: 4 }}>${curLine >= 0 ? spans[curLine].text : "♪"}</p>`}
+          </div>
+          <div class="flex flex-col gap-2 items-start sm:items-end">
+            <div class="seg" role="group" aria-label="Practice mode">
+              <button aria-pressed=${mode === "play" ? "true" : "false"} onClick=${() => chooseMode("play")}>Play through</button>
+              <button aria-pressed=${mode === "repeat" ? "true" : "false"} onClick=${() => chooseMode("repeat")}>Repeat after me</button>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button class="btn btn-primary" onClick=${() => (playing ? stopAll() : startPlay(cursor || 0))}>${playing ? "❚❚ Pause" : "▶ Play"}</button>
+              <span class="mono text-xs muted">${fmt(cursor || 0)} / ${fmt(data.duration)}</span>
+            </div>
+            ${loop && html`<span class="chip" style=${{ borderColor: "var(--accent)" }}><span class="text-xs">↻ Looping</span><b class="mono text-xs">${fmt(loop.a)}–${fmt(loop.b)}</b>
+              <button class="text-xs" style=${{ color: "var(--accent)", background: "none", border: 0, cursor: "pointer", fontWeight: 600 }} onClick=${clearLoop} aria-label="Stop looping">✕</button></span>`}
+          </div>
+        </div>
+        ${mode === "repeat" && html`<div class="flex flex-col gap-3 listen-box">
+          <p class="text-xs muted">Repeat after me plays one phrase, then gives you the same amount of time to sing it back, and moves on. With a loop on, it repeats the same phrase.</p>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <button class="switch" role="switch" aria-checked=${listen ? "true" : "false"} onClick=${toggleListen} style=${{ fontSize: 13 }}>
+              <span class="track"><span class="knob"></span></span>Listen to me
+            </button>
+            <button class="switch" role="switch" aria-checked=${mastery ? "true" : "false"} onClick=${toggleMastery} style=${{ fontSize: 13 }} disabled=${!listen} title=${listen ? "" : "Turn on Listen to me first"}>
+              <span class="track"><span class="knob"></span></span>Move on at 80%+
+            </button>
+            <div class="flex items-center gap-2">
+              <span class="label">Sing-back time</span>
+              <div class="seg" role="group" aria-label="Sing-back time">
+                ${[[0, "Normal"], [1, "+1 s"], [2, "+2 s"]].map(([v, l]) => html`<button key=${l} aria-pressed=${moreTime === v ? "true" : "false"} onClick=${() => chooseMoreTime(v)}>${l}</button>`)}
+              </div>
+            </div>
+          </div>
+          ${listen && html`<p class="text-xs muted">The app listens only during "Sing it back" and scores each try. Your line shows in blue on the melody. Two tries of 85% or more in a row mark a phrase as learned.</p>`}
+          ${micMsg && html`<div class="notice" role="alert">${micMsg}</div>`}
+        </div>`}
+        ${toast && html`<div class="notice" role="status" style=${{ borderColor: "var(--good)", background: "color-mix(in srgb, var(--good) 10%, var(--surface))" }}>${toast}</div>`}
+        ${(attempt || scoring) && mode === "repeat" && html`<div class="attempt">
+          ${scoring && !attempt && html`<p class="text-sm muted">Checking your try…</p>`}
+          ${attempt && (() => {
+            const a = attempt, wrong = a.rows.filter((r) => !r.ok);
+            const tone = a.score >= 80 ? "good" : a.score >= 50 ? "warn" : "bad";
+            return html`<div class="flex flex-col gap-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex flex-col">
+                  <span class="label">Phrase ${a.idx + 1} · your try${scoring ? " (checking the next…)" : ""}</span>
+                  <span class="display text-xl font-bold">${a.right} of ${a.rows.length} notes right</span>
+                </div>
+                <span class="display font-bold" style=${{ fontSize: 34, lineHeight: 1, color: "var(--" + tone + ")" }}>${a.score}%</span>
+              </div>
+              <div class="flex flex-wrap gap-1">
+                ${a.rows.map((r, i) => html`<span key=${i} class=${"nchip " + (r.missed ? "miss" : r.ok ? "ok" : "bad")}>${nameOf(r.n.midi)} ${r.missed ? "–" : r.ok ? "✓" : "✗"}</span>`)}
+              </div>
+              ${wrong.length > 0 && html`<ul class="text-sm flex flex-col gap-1" style=${{ listStyle: "none", padding: 0, margin: 0 }}>
+                ${wrong.slice(0, 4).map((r, i) => html`<li key=${i}><b>${nameOf(r.n.midi)}</b>: ${r.missed ? "I couldn't hear this one." : "you sang " + sungName(r.sung, a.keyShift) + ", " + howMuch(r.cents) + " too " + (r.cents > 0 ? "high" : "low") + "."}</li>`)}
+                ${wrong.length > 4 && html`<li class="muted text-xs">and ${wrong.length - 4} more</li>`}
+              </ul>`}
+              ${Math.abs(a.lean) >= 15 && html`<p class="text-sm muted">Overall you were ${howMuch(a.lean)} ${a.lean > 0 ? "high (sharp)" : "low (flat)"} on this phrase.</p>`}
+              ${a.keyShift !== 0 && html`<div class="notice" style=${{ borderColor: "var(--line)", background: "var(--surface)" }}>You sang this ${pianoKeys(Math.abs(a.keyShift))} ${a.keyShift > 0 ? "higher" : "lower"} than the guide, which is fine.
+                <button class="btn" style=${{ padding: "4px 10px", fontSize: 12, marginLeft: 8 }} onClick=${() => { stopAll(); shiftKey(a.keyShift); }}>Move the guide to my key</button></div>`}
+              <div class="flex flex-wrap gap-2">
+                <button class="btn" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${hearSelf} disabled=${!lastTake.current}>▶ Hear yourself</button>
+                <button class="btn" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => hearPhrase(a.idx)}>▶ Hear the phrase</button>
+                <button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => tryAgain(a.idx)}>↻ Try again</button>
+              </div>
+              ${review && html`<div class="flex items-center gap-3">
+                <div class="level" style=${{ flex: 1, height: 5 }}><div style=${{ width: (100 * review.left) / review.total + "%" }}></div></div>
+                <span class="text-xs muted">${review.again ? "Same phrase again" : "Phrase " + (review.next + 1) + " next"}</span>
+                <button class="btn btn-ghost" style=${{ padding: "4px 10px", fontSize: 12 }} onClick=${stopAll}>Stop here</button>
+              </div>`}
+            </div>`;
+          })()}
+        </div>`}
+
+        <${MelodyMap} data=${data} notes=${notes} tr=${tr} nameOf=${nameOf} phrases=${phrases} lyrics=${spans} loop=${loop} cursor=${cursor} curIdx=${curIdx} onTapNote=${tapNote} onSeek=${seek} themeKey=${themeKey} overlay=${liveLine} />
+        <p class="text-xs muted">Tap a note bar to hear that note. Tap anywhere else to jump there. The faint line is how the singer actually moves between notes.</p>
+
+        <div class="mixer" style=${{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+          ${[["o", "Original vocal"], ["g", "Guide notes"]].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"lmix-" + k}>
+            <span class="text-xs font-semibold">${l}</span>
+            <input id=${"lmix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
+            <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
+          </label>`)}
+        </div>
+
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div class="flex items-center gap-2">
+            <span class="label">Speed</span>
+            <div class="seg" role="group" aria-label="Speed">
+              ${[[0.5, "50%"], [0.75, "75%"], [1, "100%"]].map(([v, l]) => html`<button key=${l} aria-pressed=${speed === v ? "true" : "false"} onClick=${() => chooseSpeed(v)}>${l}</button>`)}
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="label">Guide key</span>
+            <button class="btn" style=${btn} onClick=${() => shiftKey(-1)} aria-label="Lower the guide notes">−</button>
+            <span class="mono text-xs" style=${{ minWidth: 70, textAlign: "center" }}>${tr === 0 ? "Original" : signed(tr) + " " + (Math.abs(tr) === 1 ? "key" : "keys")}</span>
+            <button class="btn" style=${btn} onClick=${() => shiftKey(1)} aria-label="Raise the guide notes">+</button>
+            ${tr !== 0 && html`<button class="btn btn-ghost" style=${btn} onClick=${resetKey}>Reset</button>`}
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="label">Names</span>
+            <div class="seg" role="group" aria-label="Note names">
+              <button aria-pressed=${names === "letters" ? "true" : "false"} onClick=${() => chooseNames("letters")}>C D E</button>
+              <button aria-pressed=${names === "solfege" ? "true" : "false"} onClick=${() => chooseNames("solfege")}>Do Re Mi</button>
+            </div>
+          </div>
+        </div>
+        ${(speed < 1 || (tr !== 0 && mix.o > 0)) && html`<p class="text-xs muted">${speed < 1 ? "The original vocal is muted below 100% speed, because slowing a recording down also makes it lower. The guide notes stay in tune at any speed. " : ""}${tr !== 0 && mix.o > 0 ? "The original vocal stays in its own key; only the guide notes move." : ""}</p>`}
+        ${names === "solfege" && key && html`<p class="text-xs muted">Do is ${(key.minor ? KEY_MIN : KEY_MAJ)[(key.doPc) % 12]}${key.minor ? ", so the song's home note is La" : ", the song's home note"}.</p>`}
+      </section>
+
+      <section class="panel p-4 sm:p-5 flex flex-col gap-3">
+        <div class="flex flex-wrap items-end justify-between gap-2">
+          <h3 class="display text-lg font-bold">Phrases</h3>
+          <span class="text-xs muted">Tick a phrase once you can sing it without the guide.</span>
+        </div>
+        ${phrases.map((ph) => {
+          const words = linesIn(ph.start, ph.end);
+          const done = learned.includes(ph.i);
+          return html`<div key=${ph.i} class=${"phrase" + (curPh === ph.i ? " now" : "") + (done ? " done" : "")}>
+            <span class="ph-num mono">${ph.i + 1}</span>
+            <div class="flex flex-col gap-1 min-w-0">
+              <span class="text-sm font-semibold" style=${{ overflowWrap: "anywhere" }}>${words.length ? words.join(" / ") : ph.notes.slice(0, 8).map((n) => nameOf(n.midi)).join(" ") + (ph.notes.length > 8 ? " …" : "")}</span>
+              <span class="flex flex-wrap items-center gap-1">
+                <span class="mono text-xs muted">${fmt(ph.start)}–${fmt(ph.end)} · ${ph.notes.length} notes</span>
+                ${best[ph.i] != null && html`<span class=${"tag tag-" + (best[ph.i] >= 80 ? "good" : best[ph.i] >= 50 ? "warn" : "bad")}>Best ${best[ph.i]}%</span>`}
+                ${ph.tags.map((t) => html`<span key=${t} class="tag" style=${{ color: "var(--muted)", background: "var(--line)" }}>${t}</span>`)}
+              </span>
+            </div>
+            <span class="flex gap-2 flex-wrap justify-end">
+              <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { clearLoop(); if (modeRef.current === "repeat") runRepeat(ph.i); else startPlay(Math.max(0, ph.start - 0.2)); }}>▶ Play</button>
+              <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => startLoop(ph.start, ph.end + 0.3)}>↻ Loop</button>
+              <button class=${"btn" + (done ? " btn-primary" : " btn-ghost")} style=${{ padding: "5px 10px", fontSize: 12 }} aria-pressed=${done ? "true" : "false"} onClick=${() => toggleLearned(ph.i)}>${done ? "✓ Learned" : "Mark learned"}</button>
+            </span>
+          </div>`;
+        })}
+      </section>
+    </div>`;
+  }
+
+  /* ---------- app ---------- */
+  function App() {
+    const [tab, setTab] = useState("live");
+    const [visited, setVisited] = useState({ live: true });
+    // the acapella is shared by Learn and the Singing Analyst
+    const [vocal, setVocal] = useState(null);
+    const vocalJob = useRef(0);
+    const pickVocal = useCallback(async (file) => {
+      const job = ++vocalJob.current;
+      setVocal({ name: file.name, busy: true, progress: 0 });
+      let buffer;
+      try { buffer = await decodeFile(file); }
+      catch (e) { if (vocalJob.current === job) setVocal({ name: file.name, error: "That file couldn't be read as audio. Try an MP3, M4A or WAV." }); return; }
+      const data = await trackPitch(buffer, (pr) => { if (vocalJob.current === job) setVocal((v) => (v ? { ...v, progress: pr } : v)); }, () => vocalJob.current !== job);
+      if (!data || vocalJob.current !== job) return;
+      setVocal({ name: file.name, buffer, data });
+    }, []);
+    const vocalName = vocal && vocal.data ? vocal.name : null;
+    const [vocalLyrics, setVocalLyrics] = useState(null);
+    useEffect(() => {
+      if (!vocalName) { setVocalLyrics(null); return; }
+      const saved = loadLyricsStore()[vocalName];
+      setVocalLyrics(saved && Array.isArray(saved.lines) ? saved : null);
+    }, [vocalName]);
+    const updateVocalLyrics = useCallback((next) => { setVocalLyrics(next); if (vocalName) saveLyricsFor(vocalName, next); }, [vocalName]);
+    const [mode, setMode] = useState("idle"); // idle | mic | file
+    const [error, setError] = useState("");
+    const [recording, setRecording] = useState(true);
+    const [live, setLive] = useState(null);   // { midi, freq, cents }
+    const [level, setLevel] = useState(0);
+    const [trail, setTrail] = useState([]);
+    const [history, setHistory] = useState(loadHistory);
+    const [confirmClear, setConfirmClear] = useState(false);
+    const [copyMsg, setCopyMsg] = useState("");
+    const [fileName, setFileName] = useState("");
+    const [progress, setProgress] = useState(0);
+    const [fileResult, setFileResult] = useState("");
+    const [song, setSong] = useState(null);
+    const [playing, setPlaying] = useState(false);
+    const [playPos, setPlayPos] = useState(0);
+    const songRef = useRef(null), playRef = useRef({ ctx: null, src: null, startAt: 0, offset: 0, raf: 0, idx: -2 });
+    const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || ""; } catch (e) { return ""; } });
+
+    const ctxRef = useRef(null), streamRef = useRef(null), srcRef = useRef(null), rafRef = useRef(0), cancelRef = useRef(false);
+    const recRef = useRef(recording);
+    const fileInput = useRef(null);
+    useEffect(() => { recRef.current = recording; }, [recording]);
+    useEffect(() => { saveHistory(history); }, [history]);
+    useEffect(() => {
+      if (theme) document.documentElement.setAttribute("data-theme", theme);
+      else document.documentElement.removeAttribute("data-theme");
+      try { theme ? localStorage.setItem(THEME_KEY, theme) : localStorage.removeItem(THEME_KEY); } catch (e) {}
+    }, [theme]);
+
+    const confirmNote = useCallback((midi, freq, cents) => {
+      const id = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+      setTrail((t) => [...t.slice(-11), { id, midi }]);
+      if (recRef.current) {
+        const entry = { id, t: Date.now(), note: midiInfo(midi).label, midi, freq: Math.round(freq * 10) / 10, cents };
+        setHistory((h) => [entry, ...h].slice(0, 500));
+      }
+    }, []);
+
+    const pausePlayback = useCallback((reset) => {
+      const p = playRef.current;
+      cancelAnimationFrame(p.raf);
+      if (p.src) {
+        if (!reset && p.ctx) p.offset = Math.max(0, p.ctx.currentTime - p.startAt);
+        p.src.onended = null;
+        try { p.src.stop(); } catch (e) {}
+        p.src = null;
+      }
+      if (reset) p.offset = 0;
+      p.idx = -2;
+      setPlaying(false);
+    }, []);
+
+    const stopInput = useCallback(() => {
+      cancelRef.current = true;
+      cancelAnimationFrame(rafRef.current);
+      if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
+      if (srcRef.current) { try { srcRef.current.onended = null; srcRef.current.stop && srcRef.current.stop(); } catch (e) {} srcRef.current = null; }
+      if (ctxRef.current) { ctxRef.current.close().catch(() => {}); ctxRef.current = null; }
+      setMode("idle"); setLive(null); setLevel(0);
+    }, []);
+    const stop = useCallback(() => { stopInput(); pausePlayback(false); }, [stopInput, pausePlayback]);
+    useEffect(() => stop, [stop]);
+
+    // show the note sounding at song time ct, plus the notes before it
+    const showAt = useCallback((ct) => {
+      const p = playRef.current, s = songRef.current;
+      if (!s) return;
+      const notes = s.notes;
+      let idx = -1;
+      for (let i = 0; i < notes.length; i++) { if (notes[i].pos <= ct) idx = i; else break; }
+      const cur = idx >= 0 && ct < notes[idx].end ? notes[idx] : null;
+      const key = idx * 2 + (cur ? 1 : 0);
+      if (key === p.idx) return;
+      p.idx = key;
+      const upto = cur ? idx : idx + 1;
+      setTrail(notes.slice(Math.max(0, upto - 12), upto).map((n) => ({ id: "s" + n.pos, midi: n.midi })));
+      setLive(cur ? { midi: cur.midi, freq: cur.freq, cents: cur.cents } : null);
+    }, []);
+
+    const playSong = useCallback(() => {
+      const s = songRef.current;
+      if (!s) return;
+      stopInput();
+      const p = playRef.current;
+      if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
+      const ctx = p.ctx;
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      if (p.offset >= s.buffer.duration - 0.05) p.offset = 0;
+      const src = ctx.createBufferSource();
+      src.buffer = s.buffer;
+      src.connect(ctx.destination);
+      src.start(0, p.offset);
+      p.src = src; p.startAt = ctx.currentTime - p.offset; p.idx = -2;
+      src.onended = () => {
+        if (p.src !== src) return;
+        p.src = null; p.offset = 0; cancelAnimationFrame(p.raf);
+        setPlaying(false); setPlayPos(s.buffer.duration); setLive(null);
+      };
+      setPlaying(true);
+      const tick = () => {
+        const ct = Math.min(s.buffer.duration, ctx.currentTime - p.startAt);
+        setPlayPos(ct); showAt(ct);
+        p.raf = requestAnimationFrame(tick);
+      };
+      tick();
+    }, [showAt, stopInput]);
+
+    const seek = (v) => {
+      const wasPlaying = playing;
+      pausePlayback(false);
+      playRef.current.offset = v;
+      setPlayPos(v); showAt(v);
+      if (wasPlaying) playSong();
+    };
+
+    const runLoop = useCallback((ctx, analyser) => {
+      const buf = new Float32Array(analyser.fftSize);
+      let cand = { midi: null, since: 0 };
+      let confirmed = null;
+      let silentSince = 0;
+      const recent = [];
+      const tick = () => {
+        analyser.getFloatTimeDomainData(buf);
+        const r = detectPitch(buf, ctx.sampleRate);
+        const now = performance.now();
+        setLevel(Math.min(1, r.rms * 6));
+        if (r.freq > 0) {
+          silentSince = 0;
+          recent.push(r.freq); if (recent.length > 5) recent.shift();
+          const med = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)];
+          const { midi, cents } = freqToMidi(med);
+          if (midi !== cand.midi) cand = { midi, since: now };
+          if (now - cand.since >= 150) {
+            setLive({ midi, freq: med, cents });
+            if (confirmed !== midi) { confirmed = midi; confirmNote(midi, med, cents); }
+          }
+        } else {
+          if (!silentSince) silentSince = now;
+          if (now - silentSince > 120) { confirmed = null; cand = { midi: null, since: 0 }; recent.length = 0; setLive(null); }
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    }, [confirmNote]);
+
+    const startMic = useCallback(async () => {
+      setError("");
+      stop();
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setError("This browser can't reach a microphone here. Open the page file in Chrome, Edge or Safari, or analyze an audio file instead.");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        src.connect(analyser);
+        ctxRef.current = ctx; streamRef.current = stream;
+        setMode("mic");
+        runLoop(ctx, analyser);
+      } catch (e) {
+        setError("The microphone is blocked on this page. Download the page file and open it in your browser to use the mic, or analyze an audio file below.");
+      }
+    }, [stop, runLoop]);
+
+    const onFile = useCallback(async (e) => {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      setError(""); setFileResult(""); stop();
+      songRef.current = null; setSong(null); setPlayPos(0); playRef.current.offset = 0;
+      cancelRef.current = false;
+      setFileName(file.name); setMode("file"); setProgress(0);
+      let audio;
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new Ctx();
+        const ab = await file.arrayBuffer();
+        audio = await new Promise((res, rej) => {
+          const p = ctx.decodeAudioData(ab, res, rej);
+          if (p && p.then) p.then(res, rej);
+        });
+        if (ctx.close) ctx.close().catch(() => {});
+      } catch (err) {
+        setMode("idle");
+        setError("That file couldn't be read as audio. Try an MP3, M4A or WAV.");
+        return;
+      }
+      // mix to mono, then halve the sample rate so analysis stays fast on phones
+      let data = audio.getChannelData(0);
+      if (audio.numberOfChannels > 1) {
+        const r = audio.getChannelData(1), m = new Float32Array(data.length);
+        for (let i = 0; i < data.length; i++) m[i] = (data[i] + r[i]) / 2;
+        data = m;
+      }
+      let sr = audio.sampleRate;
+      if (sr >= 44100) {
+        const h = new Float32Array(Math.floor(data.length / 2));
+        for (let i = 0; i < h.length; i++) h[i] = (data[2 * i] + data[2 * i + 1]) / 2;
+        data = h; sr = sr / 2;
+      }
+      const N = 1024, hop = 512, total = Math.max(1, Math.floor((data.length - N) / hop));
+      const found = [];
+      let cand = { midi: null, since: 0 }, confirmed = null, silentSince = -1;
+      const recent = [];
+      for (let f = 0; f < total; f++) {
+        if (cancelRef.current) return;
+        const t = (f * hop) / sr;
+        const r = detectPitch(data.subarray(f * hop, f * hop + N), sr);
+        if (r.freq > 0) {
+          silentSince = -1;
+          recent.push(r.freq); if (recent.length > 5) recent.shift();
+          const med = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)];
+          const { midi, cents } = freqToMidi(med);
+          if (midi !== cand.midi) cand = { midi, since: t };
+          if (t - cand.since >= 0.15 && confirmed !== midi) {
+            if (found.length && found[found.length - 1].end == null) found[found.length - 1].end = cand.since;
+            confirmed = midi; found.push({ midi, freq: med, cents, pos: cand.since, end: null });
+          }
+        } else {
+          if (silentSince < 0) silentSince = t;
+          if (t - silentSince > 0.12) { if (confirmed !== null && found.length && found[found.length - 1].end == null) found[found.length - 1].end = silentSince; confirmed = null; cand = { midi: null, since: 0 }; recent.length = 0; }
+        }
+        if (f % 150 === 0) { setProgress(f / total); await new Promise((res) => setTimeout(res, 0)); }
+      }
+      if (found.length && found[found.length - 1].end == null) found[found.length - 1].end = data.length / sr;
+      songRef.current = { buffer: audio, notes: found };
+      setSong({ name: file.name, duration: audio.duration });
+      const now = Date.now();
+      const entries = found.map((n, i) => ({
+        id: now + "-" + i, t: now, note: midiInfo(n.midi).label, midi: n.midi,
+        freq: Math.round(n.freq * 10) / 10, cents: n.cents, pos: Math.round(n.pos * 10) / 10, src: file.name,
+      }));
+      setTrail(entries.slice(-12).map((x) => ({ id: x.id, midi: x.midi })));
+      if (recRef.current && entries.length) setHistory((h) => [...[...entries].reverse(), ...h].slice(0, 500));
+      setProgress(1); setMode("idle");
+      setFileResult(entries.length
+        ? "Found " + entries.length + " notes in " + file.name + (recRef.current ? " and saved them to the log." : ".") + " Tap Play to hear it with the notes on the staff."
+        : "No clear single notes found in " + file.name + ". Clips with one voice or instrument work best.");
+    }, [stop]);
+
+    const counts = useMemo(() => {
+      const m = {};
+      history.forEach((h) => { m[h.note] = (m[h.note] || 0) + 1; });
+      return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    }, [history]);
+
+    const flash = (msg) => { setCopyMsg(msg); setTimeout(() => setCopyMsg(""), 2600); };
+
+    const buildText = () => {
+      const list = [...history].reverse();
+      const when = (h) => h.pos != null ? "at " + fmt(h.pos) + " (" + h.src + ")"
+        : new Date(h.t).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
+      const lines = [
+        "Pitch Staff - note log",
+        "Exported " + new Date().toLocaleString([], { dateStyle: "medium", timeStyle: "short" }),
+        list.length + " notes",
+        "",
+        "Sequence:",
+        list.map((h) => h.note).join(" "),
+        "",
+        "#".padEnd(5) + "Note".padEnd(7) + "When".padEnd(34) + "Freq (Hz)".padEnd(11) + "Cents",
+      ];
+      list.forEach((h, i) => {
+        lines.push(String(i + 1).padEnd(5) + h.note.padEnd(7) + when(h).padEnd(34) + h.freq.toFixed(1).padEnd(11) + (h.cents > 0 ? "+" : "") + h.cents);
+      });
+      return lines.join("\n") + "\n";
+    };
+
+    const exportTxt = async () => {
+      if (!history.length) return;
+      const text = buildText();
+      const filename = "pitch-staff-notes-" + new Date().toISOString().slice(0, 10) + ".txt";
+      let dl = null;
+      try { dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch (e) { dl = null; }
+      if (dl) {
+        try { await dl.save({ filename, data: text }); flash("Exported " + filename); }
+        catch (e) { flash(e && e.code === "declined" ? "Export cancelled" : e && e.code === "rate_limited" ? "One moment, then try again" : "Export isn't available in this view"); }
+        return;
+      }
+      // opened as a plain file in a browser: use a normal download
+      try {
+        const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+        const a = document.createElement("a");
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        flash("Exported " + filename);
+      } catch (e) { flash("Export isn't available in this view"); }
+    };
+
+    const copySequence = () => {
+      const seq = [...history].reverse().map((h) => h.note).join(" ");
+      if (!seq) return;
+      const done = (msg) => { setCopyMsg(msg); setTimeout(() => setCopyMsg(""), 2200); };
+      try {
+        navigator.clipboard.writeText(seq).then(() => done("Copied " + history.length + " notes"), () => done("Copy blocked here"));
+      } catch (e) { done("Copy blocked here"); }
+    };
+
+    const info = live ? midiInfo(live.midi) : null;
+    const tuneColor = !live ? "var(--muted)" : Math.abs(live.cents) <= 10 ? "var(--good)" : Math.abs(live.cents) <= 25 ? "var(--warn)" : "var(--bad)";
+    const isDark = theme ? theme === "dark" : !window.matchMedia("(prefers-color-scheme: light)").matches;
+    const running = mode !== "idle";
+    const showExample = !running && trail.length === 0;
+
+    return html`<div class="wrap flex flex-col gap-5">
+      <header class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 class="display text-3xl sm:text-4xl font-bold">Pitch Staff</h1>
+          <p class="muted text-sm">${tab === "live" ? "Sing, whistle or play one clean note. It lands on the staff as you hold it." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : "Compare your singing with the original vocal, phrase by phrase."}</p>
+        </div>
+        <button class="btn btn-ghost" onClick=${() => setTheme(isDark ? "light" : "dark")} aria-label="Switch theme">
+          ${isDark ? "☀ Light" : "☾ Dark"}
+        </button>
+      </header>
+
+      <div class="tabs" role="tablist">
+        ${[["live", "Pitch Staff"], ["learn", "Learn"], ["analyst", "Singing Analyst"]].map(([k, l]) => html`<button key=${k} class="tab" role="tab" aria-selected=${tab === k ? "true" : "false"}
+          onClick=${() => { if (k !== "live") stop(); setTab(k); setVisited((v) => ({ ...v, [k]: true })); }}>${l}</button>`)}
+      </div>
+
+      ${tab === "live" && html`<${React.Fragment}>
+      <div class="flex flex-wrap items-center gap-2">
+        ${mode === "mic"
+          ? html`<button class="btn btn-primary" onClick=${stop}>■ Stop microphone</button>`
+          : html`<button class="btn btn-primary" onClick=${startMic}>● Start Microphone</button>`}
+        <button class="switch" role="switch" aria-checked=${recording ? "true" : "false"} onClick=${() => setRecording((r) => !r)}>
+          <span class="track"><span class="knob"></span></span>
+          ${recording ? "Recording to log" : "Record off"}
+        </button>
+        ${mode === "file"
+          ? html`<button class="btn" onClick=${stop}>■ Cancel</button>`
+          : html`<button class="btn" onClick=${() => fileInput.current && fileInput.current.click()}>Analyze audio file</button>`}
+        <input id="audio-file" ref=${fileInput} type="file" class="hidden" onChange=${onFile} />
+        ${running && recording && html`<span class="flex items-center gap-2 text-sm muted"><span class="rec-dot"></span>Logging notes</span>`}
+      </div>
+
+      ${error && html`<div class="notice" role="alert">${error}</div>`}
+      ${(song || fileResult) && html`<div class="panel flex flex-col gap-3" style=${{ padding: "12px 14px" }}>
+        ${fileResult && html`<p class="text-sm">${fileResult}</p>`}
+        ${song && html`<div class="flex items-center gap-3">
+          <button class="btn btn-primary" style=${{ padding: "8px 14px" }} onClick=${() => (playing ? pausePlayback(false) : playSong())}>${playing ? "❚❚ Pause" : "▶ Play"}</button>
+          <input id="seek" type="range" min="0" max=${song.duration} step="0.1" value=${playPos} onChange=${(e) => seek(parseFloat(e.target.value))} class="flex-1" style=${{ minWidth: 0, accentColor: "var(--accent)" }} aria-label="Song position" />
+          <span class="mono text-xs muted">${fmt(playPos)} / ${fmt(song.duration)}</span>
+        </div>`}
+      </div>`}
+
+      <div class="grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <section class="panel p-4 sm:p-5 flex flex-col gap-4 min-w-0">
+          <div class="flex flex-wrap items-end justify-between gap-4">
+            <div class="flex items-end gap-1" style=${{ minHeight: 84 }}>
+              ${info
+                ? html`<span class="display font-bold" style=${{ fontSize: 76, lineHeight: 1, color: "var(--accent)" }}>${info.letter}</span>
+                       ${info.sharp && html`<span class="display font-bold" style=${{ fontSize: 40, lineHeight: 1.1, color: "var(--accent)", alignSelf: "flex-start" }}>♯</span>`}
+                       <span class="mono font-semibold" style=${{ fontSize: 28, lineHeight: 1.2 }}>${info.octave}</span>`
+                : html`<span class="display font-bold muted" style=${{ fontSize: 56, lineHeight: 1.2 }}>${running ? "…" : "—"}</span>`}
+            </div>
+            <div class="flex flex-col items-end gap-1 text-right">
+              <span class="label">Frequency</span>
+              <span class="mono text-xl">${live ? live.freq.toFixed(1) + " Hz" : "— Hz"}</span>
+              <span class="mono text-sm" style=${{ color: tuneColor }}>
+                ${live ? (live.cents > 0 ? "+" : "") + live.cents + " cents" + (Math.abs(live.cents) <= 10 ? " · in tune" : live.cents > 0 ? " · sharp" : " · flat") : running ? (mode === "file" ? "Analyzing " + Math.round(progress * 100) + "%" : "Listening…") : "Not listening"}
+              </span>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <div class="tuner" aria-hidden="true">
+              <div class="zone"></div><div class="center"></div>
+              ${live && html`<div class="needle" style=${{ left: 50 + Math.max(-50, Math.min(50, live.cents)) + "%", background: tuneColor }}></div>`}
+            </div>
+            <div class="flex justify-between mono text-xs muted"><span>−50¢</span><span>0</span><span>+50¢</span></div>
+          </div>
+
+          <div class="staff-box">
+            <${Staff} trail=${showExample ? EXAMPLE : trail} live=${live} example=${showExample} />
+          </div>
+          <div class="flex items-center justify-between gap-3 text-xs muted">
+            <span>${showExample ? "Example scale shown. Start the mic to replace it with your notes." : "Faded notes are your recent notes. The gold one is live."}</span>
+            <div class="level" style=${{ width: 90 }} title="Input level"><div style=${{ width: level * 100 + "%" }}></div></div>
+          </div>
+        </section>
+
+        <aside class="panel p-4 sm:p-5 flex flex-col gap-4 min-w-0">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="display text-xl font-bold">Note log</h2>
+              <p class="muted text-xs mono">${history.length} saved on this device</p>
+            </div>
+            <div class="flex gap-2">
+              <button class="btn text-xs" style=${{ padding: "6px 10px", fontSize: 13 }} onClick=${copySequence} disabled=${!history.length}>Copy notes</button>
+              <button class="btn" style=${{ padding: "6px 10px", fontSize: 13 }} onClick=${exportTxt} disabled=${!history.length}>Export .txt</button>
+              ${confirmClear
+                ? html`<button class="btn" style=${{ padding: "6px 10px", fontSize: 13, borderColor: "var(--bad)", color: "var(--bad)" }} onClick=${() => { setHistory([]); setConfirmClear(false); }}>Confirm clear</button>`
+                : html`<button class="btn btn-ghost" style=${{ padding: "6px 10px", fontSize: 13 }} onClick=${() => { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 4000); }} disabled=${!history.length}>Clear</button>`}
+            </div>
+          </div>
+          ${copyMsg && html`<p class="text-xs mono" style=${{ color: "var(--good)" }}>${copyMsg}</p>`}
+
+          ${counts.length > 0 && html`<div class="flex flex-col gap-2">
+            <span class="label">Most played</span>
+            <div class="flex flex-wrap gap-2">
+              ${counts.map(([n, c]) => html`<span key=${n} class="chip"><b class="mono">${pretty(n)}</b><span class="muted mono text-xs">×${c}</span></span>`)}
+            </div>
+          </div>`}
+
+          <div class="history-list">
+            ${history.length === 0
+              ? html`<div class="muted text-sm py-6 flex flex-col gap-2">
+                  <p>No notes logged yet.</p>
+                  <p>Turn on Recording, start the mic and hold a note for a moment. Each new note you settle on is saved here, newest first.</p>
+                </div>`
+              : history.map((h) => html`<div key=${h.id} class="row">
+                  <span class="display font-bold text-lg">${pretty(h.note)}</span>
+                  <span class="mono text-xs muted" style=${{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${h.pos != null ? "at " + Math.floor(h.pos / 60) + ":" + String(Math.floor(h.pos % 60)).padStart(2, "0") + " · " + h.src : new Date(h.t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" })}</span>
+                  <span class="mono text-xs text-right">${h.freq.toFixed(1)} Hz<br /><span style=${{ color: Math.abs(h.cents) <= 10 ? "var(--good)" : "var(--muted)" }}>${(h.cents > 0 ? "+" : "") + h.cents}¢</span></span>
+                </div>`)}
+          </div>
+        </aside>
+      </div>
+      <//>`}
+      <div hidden=${tab !== "learn"}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
+      <div hidden=${tab !== "analyst"}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
+    </div>`;
+  }
+
+  ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+})();
+</script>
+</body>
+</html>
