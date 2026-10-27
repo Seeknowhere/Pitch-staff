@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tono">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
-<title>Pitch Staff</title>
+<title>Tono</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1814,7 +1815,7 @@ select.btn { appearance: auto; }
       proc.onaudioprocess = (e) => { const r = rec.current; if (r.on) r.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
       mic.current = { stream, src, an, proc, sink };
     };
-    const MIC_BLOCKED = "The microphone is blocked on this page, so listening is off. It works when you open the Pitch Staff file in Chrome on your computer, or put the file on a website (https) to use it on your phone.";
+    const MIC_BLOCKED = "The microphone is blocked on this page, so listening is off. It works when you open the Tono file in Chrome on your computer, or put the file on a website (https) to use it on your phone.";
     const ensureMic = async () => {
       if (mic.current.stream) return true;
       try { await openMic(); return true; }
@@ -2226,7 +2227,7 @@ select.btn { appearance: auto; }
     </div>`;
   }
 
-  /* ---------- note matching (Pitch Staff tab) ---------- */
+  /* ---------- note matching (Tuner tab) ---------- */
   const MATCH_KEY = "pitchstaff.match.v1";
   const RANGES = { low: [40, 60, "Low"], mid: [48, 67, "Medium"], high: [55, 76, "High"] };
   const TOLS = { easy: 50, normal: 25, hard: 10 };
@@ -2777,7 +2778,7 @@ select.btn { appearance: auto; }
       const when = (h) => h.pos != null ? "at " + fmt(h.pos) + " (" + h.src + ")"
         : new Date(h.t).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
       const lines = [
-        "Pitch Staff - note log",
+        "Tono - note log",
         "Exported " + new Date().toLocaleString([], { dateStyle: "medium", timeStyle: "short" }),
         list.length + " notes",
         "",
@@ -2833,7 +2834,7 @@ select.btn { appearance: auto; }
     return html`<div class="wrap flex flex-col gap-5">
       <header class="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 class="display text-3xl sm:text-4xl font-bold">Pitch Staff</h1>
+          <h1 class="display text-3xl sm:text-4xl font-bold">Tono</h1>
           <p class="muted text-sm">${tab === "live" ? "Sing, whistle or play one clean note and see exactly which note it is." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : "Compare your singing with the original vocal, phrase by phrase."}</p>
         </div>
         <div class="flex gap-2">
@@ -2848,7 +2849,7 @@ select.btn { appearance: auto; }
         onChange=${() => bumpSettings((n) => n + 1)} onMicChange=${() => { if (mode === "mic") startMic(); }} />`}
 
       <div class="tabs" role="tablist">
-        ${[["live", "Pitch Staff"], ["learn", "Learn"], ["analyst", "Singing Analyst"]].map(([k, l]) => html`<button key=${k} class="tab" role="tab" aria-selected=${tab === k ? "true" : "false"}
+        ${[["live", "Tuner"], ["learn", "Learn"], ["analyst", "Singing Analyst"]].map(([k, l]) => html`<button key=${k} class="tab" role="tab" aria-selected=${tab === k ? "true" : "false"}
           onClick=${() => { if (k !== "live") stop(); setTab(k); setVisited((v) => ({ ...v, [k]: true })); }}>${l}</button>`)}
       </div>
 
