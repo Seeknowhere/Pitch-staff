@@ -1952,6 +1952,9 @@ select.btn { appearance: auto; }
     const listenRef = useRef(false), masteryRef = useRef(mastery), moreTimeRef = useRef(moreTime);
     const mic = useRef({}), rec = useRef({ on: false, chunks: [], live: [], t0: 0 }), flow = useRef(0), streak = useRef({}), lastTake = useRef(null);
     const coachRef = useRef(null);
+    const [pending, setPending] = useState(null); // after a try: { next, again, after, scored }
+    const takesRef = useRef({});
+    const [lastScores, setLastScores] = useState({});
     const [showDetails, setShowDetails] = useState(false);
     // keep the coach card in view whenever it changes step
     useEffect(() => {
@@ -2024,7 +2027,7 @@ select.btn { appearance: auto; }
     useEffect(() => () => { killSources(); closeMic(); if (play.current.ctx) play.current.ctx.close().catch(() => {}); }, []);
     useEffect(() => {
       stopAll(); setCursor(null); loopRef.current = null; setLoop(null);
-      setAttempt(null); setLiveLine(null); streak.current = {}; lastTake.current = null;
+      setAttempt(null); setLiveLine(null); streak.current = {}; lastTake.current = null; takesRef.current = {}; setLastScores({}); setPending(null);
       setLearned(songName ? (loadJSON(LEARNED_KEY, {})[songName] || []) : []);
       setBest(songName ? (loadJSON(BEST_KEY, {})[songName] || {}) : {});
     }, [data, songName, stopAll]);
@@ -2079,22 +2082,14 @@ select.btn { appearance: auto; }
     const flash = (msg) => { setToast(msg); setTimeout(() => setToast((t) => (t === msg ? "" : t)), 3500); };
 
     // after a phrase: short pause showing the result, then the next phrase (or the same one again)
+    // after a phrase: stop and wait for the singer to tap Play / Next
     const nextAfter = (idx, token, res) => {
+      if (flow.current !== token) return;
       let next = idx + 1, again = false;
       if (loopRef.current) { next = idx; again = true; }
       else if (res && masteryRef.current && res.score < 80) { next = idx; again = true; }
-      if (next >= phrases.length) { stopAll(); return; }
-      if (!res) { runRepeat(next); return; }
-      const ctx = play.current.ctx, total = 2.6, until = ctx.currentTime + total;
-      setPlaying(true);
-      const w = () => {
-        if (flow.current !== token) return;
-        const left = until - ctx.currentTime;
-        if (left <= 0) { setReview(null); runRepeat(next); return; }
-        setReview({ left, total, next, again });
-        play.current.raf = requestAnimationFrame(w);
-      };
-      w();
+      killSources(); setPlaying(false); setTurn(null); setReview(null);
+      setPending(next >= phrases.length ? { next: -1, again: false, after: idx, scored: !!res } : { next, again, after: idx, scored: !!res });
     };
 
     const finishAttempt = async (idx, token) => {
@@ -2106,12 +2101,14 @@ select.btn { appearance: auto; }
       const sr = ctx.sampleRate;
       const ab = ctx.createBuffer(1, len, sr); ab.getChannelData(0).set(pcm);
       lastTake.current = { idx, buffer: ab };
+      takesRef.current[idx] = ab;
       setScoring(true);
       const her = await trackPitch({ getChannelData: () => pcm, numberOfChannels: 1, sampleRate: sr, duration: len / sr }, () => {}, () => flow.current !== token);
       setScoring(false);
       if (!her || flow.current !== token) return;
       const res = scorePhrase(phrases[idx], her, speedRef.current, trRef.current);
       setAttempt({ ...res, idx });
+      setLastScores((x) => ({ ...x, [idx]: res.score }));
       if (songName) {
         const all = loadJSON(BEST_KEY, {}), sb = all[songName] || {};
         if (!(sb[idx] >= res.score)) { sb[idx] = res.score; all[songName] = sb; saveJSON(BEST_KEY, all); setBest({ ...sb }); }
@@ -2162,14 +2159,14 @@ select.btn { appearance: auto; }
       const ph = phrases[idx];
       if (!ph) { stopAll(); return; }
       const token = ++flow.current;
-      setTurn(null); setReview(null);
+      setTurn(null); setReview(null); setPending(null);
       if (listenRef.current) { await ensureMic(); if (flow.current !== token) return; }
       playRange(Math.max(0, ph.start - 0.2), ph.end + 0.15, () => turnPhase(idx, token));
     };
 
     const startPlay = (t) => {
       if (!data) return;
-      if (modeRef.current === "repeat") { runRepeat(phraseAt(t)); return; }
+      if (modeRef.current === "repeat") { runRepeat(pending && pending.next >= 0 ? pending.next : pending ? 0 : phraseAt(t)); return; }
       const lp = loopRef.current;
       let from = Math.max(0, t), end = data.duration;
       if (lp) { end = lp.b; if (from < lp.a - 0.5 || from >= lp.b) from = Math.max(0, lp.a - 0.3); }
@@ -2188,7 +2185,7 @@ select.btn { appearance: auto; }
     const chooseSpeed = (s) => { speedRef.current = s; setSpeed(s); restartIfPlaying(); };
     const shiftKey = (d) => { const v = Math.max(-7, Math.min(7, trRef.current + d)); trRef.current = v; setTr(v); restartIfPlaying(); };
     const resetKey = () => { trRef.current = 0; setTr(0); restartIfPlaying(); };
-    const chooseMode = (m) => { modeRef.current = m; setModeState(m); setLiveLine(null); if (playing) { stopAll(); } };
+    const chooseMode = (m) => { modeRef.current = m; setModeState(m); setLiveLine(null); setPending(null); if (playing) { stopAll(); } };
     const chooseNames = (n) => { setNames(n); saveJSON("pitchstaff.names.v1", n); };
     const toggleMastery = () => { const v = !masteryRef.current; masteryRef.current = v; setMastery(v); saveJSON("pitchstaff.mastery.v1", v); };
     const chooseMoreTime = (v) => { moreTimeRef.current = v; setMoreTime(v); saveJSON("pitchstaff.moretime.v1", v); };
@@ -2219,6 +2216,13 @@ select.btn { appearance: auto; }
       stopAll();
       const ctx = ensureCtx(), p = play.current;
       const s = ctx.createBufferSource(); s.buffer = lt.buffer; s.connect(ctx.destination); s.start(); p.replay = s;
+    };
+    const hearTake = (idx) => {
+      const b = takesRef.current[idx];
+      if (!b) return;
+      stopAll();
+      const ctx = ensureCtx(), p = play.current;
+      const s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(); p.replay = s;
     };
     const hearPhrase = (idx) => {
       stopAll();
@@ -2279,7 +2283,8 @@ select.btn { appearance: auto; }
           <span>${learned.length} of ${phrases.length} learned</span>
         </div>
         ${(() => {
-          const showResult = mode === "repeat" && !turn && (scoring && !attempt || (attempt && (review || !playing)));
+          const showResult = mode === "repeat" && !turn && (scoring || (!playing && attempt && pending && pending.scored && attempt.idx === pending.after));
+          const showReady = mode === "repeat" && !turn && !playing && pending && !pending.scored;
           if (turn) return html`<div class="flex flex-col gap-1 min-w-0">
             <span class="label">Your turn · phrase ${turn.idx + 1}</span>
             ${html`<div class="flex flex-col gap-2">
@@ -2289,10 +2294,11 @@ select.btn { appearance: auto; }
                 </div>`}
           </div>`;
           if (showResult) {
-            if (!attempt) return html`<div class="flex flex-col gap-1"><span class="label">Your try</span><p class="display text-xl font-bold muted">Checking…</p></div>`;
+            if (scoring || !attempt) return html`<div class="flex flex-col gap-1"><span class="label">Your try</span><p class="display text-xl font-bold muted">Checking…</p></div>`;
             const a = attempt, wrong = a.rows.filter((r) => !r.ok);
             const tone = a.score >= 80 ? "good" : a.score >= 50 ? "warn" : "bad";
-            const nextIdx = review ? review.next : Math.min(phrases.length - 1, a.idx + 1);
+            const nextIdx = pending ? pending.next : a.idx + 1;
+            const again = pending && pending.again;
             return html`<div class="flex flex-col gap-3">
               <div class="flex items-start justify-between gap-3">
                 <div class="flex flex-col">
@@ -2315,10 +2321,18 @@ select.btn { appearance: auto; }
                 <button class="link-btn" style=${{ alignSelf: "flex-start" }} onClick=${() => setShowDetails(false)}>Hide details</button>
               </div>`}
               <div class="coach-actions">
-                <button class="btn" onClick=${() => tryAgain(a.idx)}>↻ Try again</button>
-                <button class="btn" onClick=${hearSelf} disabled=${!lastTake.current}>▶ Hear me</button>
-                <button class="btn btn-primary" onClick=${() => { setShowDetails(false); runRepeat(nextIdx); }} disabled=${!review && a.idx >= phrases.length - 1}>${review && review.again ? "Again →" : "Next →"}</button>
+                ${again
+                  ? html`<button class="btn" onClick=${() => hearPhrase(a.idx)}>▶ Phrase</button>`
+                  : html`<button class="btn" onClick=${() => tryAgain(a.idx)}>↻ Try again</button>`}
+                <button class="btn" onClick=${() => hearTake(a.idx)} disabled=${!takesRef.current[a.idx]}>▶ Hear me</button>
+                ${again
+                  ? html`<button class="btn btn-primary" onClick=${() => tryAgain(a.idx)}>↻ Try again</button>`
+                  : nextIdx >= 0 && nextIdx < phrases.length
+                    ? html`<button class="btn btn-primary" onClick=${() => { setShowDetails(false); runRepeat(nextIdx); }}>Next →</button>`
+                    : html`<button class="btn btn-primary" onClick=${() => onGo && onGo("karaoke")}>Karaoke →</button>`}
               </div>
+              ${again && html`<p class="text-xs muted">${loop ? "Looping this phrase." : "Get 80% or more to move on. You can skip ahead from the phrase list."}</p>`}
+              ${!again && (nextIdx < 0 || nextIdx >= phrases.length) && html`<p class="text-xs muted">That was the last phrase. Nice work!</p>`}
               ${review && html`<div class="flex items-center gap-3">
                 <div class="level" style=${{ flex: 1, height: 4 }}><div style=${{ width: (100 * review.left) / review.total + "%" }}></div></div>
                 <span class="text-xs muted">${review.again ? "Same phrase again" : "Phrase " + (review.next + 1) + " next"}</span>
@@ -2326,6 +2340,17 @@ select.btn { appearance: auto; }
               </div>`}
             </div>`;
           }
+          if (showReady) return html`<div class="flex flex-col gap-2">
+            <span class="label">Phrase ${pending.after + 1} done</span>
+            <p class="display text-2xl font-bold">${pending.next >= 0 ? (pending.again ? "Ready to go again?" : "Ready for phrase " + (pending.next + 1) + "?") : "That was the last phrase"}</p>
+            <div class="coach-actions">
+              <button class="btn" onClick=${() => tryAgain(pending.after)}>↻ Again</button>
+              <button class="btn" onClick=${() => hearPhrase(pending.after)}>▶ Phrase</button>
+              ${pending.next >= 0
+                ? html`<button class="btn btn-primary" onClick=${() => runRepeat(pending.next)}>${pending.again ? "Go →" : "Next →"}</button>`
+                : html`<button class="btn btn-primary" onClick=${() => onGo && onGo("karaoke")}>Karaoke →</button>`}
+            </div>
+          </div>`;
           const listenPh = mode === "repeat" && playing && curPh >= 0;
           return html`<div class="flex flex-col gap-1 min-w-0">
             <span class="flex items-center justify-between gap-2">
@@ -2358,12 +2383,14 @@ select.btn { appearance: auto; }
               <span class="text-sm font-semibold" style=${{ overflowWrap: "anywhere" }}>${words.length ? words.join(" / ") : ph.notes.slice(0, 8).map((n) => nameOf(n.midi)).join(" ") + (ph.notes.length > 8 ? " …" : "")}</span>
               <span class="flex flex-wrap items-center gap-1">
                 <span class="mono text-xs muted">${fmt(ph.start)}–${fmt(ph.end)} · ${ph.notes.length} notes</span>
+                ${lastScores[ph.i] != null && html`<span class=${"tag tag-" + (lastScores[ph.i] >= 80 ? "good" : lastScores[ph.i] >= 50 ? "warn" : "bad")}>Last ${lastScores[ph.i]}%</span>`}
                 ${best[ph.i] != null && html`<span class=${"tag tag-" + (best[ph.i] >= 80 ? "good" : best[ph.i] >= 50 ? "warn" : "bad")}>Best ${best[ph.i]}%</span>`}
                 ${ph.tags.map((t) => html`<span key=${t} class="tag" style=${{ color: "var(--muted)", background: "var(--line)" }}>${t}</span>`)}
               </span>
             </div>
             <span class="flex gap-2 flex-wrap justify-end">
               <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { clearLoop(); if (modeRef.current === "repeat") runRepeat(ph.i); else startPlay(Math.max(0, ph.start - 0.2)); }}>▶ Play</button>
+              ${takesRef.current[ph.i] && html`<button class="btn" style=${{ padding: "5px 10px", fontSize: 12, color: "var(--you)" }} onClick=${() => hearTake(ph.i)} aria-label=${"Hear your last try at phrase " + (ph.i + 1)}>▶ Me</button>`}
               <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => startLoop(ph.start, ph.end + 0.3)}>↻ Loop</button>
               <button class=${"btn" + (done ? " btn-primary" : " btn-ghost")} style=${{ padding: "5px 10px", fontSize: 12 }} aria-pressed=${done ? "true" : "false"} onClick=${() => toggleLearned(ph.i)}>${done ? "✓ Learned" : "Mark learned"}</button>
             </span>
