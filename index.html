@@ -206,6 +206,10 @@ select.btn { appearance: auto; }
 .lyr { position: absolute; top: 5px; height: 20px; line-height: 20px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-left: 2px solid var(--line); color: var(--muted); }
 .lyr.on { color: var(--fg); border-left-color: var(--accent); font-weight: 600; }
 .karaoke { display: flex; flex-direction: column; gap: 2px; min-height: 52px; }
+.chart-lyric { height: 78px; overflow: hidden; min-height: 0; }
+.chart-lyric .cur { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.chart-lyric .nxt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.now-row { height: 34px; display: flex; align-items: center; }
 .karaoke .cur { font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 1.25; text-wrap: balance; }
 .karaoke .nxt { font-size: 13px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -1247,7 +1251,8 @@ select.btn { appearance: auto; }
     const [take, setTake] = useState(null);
     const [off, setOff] = useState(0);
     const [octaveFree, setOctaveFree] = useState(true);
-    const [warp, setWarp] = useState(true);
+    const [warp, setWarp] = useState(() => loadJSON("pitchstaff.warp.v1", false));
+    useEffect(() => saveJSON("pitchstaff.warp.v1", warp), [warp]);
     const [keyFree, setKeyFree] = useState(true);
     const [ks, setKs] = useState(0);
     const [plain, setPlain] = useState(() => { try { return localStorage.getItem("pitchstaff.plain") !== "0"; } catch (e) { return true; } });
@@ -1513,8 +1518,8 @@ select.btn { appearance: auto; }
         </div>`}
 
         ${sub === "chart" && html`<div class="flex flex-col gap-3">
-          ${curNote && html`<span class="chip" style=${{ alignSelf: "flex-start" }}><span class="muted text-xs">Now</span><b class="mono">${pretty(midiInfo(curNote.n.midi).label)}</b>${!curNote.missed && html`<span class="mono text-xs" style=${{ color: "var(--" + curNote.tone + ")" }}>${signed(curNote.cents)}¢</span>`}</span>`}
-          ${spans.length > 0 && html`<div class="karaoke" aria-live="polite">
+          <div class="now-row">${curNote ? html`<span class="chip"><span class="muted text-xs">Now</span><b class="mono">${pretty(midiInfo(curNote.n.midi).label)}</b>${!curNote.missed && html`<span class="mono text-xs" style=${{ color: "var(--" + curNote.tone + ")" }}>${signed(curNote.cents)}¢</span>`}</span>` : html`<span class="chip" style=${{ opacity: 0.45 }}><span class="muted text-xs">Now</span><b class="mono">—</b></span>`}</div>
+          ${spans.length > 0 && html`<div class="karaoke chart-lyric" aria-live="polite">
             <div class="flex items-start justify-between gap-3">
               <p class="cur">${curLine >= 0 ? spans[curLine].text : "♪"}</p>
               ${curLine >= 0 && html`<button class="btn btn-ghost" style=${{ padding: "4px 10px", fontSize: 12, flexShrink: 0 }} onClick=${() => startLoop(spans[curLine].start, spans[curLine].end)}>↻ Loop line</button>`}
