@@ -2367,6 +2367,10 @@ select.btn { appearance: auto; }
 
         <${MelodyMap} data=${data} notes=${notes} tr=${tr} nameOf=${nameOf} phrases=${phrases} lyrics=${spans} loop=${loop} cursor=${cursor} curIdx=${curIdx} onTapNote=${tapNote} onSeek=${seek} themeKey=${themeKey} overlay=${liveLine} />
 
+      <${SongFit} notes=${notes} tr=${tr} phrases=${phrases} linesIn=${linesIn} nameOf=${nameOf} active=${active}
+        onPractice=${(ph) => { clearLoop(); if (modeRef.current === "repeat") runRepeat(ph.i); else startPlay(Math.max(0, ph.start - 0.2)); try { coachRef.current && coachRef.current.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (e) {} }}
+        onFind=${() => { saveJSON(MATCH_KEY + ".mode", "range"); onGo && onGo("live"); }} />
+
       <section class="panel p-4 sm:p-5 flex flex-col gap-3">
         <div class="flex flex-wrap items-end justify-between gap-2">
           <h3 class="display text-lg font-bold">Phrases</h3>
@@ -2524,6 +2528,245 @@ select.btn { appearance: auto; }
     </div>`;
   }
 
+  /* ---------- vocal range ---------- */
+  const RANGE_KEY = "pitchstaff.range.v1";
+  const loadRanges = () => { const v = loadJSON(RANGE_KEY, []); return Array.isArray(v) ? v.filter((r) => r && typeof r.lo === "number" && typeof r.hi === "number") : []; };
+  // typical ranges (MIDI) used to suggest a voice type
+  const VOICES = [["Bass", 40, 64], ["Baritone", 45, 69], ["Tenor", 48, 72], ["Alto", 53, 77], ["Mezzo-soprano", 57, 81], ["Soprano", 60, 84]];
+  function voiceType(lo, hi) {
+    const mid = (lo + hi) / 2;
+    let best = null, bd = Infinity;
+    VOICES.forEach(([n, a, b]) => { const d = Math.abs(mid - (a + b) / 2) + 0.5 * Math.abs(lo - a); if (d < bd) { bd = d; best = n; } });
+    return best;
+  }
+  const comfyOf = (r) => (r.hi - r.lo >= 10 ? [r.lo + 3, r.hi - 3] : r.hi - r.lo >= 4 ? [r.lo + 1, r.hi - 1] : [r.lo, r.hi]);
+  function spanWords(lo, hi) {
+    const n = hi - lo + 1, oct = Math.round(((hi - lo) / 12) * 2) / 2;
+    const o = oct < 0.5 ? "" : oct === 0.5 ? "about half an octave" : "about " + String(Math.floor(oct)) + (oct % 1 ? "½" : "") + " octave" + (oct > 1 ? "s" : "");
+    return n + " notes" + (o ? ", " + o : "");
+  }
+  // a strip of piano keys with your range (and optionally a song's range) marked
+  function RangeKeys({ lo, hi, comfy, song }) {
+    let a = lo, b = hi;
+    if (song) { a = Math.min(a, song[0]); b = Math.max(b, song[1]); }
+    const first = 12 * Math.floor((a - 2) / 12), last = 12 * Math.ceil((b + 2) / 12);
+    const whites = [];
+    for (let m = first; m <= last; m++) if (!midiInfo(m).sharp) whites.push(m);
+    const W = 340, H = 64, kw = W / whites.length, xs = {};
+    const fillW = (m) => (m >= comfy[0] && m <= comfy[1] ? "var(--accent)" : m >= lo && m <= hi ? "color-mix(in srgb, var(--accent) 42%, #f7f7f4)" : "#f7f7f4");
+    const fillB = (m) => (m >= comfy[0] && m <= comfy[1] ? "color-mix(in srgb, var(--accent) 55%, #1d2027)" : m >= lo && m <= hi ? "color-mix(in srgb, var(--accent) 30%, #1d2027)" : "#1d2027");
+    whites.forEach((m, i) => { xs[m] = i * kw; });
+    const cx = (m) => (xs[m] != null ? xs[m] + kw / 2 : xs[m - 1] + kw);
+    const label = "Piano keys: your range " + pretty(midiInfo(lo).label) + " to " + pretty(midiInfo(hi).label) + (song ? ", song " + pretty(midiInfo(song[0]).label) + " to " + pretty(midiInfo(song[1]).label) : "");
+    return html`<svg viewBox=${"0 0 " + W + " " + (H + 16)} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label=${label}>
+      ${whites.map((m) => html`<rect key=${"w" + m} x=${(xs[m] + 0.5).toFixed(1)} y="0.5" width=${(kw - 1).toFixed(1)} height=${H - 1} rx="3" fill=${fillW(m)} stroke="var(--bg)"></rect>`)}
+      ${whites.filter((m) => m < last && midiInfo(m + 1).sharp).map((m) => html`<rect key=${"b" + m} x=${(xs[m] + kw * 0.68).toFixed(1)} y="0.5" width=${(kw * 0.64).toFixed(1)} height=${(H * 0.58).toFixed(1)} rx="2" fill=${fillB(m + 1)} stroke="var(--bg)"></rect>`)}
+      ${song && html`<line x1=${cx(song[0]).toFixed(1)} y1=${H - 9} x2=${cx(song[1]).toFixed(1)} y2=${H - 9} stroke="var(--you)" strokeWidth="5" strokeLinecap="round"></line>`}
+      ${song && song[1] > hi && html`<line x1=${cx(hi + 1).toFixed(1)} y1=${H - 9} x2=${cx(song[1]).toFixed(1)} y2=${H - 9} stroke="var(--bad)" strokeWidth="5" strokeLinecap="round"></line>`}
+      ${song && song[0] < lo && html`<line x1=${cx(song[0]).toFixed(1)} y1=${H - 9} x2=${cx(lo - 1).toFixed(1)} y2=${H - 9} stroke="var(--bad)" strokeWidth="5" strokeLinecap="round"></line>`}
+      ${whites.filter((m) => m % 12 === 0).map((m) => html`<text key=${"t" + m} x=${(xs[m] + 3).toFixed(1)} y=${H + 12} fill="var(--muted)" fontSize="10" fontFamily="JetBrains Mono, monospace">${midiInfo(m).label}</text>`)}
+    </svg>`;
+  }
+  const keyDot = (bg) => html`<span style=${{ width: 12, height: 12, borderRadius: 3, background: bg, flexShrink: 0 }}></span>`;
+
+  function RangeFinder({ feedRef, listening, onStartMic, onStopMic }) {
+    const [history, setHistory] = useState(loadRanges);
+    const [testing, setTesting] = useState(false);
+    const [step, setStep] = useState("low");
+    const [cur, setCur] = useState(null);
+    const [hold, setHold] = useState(0);
+    const [found, setFound] = useState({ low: null, high: null });
+    const s = useRef({ buf: [], cand: null, since: 0, quiet: 0, step: "low", low: null, high: null, hold: 0 });
+    const ringC = 2 * Math.PI * 48;
+
+    feedRef.current = (m, now) => {
+      const st = s.current;
+      if (!testing) return;
+      if (m == null || m < 36 || m > 92) {
+        if (!st.quiet) st.quiet = now;
+        if (now - st.quiet > 150 && st.cand != null) { st.buf = []; st.cand = null; st.hold = 0; setCur(null); setHold(0); }
+        return;
+      }
+      st.quiet = 0;
+      st.buf.push(m); if (st.buf.length > 7) st.buf.shift();
+      const med = [...st.buf].sort((a, b) => a - b)[Math.floor(st.buf.length / 2)];
+      const n = Math.round(med);
+      if (n !== st.cand) { st.cand = n; st.since = now; setCur(n); }
+      const h = Math.min(1, (now - st.since) / 500);
+      if (Math.abs(h - st.hold) >= 0.05 || (h === 1 && st.hold !== 1)) { st.hold = h; setHold(h); }
+      if (h >= 1) {
+        if (st.step === "low" && (st.low == null || n < st.low)) { st.low = n; setFound((f) => ({ ...f, low: n })); }
+        if (st.step === "high" && (st.high == null || n > st.high)) { st.high = n; setFound((f) => ({ ...f, high: n })); }
+      }
+    };
+    useEffect(() => () => { feedRef.current = null; }, []);
+
+    const begin = () => {
+      s.current = { buf: [], cand: null, since: 0, quiet: 0, step: "low", low: null, high: null, hold: 0 };
+      setFound({ low: null, high: null }); setStep("low"); setCur(null); setHold(0); setTesting(true);
+      if (!listening) onStartMic();
+    };
+    const goHigh = () => { s.current.step = "high"; s.current.cand = null; s.current.buf = []; setStep("high"); setCur(null); setHold(0); };
+    const finish = () => {
+      const lo = s.current.low, hi = s.current.high;
+      if (lo == null || hi == null) return;
+      const r = { lo: Math.min(lo, hi), hi: Math.max(lo, hi), at: Date.now() };
+      const next = [r, ...history].slice(0, 12);
+      setHistory(next); saveJSON(RANGE_KEY, next);
+      setTesting(false); onStopMic();
+    };
+    const cancel = () => { setTesting(false); onStopMic(); };
+
+    if (testing) {
+      const best = step === "low" ? found.low : found.high;
+      const center = cur != null ? cur : best != null ? best : step === "low" ? 57 : 67;
+      const rows = []; for (let m = center + 6; m >= center - 6; m--) rows.push(m);
+      return html`<${React.Fragment}>
+        <div class="flex items-center gap-3">
+          <span class="flex gap-1"><span style=${{ width: 26, height: 6, borderRadius: 3, background: step === "high" ? "var(--good)" : "var(--accent)" }}></span><span style=${{ width: 26, height: 6, borderRadius: 3, background: step === "high" ? "var(--accent)" : "var(--line)" }}></span></span>
+          <span class="text-sm muted">Step ${step === "low" ? 1 : 2} of 2</span>
+        </div>
+        <section class="tuner-card" style=${{ alignItems: "stretch", justifyContent: "flex-start", flex: 1, gap: 14 }}>
+          <div class="flex flex-col gap-1">
+            <span class="display font-bold" style=${{ fontSize: 24 }}>${step === "low" ? "Slide down" : "Now slide up"}</span>
+            <span class="text-sm muted">${step === "low" ? "Start on a comfy note and glide down slowly. Stop when your voice gets croaky or breathy." : "Start on a comfy note and glide up slowly, like a siren. Stop when it strains. No need to push."}</span>
+          </div>
+          ${!listening ? html`<div class="flex justify-center py-4"><button class="btn btn-primary" style=${{ minHeight: 52, fontSize: 16, padding: "0 22px" }} onClick=${onStartMic}><span class="flex items-center gap-2"><${Icon} name="mic" size=${20} />Tap to start listening</span></button></div>` : html`
+          <div class="flex gap-3" style=${{ flex: 1, minHeight: 0 }}>
+            <div class="flex flex-col" style=${{ flex: 1, gap: 3, minWidth: 0 }} aria-hidden="true">
+              ${rows.map((m) => {
+                const isCur = m === cur, isBest = m === best;
+                const reached = best != null && (step === "low" ? m >= best : m <= best);
+                return html`<div key=${m} class="mono flex items-center justify-between" style=${{ height: 22, padding: "0 10px", borderRadius: 6, fontSize: 11, background: isCur ? "var(--you)" : reached ? "color-mix(in srgb, var(--you) 14%, transparent)" : "var(--surface-2)", color: isCur ? "var(--bg)" : reached ? "var(--fg)" : "var(--muted)", fontWeight: isCur ? 700 : 500 }}>
+                  <span>${pretty(midiInfo(m).label)}</span><span>${isCur ? "you" : isBest ? (step === "low" ? "lowest" : "highest") : ""}</span></div>`;
+              })}
+            </div>
+            <div class="flex flex-col items-center justify-center gap-2" style=${{ width: 118, flexShrink: 0 }}>
+              <span style=${{ position: "relative", width: 108, height: 108 }}>
+                <svg width="108" height="108" viewBox="0 0 108 108" role="img" aria-label=${cur != null ? "Holding " + pretty(midiInfo(cur).label) : "Waiting for your voice"}>
+                  <circle cx="54" cy="54" r="48" fill="none" stroke="var(--line)" strokeWidth="6"></circle>
+                  <circle cx="54" cy="54" r="48" fill="none" stroke="var(--you)" strokeWidth="6" strokeLinecap="round" strokeDasharray=${(ringC * hold).toFixed(1) + " " + ringC.toFixed(1)} transform="rotate(-90 54 54)"></circle>
+                </svg>
+                <span style=${{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <span class="label" style=${{ fontSize: 10 }}>Hold</span>
+                  <span class="display font-bold" style=${{ fontSize: 32, lineHeight: 1, color: cur != null ? "var(--you)" : "var(--muted)" }} aria-live="polite">${cur != null ? pretty(midiInfo(cur).label) : "—"}</span>
+                </span>
+              </span>
+              <span class="text-xs muted" style=${{ textAlign: "center" }}>Hold a note steady for half a second to count it</span>
+            </div>
+          </div>`}
+          <div class="grid grid-cols-2 gap-2">
+            <div style=${{ padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)" }}><div class="label">Lowest</div><div class="display font-bold" style=${{ fontSize: 20 }}>${found.low != null ? pretty(midiInfo(found.low).label) : "—"}${found.low != null && step === "high" ? html` <span style=${{ fontSize: 13, color: "var(--good)" }}>✓</span>` : ""}</div></div>
+            <div style=${{ padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)" }}><div class="label">Highest</div><div class="display font-bold" style=${{ fontSize: 20 }}>${found.high != null ? pretty(midiInfo(found.high).label) : "—"}</div></div>
+          </div>
+        </section>
+        <div class="grid grid-cols-2 gap-2">
+          <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${step === "low" ? cancel : begin}>${step === "low" ? "Cancel" : "Start over"}</button>
+          ${step === "low"
+            ? html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${goHigh} disabled=${found.low == null}>Next: slide up</button>`
+            : html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${finish} disabled=${found.high == null}>See my range</button>`}
+        </div>
+      <//>`;
+    }
+
+    if (!history.length) return html`<${React.Fragment}>
+      <section class="tuner-card" style=${{ alignItems: "stretch", gap: 12 }}>
+        <span class="display font-bold" style=${{ fontSize: 24 }}>Find your range</span>
+        <p class="text-sm muted" style=${{ margin: 0 }}>A 1-minute test to find your lowest and highest notes. You'll slide down, then slide up, and Tono notes where your voice stays steady.</p>
+        <ul class="text-sm flex flex-col gap-1" style=${{ margin: 0, paddingLeft: 18 }}>
+          <li>Warm up a little first. Hum or sing something easy.</li>
+          <li>Go slowly, and stop before it hurts. Straining doesn't count.</li>
+          <li>A quiet room helps the mic hear you clearly.</li>
+        </ul>
+      </section>
+      <div style=${{ marginTop: "auto" }}><button class="btn btn-primary w-full" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${begin}>Start the test</button></div>
+    <//>`;
+
+    const r = history[0], comfy = comfyOf(r);
+    const today = new Date().toDateString();
+    const day = (t) => (new Date(t).toDateString() === today ? "Today" : new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+    const change = (i) => {
+      const a = history[i], b = history[i + 1];
+      if (!b) return "First test";
+      const up = a.hi - b.hi, down = b.lo - a.lo, parts = [];
+      if (up) parts.push((up > 0 ? "+" : "−") + Math.abs(up) + " top");
+      if (down) parts.push((down > 0 ? "+" : "−") + Math.abs(down) + " low");
+      return parts.length ? parts.join(", ") : "Same";
+    };
+    return html`<${React.Fragment}>
+      <section class="tuner-card" style=${{ alignItems: "stretch", gap: 14 }}>
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex flex-col min-w-0">
+            <span class="label">Your range</span>
+            <span class="display font-bold" style=${{ fontSize: 40, lineHeight: 1.05 }}>${pretty(midiInfo(r.lo).label)} – ${pretty(midiInfo(r.hi).label)}</span>
+            <span class="text-sm muted">${spanWords(r.lo, r.hi)}</span>
+          </div>
+          <span class="tag" style=${{ background: "color-mix(in srgb, var(--accent) 16%, transparent)", color: "var(--accent)", fontSize: 13, padding: "5px 10px", whiteSpace: "nowrap" }}>${voiceType(r.lo, r.hi)}</span>
+        </div>
+        <${RangeKeys} lo=${r.lo} hi=${r.hi} comfy=${comfy} />
+        <div class="flex flex-wrap gap-3 text-xs muted">
+          <span class="flex items-center gap-2">${keyDot("var(--accent)")}Comfortable ${pretty(midiInfo(comfy[0]).label)}–${pretty(midiInfo(comfy[1]).label)}</span>
+          <span class="flex items-center gap-2">${keyDot("color-mix(in srgb, var(--accent) 42%, #f7f7f4)")}Reachable</span>
+        </div>
+        <p class="text-xs muted" style=${{ margin: 0 }}>Voice type is a rough guide from your range. Tone and where your voice feels easy matter too, and your range can grow as you practise.</p>
+      </section>
+      ${history.length > 1 && html`<section class="panel p-4 flex flex-col gap-2">
+        <span class="label">Past results</span>
+        ${history.slice(0, 4).map((h, i) => html`<div key=${h.at} class="flex items-center justify-between gap-2 text-sm" style=${{ color: i ? "var(--muted)" : "var(--fg)" }}>
+          <span style=${{ width: 64 }}>${day(h.at)}</span><span class="mono" style=${{ fontSize: 13 }}>${pretty(midiInfo(h.lo).label)} – ${pretty(midiInfo(h.hi).label)}</span><span class="text-xs" style=${{ width: 92, textAlign: "right", color: i === 0 && /\+/.test(change(0)) ? "var(--good)" : undefined }}>${change(i)}</span>
+        </div>`)}
+      </section>`}
+      <div style=${{ marginTop: "auto" }}><button class="btn btn-primary w-full" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${begin}>Test again</button></div>
+    <//>`;
+  }
+
+  // Practice: how the loaded song sits against the singer's saved range
+  function SongFit({ notes, tr, phrases, linesIn, nameOf, active, onPractice, onFind }) {
+    const mine = useMemo(() => loadRanges()[0] || null, [active]);
+    if (!notes.length) return null;
+    if (!mine) return html`<section class="panel p-4 flex items-center gap-3" style=${{ borderStyle: "dashed" }}>
+      <span class="text-sm muted" style=${{ flex: 1 }}>No range yet? Take the 1-minute test in Tuner to see how songs fit you.</span>
+      <button class="link-btn text-sm" style=${{ whiteSpace: "nowrap" }} onClick=${onFind}>Find my range</button>
+    </section>`;
+    let slo = 999, shi = 0;
+    notes.forEach((n) => { slo = Math.min(slo, n.midi + tr); shi = Math.max(shi, n.midi + tr); });
+    const highs = new Set(), lows = new Set();
+    notes.forEach((n) => { const m = n.midi + tr; if (m > mine.hi) highs.add(m); if (m < mine.lo) lows.add(m); });
+    const out = highs.size + lows.size;
+    const status = !out ? ["Fits you", "good"] : highs.size && lows.size ? ["Wider than your range", "warn"] : highs.size ? [out <= 3 ? "A bit high" : "High for you", "warn"] : [out <= 3 ? "A bit low" : "Low for you", "warn"];
+    const hard = phrases.map((ph) => {
+      let top = null, bottom = null;
+      ph.notes.forEach((n) => { const m = n.midi + tr; if (m > mine.hi && (top == null || m > top)) top = m; if (m < mine.lo && (bottom == null || m < bottom)) bottom = m; });
+      return top != null || bottom != null ? { ph, m: top != null ? top : bottom } : null;
+    }).filter(Boolean);
+    const outNames = [...highs, ...lows];
+    return html`<section class="panel p-4 flex flex-col gap-3">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="display text-lg font-bold">Song vs your range</h3>
+        <span class=${"tag tag-" + status[1]}>${status[0]}</span>
+      </div>
+      <${RangeKeys} lo=${mine.lo} hi=${mine.hi} comfy=${comfyOf(mine)} song=${[slo, shi]} />
+      <div class="flex flex-wrap gap-3 text-xs muted">
+        <span class="flex items-center gap-2"><span style=${{ width: 14, height: 5, borderRadius: 3, background: "var(--you)" }}></span>Song ${pretty(midiInfo(slo).label)}–${pretty(midiInfo(shi).label)}</span>
+        <span class="flex items-center gap-2">${keyDot("var(--accent)")}You ${pretty(midiInfo(mine.lo).label)}–${pretty(midiInfo(mine.hi).label)}</span>
+        ${out > 0 && html`<span class="flex items-center gap-2"><span style=${{ width: 14, height: 5, borderRadius: 3, background: "var(--bad)" }}></span>Outside your range</span>`}
+      </div>
+      ${!out
+        ? html`<p class="text-sm" style=${{ margin: 0 }}>Every note is inside your range. Nice pick!</p>`
+        : html`<p class="text-sm" style=${{ margin: 0 }}><b>${out} note${out > 1 ? "s" : ""}</b> (${outNames.map((m) => pretty(midiInfo(m).label)).join(", ")}) ${(highs.size && lows.size ? "go outside" : highs.size ? "go above" : "go below").replace(/^go/, out > 1 ? "go" : "goes")} your range, in <b>${hard.length} phrase${hard.length > 1 ? "s" : ""}</b>:</p>
+        <div class="flex flex-col gap-2">
+          ${hard.slice(0, 5).map(({ ph, m }) => { const w = linesIn(ph.start, ph.end); return html`<div key=${ph.i} class="flex items-center gap-3" style=${{ padding: "8px 12px", borderRadius: 12, background: "var(--surface-2)" }}>
+            <span class="mono text-xs muted">${fmt(ph.start)}</span>
+            <span class="text-sm" style=${{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${w.length ? w.join(" / ") : "Phrase " + (ph.i + 1)}</span>
+            <span class="mono text-xs" style=${{ color: "var(--bad)" }}>${pretty(midiInfo(m).label)}</span>
+            <button class="link-btn text-sm" onClick=${() => onPractice(ph)}>Practise</button>
+          </div>`; })}
+          ${hard.length > 5 && html`<span class="text-xs muted">…and ${hard.length - 5} more in the phrase list.</span>`}
+        </div>
+        <p class="text-xs muted" style=${{ margin: 0 }}>Tip: ${highs.size ? "sing the high notes lightly, or drop them an octave for now." : "sing the low notes softly, or take them up an octave for now."}${highs.size && lows.size ? " Low ones can go up an octave." : ""}</p>`}
+    </section>`;
+  }
+
   function MatchTrainer({ hookRef, listening, onStartMic, onStopMic, onTarget, onStatus, sung, live, level, error }) {
     const [target, setTarget] = useState(null);
     const [tmode, setTmode] = useState(() => loadJSON(MATCH_KEY + ".mode", "free"));
@@ -2541,6 +2784,7 @@ select.btn { appearance: auto; }
     const [stats, setStats] = useState(() => loadJSON(MATCH_KEY + ".stats", { hits: 0, best: null }));
     const r = useRef({ target: null, setAt: 0, holdStart: 0, ignoreUntil: 0, matched: false, ctx: null, timers: [] });
     const opts = useRef({});
+    const rangeFeed = useRef(null);
     opts.current = { tol: TOLS[diff], anyOct, autoNext, range };
 
     const ctx = () => {
@@ -2582,6 +2826,7 @@ select.btn { appearance: auto; }
 
     // called by the microphone loop on every frame: m = sung pitch (fractional MIDI) or null for silence
     hookRef.current = (m, now) => {
+      if (tmode === "range") { if (rangeFeed.current) rangeFeed.current(m, now); return; }
       const s = r.current, o = opts.current;
       if (s.target == null || s.matched || now < s.ignoreUntil) return;
       if (m == null) { if (s.holdStart) { s.holdStart = 0; setHold(0); } setCents(null); return; }
@@ -2623,7 +2868,7 @@ select.btn { appearance: auto; }
 
     const switchMode = (m) => {
       setTmode(m); save("mode", m);
-      if (m === "free") {
+      if (m !== "match") {
         const st = r.current;
         st.timers.forEach(clearTimeout); st.timers = [];
         st.target = null; st.matched = false; setTarget(null); setPhase("idle"); setCents(null); setHold(0); onTarget(null);
@@ -2637,14 +2882,15 @@ select.btn { appearance: auto; }
 
     return html`<div class="tuner-screen">
       <div class="flex items-center gap-2">
-        <div class="mode-seg" role="group" aria-label="Tuner mode" style=${{ flex: 1 }}>
+        <div class="mode-seg" role="group" aria-label="Tuner mode" style=${{ flex: 1, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
           <button aria-pressed=${tmode === "free" ? "true" : "false"} onClick=${() => switchMode("free")}>Free</button>
           <button aria-pressed=${tmode === "match" ? "true" : "false"} onClick=${() => switchMode("match")}>Match a note</button>
+          <button aria-pressed=${tmode === "range" ? "true" : "false"} onClick=${() => switchMode("range")}>My range</button>
         </div>
       </div>
       ${error && html`<div class="notice" role="alert">${error}</div>`}
 
-      ${tmode === "free" ? html`<${React.Fragment}>
+      ${tmode === "range" ? html`<${RangeFinder} feedRef=${rangeFeed} listening=${listening} onStartMic=${onStartMic} onStopMic=${onStopMic} />` : tmode === "free" ? html`<${React.Fragment}>
         <section class="tuner-card" style=${{ flex: 1 }}>
           <${Dial} cents=${live ? live.cents : null} tol=${10} tone=${freeTone} lowLabel="−50¢" highLabel="+50¢" />
           ${listening
