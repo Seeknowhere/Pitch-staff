@@ -2727,7 +2727,7 @@ select.btn { appearance: auto; }
     };
     const killSources = () => {
       const p = play.current;
-      tape.current.on = false; p.songAt = null;
+      tape.current.on = false; tape.current.pos = null; p.songAt = null;
       cancelAnimationFrame(p.raf);
       if (p.hear) { try { p.hear.stop(); } catch (e) {} p.hear = null; setHearing(false); }
       [...p.srcs, ...p.guide].forEach((s) => { try { s.stop(); } catch (e) {} });
@@ -2761,8 +2761,14 @@ select.btn { appearance: auto; }
           const out = new Float32Array(half ? inp.length >> 1 : inp.length);
           if (half) for (let i = 0; i < out.length; i++) out[i] = (inp[2 * i] + inp[2 * i + 1]) / 2; else out.set(inp);
           T.sr = half ? sr / 2 : sr;
-          const startT = p.songAt() - inp.length / sr;
-          T.chunks.push({ i: Math.max(0, Math.round(startT * T.sr)), d: out });
+          // place the first block by song time, then lay the rest end to end so there are no gaps or overlaps (which click)
+          if (T.pos == null) {
+            T.pos = Math.max(0, Math.round((p.songAt() - inp.length / sr) * T.sr));
+            const f = Math.min(240, out.length);
+            for (let i = 0; i < f; i++) out[i] *= i / f;
+          }
+          T.chunks.push({ i: T.pos, d: out });
+          T.pos += out.length;
         };
         mic.current = { stream, src, an, proc, sink };
         return true;
@@ -2915,7 +2921,7 @@ select.btn { appearance: auto; }
       if (t >= end - 0.1) t = lp ? Math.max(0, lp.a - 0.6) : 0;
       if (fresh || t < 0.05) {
         run.current = { her: new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN), lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {} };
-        tape.current = { on: false, sr: 24000, chunks: [] };
+        tape.current = { on: false, sr: 24000, chunks: [], pos: null };
         setMarks([]); setLineScores({}); setFinal(null); setOverlay(null); setTakeBuf(null);
       } else if (!run.current.her) {
         run.current.her = new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN);
@@ -2936,6 +2942,7 @@ select.btn { appearance: auto; }
       start(orig.buffer, t, p.gV);
       p.guide = scheduleGuide(ctx, p.gG, notes, t, end, now, 0, 1);
       p.songAt = () => t + Math.max(0, ctx.currentTime - now);
+      tape.current.pos = null;
       tape.current.on = !!(listening && mic.current.an && !check);
       setPlaying(true);
       const an = listening ? mic.current.an : null, buf = an ? new Float32Array(an.fftSize) : null;
