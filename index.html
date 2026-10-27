@@ -149,11 +149,47 @@ select.btn { appearance: auto; }
 .player input { width: 100%; min-width: 0; }
 .take-box { display: flex; flex-direction: column; gap: 12px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 12px; background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
 .song-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.stage-big { min-height: 230px; padding: 28px 12px; }
+.stage-big .kline { max-width: 26ch; }
 .stage { display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; padding: 18px 8px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); min-height: 150px; justify-content: center; }
 .kline { margin: 0; font-family: var(--font-display); font-weight: 700; line-height: 1.25; text-wrap: balance; max-width: 34ch; }
 .kline.dim { font-weight: 600; opacity: .55; }
 .kw { background: linear-gradient(90deg, var(--accent) var(--p, 0%), var(--fg) var(--p, 0%)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .kline.dim .kw { background: none; color: var(--muted); }
+.app-wrap { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important; }
+.bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border-top: 1px solid var(--line); padding: 6px max(8px, env(safe-area-inset-left, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-right, 0px)); }
+.bottom-nav button { display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 52px; justify-content: center; border: 0; background: none; color: var(--muted); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; border-radius: 10px; }
+.bottom-nav button[aria-current="page"] { color: var(--accent); }
+.bottom-nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (min-width: 900px) { .bottom-nav { left: 50%; right: auto; transform: translateX(-50%); width: 520px; bottom: 12px; border: 1px solid var(--line); border-radius: 18px; padding-bottom: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.25); } }
+.song-bar { display: flex; align-items: center; gap: 12px; }
+.song-ico { width: 40px; height: 40px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); color: var(--accent); display: grid; place-items: center; flex-shrink: 0; }
+.playbar { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 20; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.18); }
+@media (min-width: 900px) { .playbar { bottom: calc(88px + env(safe-area-inset-bottom, 0px)); } }
+.playbar input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); }
+.round-btn { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; border: 1px solid var(--line); background: var(--surface-2); color: var(--fg); cursor: pointer; }
+.round-btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.round-btn.big { width: 64px; height: 64px; }
+.round-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.icon-btn { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+.icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sheet-wrap { position: fixed; inset: 0; z-index: 50; background: rgba(5,7,10,.55); display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: 100%; max-width: 620px; max-height: 86vh; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-bottom: 0; border-radius: 20px 20px 0 0; box-shadow: 0 -10px 40px rgba(0,0,0,.3); }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px max(18px, env(safe-area-inset-left, 0px)) 10px; border-bottom: 1px solid var(--line); }
+.sheet-body { overflow-y: auto; padding: 16px max(18px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 18px; }
+.file-list { display: flex; flex-direction: column; gap: 10px; }
+.file-list > .panel { border-radius: 12px; background: var(--surface-2); }
+.file-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.subtabs::-webkit-scrollbar { display: none; }
+.subtabs button { min-height: 44px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font: inherit; font-weight: 600; font-size: 14px; white-space: nowrap; cursor: pointer; }
+.subtabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.subtabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.mode-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 4px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.mode-seg button { min-height: 42px; border: 0; border-radius: 9px; background: none; color: var(--muted); font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; }
+.mode-seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.opt-group { display: flex; flex-direction: column; gap: 8px; }
+.empty-hero { display: flex; flex-direction: column; gap: 6px; }
 .lyr-band { position: relative; height: 30px; border-bottom: 1px solid var(--line); }
 .lyr { position: absolute; top: 5px; height: 20px; line-height: 20px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-left: 2px solid var(--line); color: var(--muted); }
 .lyr.on { color: var(--fg); border-left-color: var(--accent); font-weight: 600; }
@@ -1193,7 +1229,9 @@ select.btn { appearance: auto; }
     </div>`;
   }
 
-  function Analyst({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, incomingTake, inst, onPickInst, sync, keyWarn }) {
+  function Analyst({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, incomingTake, lastTake, onUseTake, onPractice, onGo, inst, onPickInst, sync, keyWarn }) {
+    const [sub, setSub] = useState("overview");
+    const [optOpen, setOptOpen] = useState(false);
     const [take, setTake] = useState(null);
     const [off, setOff] = useState(0);
     const [octaveFree, setOctaveFree] = useState(true);
@@ -1376,35 +1414,40 @@ select.btn { appearance: auto; }
     const curNote = result && cursor != null ? result.rows.find((r) => cursor >= r.n.pos && cursor < r.n.end) : null;
     const tech = useMemo(() => (result ? technique(orig.data, take.data, result) : []), [result]);
 
-    return html`<div class="flex flex-col gap-5">
-      <div class="grid gap-4 sm:grid-cols-2">
-        <${UploadSlot} id="orig-file" step="1" title="Original acapella" hint="The isolated vocal of the song. One lead voice works best; harmonies make the melody harder to read." slot=${orig} onPick=${onPickOrig} />
-        <${UploadSlot} id="take-file" step="2" title="Your singing" hint="A recording of you singing the same part, like a Voice Memo. Record somewhere quiet, ideally with headphones so the music isn't picked up." slot=${take} onPick=${(f) => pick("take", f)} />
-      </div>
+    const subs = [["overview", "Overview"], ["chart", "Chart"], ["notes", "Notes"], ["technique", "Technique"], ["history", "History"]];
+    const takeIsFromKaraoke = take && take.name && /^Karaoke take/.test(take.name);
+    return html`<div class="flex flex-col gap-4">
+      ${!(take && (take.data || take.busy))
+        ? html`<section class="flex flex-col gap-3">
+            <div class="empty-hero">
+              <h2 class="display text-2xl font-bold">Check your singing</h2>
+              <p class="muted text-sm">Pick a recording of you singing this song.</p>
+            </div>
+            ${lastTake && html`<button class="file-row" style=${{ cursor: "pointer", textAlign: "left", color: "var(--fg)", font: "inherit" }} onClick=${() => onUseTake && onUseTake(lastTake)}>
+              <span class="song-ico"><${Icon} name="mic" /></span>
+              <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><span class="font-semibold">Use my last Karaoke take</span><span class="text-xs muted">${lastTake.name.replace(/^Karaoke take · /, "Recorded ")}</span></span>
+              <span class="btn btn-primary" style=${{ padding: "6px 14px", fontSize: 13 }}>Use</span>
+            </button>`}
+            <div class="grid gap-4">
+        <${UploadSlot} id="take-file" step=${lastTake ? "or" : "1"} title="Upload a recording" hint="A recording of you singing the same part, like a Voice Memo. Record somewhere quiet, ideally with headphones so the music isn't picked up." slot=${take} onPick=${(f) => pick("take", f)} />
+            </div>
+            ${!lastTake && html`<p class="text-xs muted">Tip: sing in Karaoke with headphones and your take comes straight here.</p>`}
+          </section>`
+        : html`<div class="flex items-center gap-3">
+            <span class="song-ico"><${Icon} name="mic" /></span>
+            <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
+              <span class="font-semibold text-sm" style=${{ overflowWrap: "anywhere" }}>${take.name}</span>
+              <span class="text-xs muted">${take.busy ? "Analyzing " + Math.round((take.progress || 0) * 100) + "%" : result && result.range && !result.range.whole ? "Sung " + fmt(result.range.start) + "–" + fmt(result.range.end) : "Your singing"}</span>
+            </span>
+            <button class="btn" style=${{ padding: "7px 14px", fontSize: 13 }} onClick=${() => { stopPlay(); setTake(null); }}>Change take</button>
+          </div>`}
 
-      <div class="panel p-4 flex flex-wrap items-center gap-3">
-        <div class="flex-1 min-w-0" style=${{ minWidth: 200 }}>
-          <span class="label">Optional</span>
-          <h3 class="display text-lg font-bold">Instrumental</h3>
-          ${inst && inst.buffer
-            ? html`<p class="text-sm" style=${{ overflowWrap: "anywhere" }}><b>${inst.name}</b> <span class="muted mono text-xs">· shared with Karaoke${sync ? " · timing " + signed(sync.toFixed(2)) + " s" : ""}</span></p>`
-            : inst && inst.busy ? html`<p class="text-sm muted">Reading the music…</p>`
-            : html`<p class="muted text-sm">Add the karaoke version to hear your take over the music. It's shared with Karaoke, where you can fine-tune its timing.</p>`}
-          ${inst && inst.error && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${inst.error}</p>`}
-          ${keyWarn !== 0 && inst && inst.buffer && html`<p class="text-xs" style=${{ color: "var(--warn)" }}>This instrumental seems to be in a different key from the acapella.</p>`}
+      ${ready && result && html`<${React.Fragment}>
+        <div class="subtabs" role="tablist" aria-label="Results">
+          ${subs.map(([k, l]) => html`<button key=${k} role="tab" aria-selected=${sub === k ? "true" : "false"} onClick=${() => setSub(k)}>${l}</button>`)}
         </div>
-        <button class=${"btn" + (inst && inst.buffer ? "" : " btn-primary")} disabled=${!orig || !orig.data || (inst && inst.busy)} onClick=${() => document.getElementById("an-inst-file").click()}>${inst && inst.buffer ? "Replace music" : "Upload instrumental"}</button>
-        <input id="an-inst-file" type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPickInst(f); }} />
-      </div>
 
-      <${LyricsCard} orig=${orig} lyrics=${lyrics} updateLyrics=${updateLyrics} count=${spans.length} hint="Shows the words above the chart and names the line in each practice tip. Saved for this song on this device." />
-
-      ${!ready && html`<div class="panel p-5 flex flex-col gap-2">
-        <h3 class="display text-lg font-bold">Your results will appear here</h3>
-        <p class="muted text-sm" style=${{ maxWidth: "62ch" }}>Once both files are analyzed you get a score, a pitch chart with the original melody and your line on top of it, playback of either or both, the phrases to practice, and a note-by-note breakdown.</p>
-      </div>`}
-
-      ${ready && result && html`<section class="panel p-4 sm:p-5 flex flex-col gap-5 min-w-0">
+        ${sub === "overview" && html`<div class="flex flex-col gap-5">
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div class="flex items-end gap-3">
             <span class="display font-bold" style=${{ fontSize: 72, lineHeight: 1, color: "var(--accent)" }}>${result.score}</span>
@@ -1414,11 +1457,11 @@ select.btn { appearance: auto; }
               ${result.range && !result.range.whole && html`<span class="text-xs muted">Scored ${fmt(result.range.start)}–${fmt(result.range.end)}, the part you sang</span>`}
             </div>
           </div>
-          <div class="seg" role="group" aria-label="Wording">
+          <div class="seg" role="group" aria-label="Wording" hidden>
             <button aria-pressed=${plain ? "true" : "false"} onClick=${() => choosePlain(true)}>Simple words</button>
             <button aria-pressed=${plain ? "false" : "true"} onClick=${() => choosePlain(false)}>Detailed</button>
           </div>
-          <button class="btn" onClick=${saveAttempt} disabled=${saved}>${saved ? "Saved to attempts" : "Save this attempt"}</button>
+          <button class="btn" onClick=${saveAttempt} disabled=${saved}>${saved ? "Saved" : "Save score"}</button>
         </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -1432,22 +1475,33 @@ select.btn { appearance: auto; }
 
         ${result.coverage < 40 && html`<div class="notice">Your take doesn't line up well with the original. Check that it's the same song section, then try Auto-align or the nudge buttons.</div>`}
 
-        <div class="flex flex-col gap-3">
-          <div class="flex flex-wrap items-center gap-2">
-            <button class="btn btn-primary" onClick=${() => (playing ? stopPlay() : startPlay(cursor || 0))}>${playing ? "❚❚ Pause" : "▶ Play"}</button>
-            ${loop && html`<span class="chip" style=${{ borderColor: "var(--accent)" }}><span class="text-xs">↻ Looping</span><b class="mono text-xs">${fmt(loop.a)}–${fmt(loop.b)}</b>
-              <button class="text-xs" style=${{ color: "var(--accent)", background: "none", border: 0, cursor: "pointer", fontWeight: 600 }} onClick=${clearLoop} aria-label="Stop looping">✕</button></span>`}
-            <span class="mono text-xs muted">${fmt(cursor || 0)} / ${fmt(orig.data.duration)}</span>
-            ${curNote && html`<span class="chip"><span class="muted text-xs">Now</span><b class="mono">${pretty(midiInfo(curNote.n.midi).label)}</b>${!curNote.missed && html`<span class="mono text-xs" style=${{ color: "var(--" + curNote.tone + ")" }}>${signed(curNote.cents)}¢</span>`}</span>`}
-          </div>
-          <div class="mixer">
-            ${[["o", "Original"], ["g", "Guide notes"], ["t", "My take"], ...(inst && inst.buffer ? [["m", "Music"]] : [])].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"mix-" + k}>
-              <span class="text-xs font-semibold">${l}</span>
-              <input id=${"mix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
-              <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
-            </label>`)}
-          </div>
-          <p class="text-xs muted">Guide notes play the original melody as clean tones${result.shift !== 0 ? " in your key" : ""}. Turn ${inst && inst.buffer ? "Original, Guide and Music" : "Original and Guide"} off to hear only your take at your own pace.${inst && inst.buffer ? " Turn Original off and Music up to hear yourself with the instrumental." : ""}</p>
+        ${result.keyShift !== 0 && html`<div class="notice" style=${{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
+          <b>${plain ? "You sang the whole song " + pianoKeys(Math.abs(result.keyShift)) + " " + (result.keyShift > 0 ? "higher" : "lower") + " than the original (a different key)." : "You sang it " + Math.abs(result.keyShift) + " half step" + (Math.abs(result.keyShift) > 1 ? "s" : "") + " " + (result.keyShift > 0 ? "higher" : "lower") + " than the original."}</b>
+          ${plain ? "That's completely fine. " : ""}You're being scored in your own key. The guide tones play in your key too. Turn off Match my key to score against the original key.
+        </div>`}
+        ${result.octShift !== 0 && html`<p class="text-xs muted">${plain
+          ? "You're singing the same tune " + (Math.abs(result.octShift) > 12 ? Math.abs(result.octShift / 12) + " octaves" : "an octave") + " " + (result.octShift > 0 ? "higher" : "lower") + " than the original, the way women and men often sing the same song. That counts as correct."
+          : "You're singing " + Math.abs(result.octShift / 12) + " octave" + (Math.abs(result.octShift) > 12 ? "s" : "") + " " + (result.octShift > 0 ? "above" : "below") + " the original. That's scored as correct while Ignore octave is on."}</p>`}
+
+        <div class="flex flex-col gap-2">
+          <h3 class="display text-lg font-bold">Work on these</h3>
+          ${result.spots.length === 0
+            ? html`<p class="text-sm muted">No weak phrases stood out. Nice.</p>`
+            : result.spots.map((s) => html`<div key=${s.start} class="spot">
+                <span class="mono text-sm font-semibold">${fmt(s.start)}–${fmt(s.end)}</span>
+                <span class="text-sm">${spotText(s, plain)}${linesIn(s.start, s.end).length > 0 && html`<br /><span class="text-xs muted">“${linesIn(s.start, s.end).slice(0, 2).join(" / ")}”</span>`}</span>
+                <span class="flex gap-2">
+                  <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { clearLoop(); setCursor(s.start); startPlay(s.start); }}>▶ Play</button>
+                  <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => startLoop(s.start, s.end)}>↻ Loop</button>
+                  <button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { stopPlay(); onPractice && onPractice(s.start, s.end); }}>Practice</button>
+                </span>
+              </div>`)}
+        </div>
+
+        </div>`}
+
+        ${sub === "chart" && html`<div class="flex flex-col gap-3">
+          ${curNote && html`<span class="chip" style=${{ alignSelf: "flex-start" }}><span class="muted text-xs">Now</span><b class="mono">${pretty(midiInfo(curNote.n.midi).label)}</b>${!curNote.missed && html`<span class="mono text-xs" style=${{ color: "var(--" + curNote.tone + ")" }}>${signed(curNote.cents)}¢</span>`}</span>`}
           ${spans.length > 0 && html`<div class="karaoke" aria-live="polite">
             <div class="flex items-start justify-between gap-3">
               <p class="cur">${curLine >= 0 ? spans[curLine].text : "♪"}</p>
@@ -1464,50 +1518,25 @@ select.btn { appearance: auto; }
             ${result.dev && html`<span>Strip at the bottom: bars up mean you're behind the original, down means ahead.</span>`}
             <span>Tap the chart to jump there.</span>
           </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-3 text-sm">
-          <span class="label">Alignment</span>
-          <button class="switch" role="switch" aria-checked=${warp ? "true" : "false"} onClick=${() => { stopPlay(); setWarp((v) => !v); }} style=${{ fontSize: 13 }}>
-            <span class="track"><span class="knob"></span></span>Follow my timing
-          </button>
-          ${warp
-            ? html`<span class="text-xs muted">${alignment.warped ? "Lined up phrase by phrase" : "Couldn't follow your timing on this take, so a fixed offset is used"}</span>`
-            : html`<${React.Fragment}>
-                <button class="btn" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => nudge(-5)}>−0.1 s</button>
-                <span class="mono text-xs">${offSec === 0 ? "Starts together" : "Your take " + (offSec > 0 ? "starts " + offSec.toFixed(2) + " s later" : "starts " + (-offSec).toFixed(2) + " s earlier")}</span>
-                <button class="btn" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => nudge(5)}>+0.1 s</button>
-              <//>`}
-          <button class="btn btn-ghost" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => { stopPlay(); realign(); }}>Auto-align</button>
-          <button class="switch" role="switch" aria-checked=${octaveFree ? "true" : "false"} onClick=${() => setOctaveFree((v) => !v)} style=${{ fontSize: 13 }}>
-            <span class="track"><span class="knob"></span></span>Ignore octave
-          </button>
-          <button class="switch" role="switch" aria-checked=${keyFree ? "true" : "false"} onClick=${() => { stopPlay(); setKeyFree((v) => !v); }} style=${{ fontSize: 13 }}>
-            <span class="track"><span class="knob"></span></span>Match my key
-          </button>
-        </div>
-        ${result.keyShift !== 0 && html`<div class="notice" style=${{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
-          <b>${plain ? "You sang the whole song " + pianoKeys(Math.abs(result.keyShift)) + " " + (result.keyShift > 0 ? "higher" : "lower") + " than the original (a different key)." : "You sang it " + Math.abs(result.keyShift) + " half step" + (Math.abs(result.keyShift) > 1 ? "s" : "") + " " + (result.keyShift > 0 ? "higher" : "lower") + " than the original."}</b>
-          ${plain ? "That's completely fine. " : ""}You're being scored in your own key. The guide tones play in your key too. Turn off Match my key to score against the original key.
         </div>`}
-        ${result.octShift !== 0 && html`<p class="text-xs muted">${plain
-          ? "You're singing the same tune " + (Math.abs(result.octShift) > 12 ? Math.abs(result.octShift / 12) + " octaves" : "an octave") + " " + (result.octShift > 0 ? "higher" : "lower") + " than the original, the way women and men often sing the same song. That counts as correct."
-          : "You're singing " + Math.abs(result.octShift / 12) + " octave" + (Math.abs(result.octShift) > 12 ? "s" : "") + " " + (result.octShift > 0 ? "above" : "below") + " the original. That's scored as correct while Ignore octave is on."}</p>`}
 
+        ${sub === "notes" && html`<div class="flex flex-col gap-3">
         <div class="flex flex-col gap-2">
-          <h3 class="display text-lg font-bold">Phrases to practice</h3>
-          ${result.spots.length === 0
-            ? html`<p class="text-sm muted">No weak phrases stood out. Nice.</p>`
-            : result.spots.map((s) => html`<div key=${s.start} class="spot">
-                <span class="mono text-sm font-semibold">${fmt(s.start)}–${fmt(s.end)}</span>
-                <span class="text-sm">${spotText(s, plain)}${linesIn(s.start, s.end).length > 0 && html`<br /><span class="text-xs muted">“${linesIn(s.start, s.end).slice(0, 2).join(" / ")}”</span>`}</span>
-                <span class="flex gap-2">
-                  <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { clearLoop(); setCursor(s.start); startPlay(s.start); }}>▶ Play</button>
-                  <button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => startLoop(s.start, s.end)}>↻ Loop</button>
-                </span>
-              </div>`)}
+          <h3 class="display text-lg font-bold">Note by note</h3>
+          <div class="note-table">
+            <div class=${"nt-row nt-head label" + (plain ? " nt-plain" : "")}><span>Time</span><span>Original</span><span>You</span>${!plain && html`<span>Off</span>`}<span>${plain ? "How close" : "Verdict"}</span></div>
+            ${result.rows.map((r, i) => html`<button key=${i} class=${"nt-row" + (plain ? " nt-plain" : "") + (curNote === r ? " nt-now" : "")} onClick=${() => seek(r.n.pos)}>
+              <span class="mono text-xs muted">${fmt(r.n.pos)}</span>
+              <span class="font-semibold">${pretty(midiInfo(r.n.midi).label)}</span>
+              <span>${r.missed ? "—" : pretty(midiInfo(r.yours).label)}</span>
+              ${!plain && html`<span class="mono text-xs">${r.missed ? "" : signed(r.cents) + "¢"}</span>`}
+              <span class="text-xs font-semibold" style=${{ color: r.missed ? "var(--muted)" : "var(--" + r.tone + ")" }}>${plain ? plainVerdict(r) : r.missed ? "Missed" : r.verdict}</span>
+            </button>`)}
+          </div>
         </div>
+        </div>`}
 
+        ${sub === "technique" && html`<div class="flex flex-col gap-3">
         ${tech.length > 0 && html`<div class="flex flex-col gap-2">
           <h3 class="display text-lg font-bold">Vocal technique</h3>
           <p class="text-xs muted">${plain ? "Compared with the original singer, so you're not marked down for copying their style." : "Measured on your take and compared with the original singer, so a style the original uses on purpose doesn't count against you."}</p>
@@ -1529,22 +1558,11 @@ select.btn { appearance: auto; }
           </div>
         </div>`}
 
-        <div class="flex flex-col gap-2">
-          <h3 class="display text-lg font-bold">Note by note</h3>
-          <div class="note-table">
-            <div class=${"nt-row nt-head label" + (plain ? " nt-plain" : "")}><span>Time</span><span>Original</span><span>You</span>${!plain && html`<span>Off</span>`}<span>${plain ? "How close" : "Verdict"}</span></div>
-            ${result.rows.map((r, i) => html`<button key=${i} class=${"nt-row" + (plain ? " nt-plain" : "") + (curNote === r ? " nt-now" : "")} onClick=${() => seek(r.n.pos)}>
-              <span class="mono text-xs muted">${fmt(r.n.pos)}</span>
-              <span class="font-semibold">${pretty(midiInfo(r.n.midi).label)}</span>
-              <span>${r.missed ? "—" : pretty(midiInfo(r.yours).label)}</span>
-              ${!plain && html`<span class="mono text-xs">${r.missed ? "" : signed(r.cents) + "¢"}</span>`}
-              <span class="text-xs font-semibold" style=${{ color: r.missed ? "var(--muted)" : "var(--" + r.tone + ")" }}>${plain ? plainVerdict(r) : r.missed ? "Missed" : r.verdict}</span>
-            </button>`)}
-          </div>
-        </div>
-      </section>`}
+          ${tech.length === 0 && html`<p class="text-sm muted">Not enough long notes or phrase starts in this take to judge technique. Try a longer take.</p>`}
+        </div>`}
 
-      <section class="panel p-4 sm:p-5 flex flex-col gap-3">
+        ${sub === "history" && html`<div class="flex flex-col gap-3">
+      <section class="flex flex-col gap-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 class="display text-lg font-bold">Past attempts</h3>
@@ -1565,6 +1583,61 @@ select.btn { appearance: auto; }
               <span class="mono text-xs text-right">${s.inTune}% in tune<br /><span class="muted">${Math.abs(s.tendency) < 8 ? "centered" : Math.abs(s.tendency) + "¢ " + (s.tendency > 0 ? "sharp" : "flat")}</span></span>
             </div>`)}</div>`}
       </section>
+        </div>`}
+
+        <div class="playbar">
+          <button class="round-btn primary" onClick=${() => (playing ? stopPlay() : startPlay(cursor || 0))} aria-label=${playing ? "Pause" : "Play"}><${Icon} name=${playing ? "pause" : "play"} /></button>
+          <span class="flex flex-col gap-1 min-w-0" style=${{ flex: 1 }}>
+            <input id="an-seek" type="range" min="0" max=${orig.data.duration} step="0.1" value=${cursor || 0} onChange=${(e) => seek(parseFloat(e.target.value))} aria-label="Position in the song" />
+            <span class="flex justify-between gap-2 mono text-xs muted"><span>${fmt(cursor || 0)}</span><span>${loop ? "Looping " + fmt(loop.a) + "–" + fmt(loop.b) : [mix.t > 0 ? "Me" : null, mix.o > 0 ? "original" : null, (mix.m || 0) > 0 && inst && inst.buffer ? "music" : null, mix.g > 0 ? "guide" : null].filter(Boolean).join(" + ")}</span></span>
+          </span>
+          ${loop && html`<button class="icon-btn" onClick=${clearLoop} aria-label="Stop looping" style=${{ color: "var(--accent)", borderColor: "var(--accent)" }}><${Icon} name="loop" /></button>`}
+          <button class="icon-btn" onClick=${() => setOptOpen(true)} aria-label="Playback and scoring options"><${Icon} name="sliders" /></button>
+        </div>
+
+        <${Sheet} open=${optOpen} title="Analyst options" onClose=${() => setOptOpen(false)}>
+          <div class="opt-group">
+            <span class="label">Listen to</span>
+          <div class="mixer">
+            ${[["o", "Original"], ["g", "Guide notes"], ["t", "My take"], ...(inst && inst.buffer ? [["m", "Music"]] : [])].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"mix-" + k}>
+              <span class="text-xs font-semibold">${l}</span>
+              <input id=${"mix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
+              <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
+            </label>`)}
+          </div>
+          <p class="text-xs muted">Guide notes play the original melody as clean tones${result.shift !== 0 ? " in your key" : ""}. Turn ${inst && inst.buffer ? "Original, Guide and Music" : "Original and Guide"} off to hear only your take at your own pace.${inst && inst.buffer ? " Turn Original off and Music up to hear yourself with the instrumental." : ""}</p>
+          </div>
+          <div class="opt-group">
+            <span class="label">Wording</span>
+            <div class="seg" role="group" aria-label="Wording">
+              <button aria-pressed=${plain ? "true" : "false"} onClick=${() => choosePlain(true)}>Simple words</button>
+              <button aria-pressed=${plain ? "false" : "true"} onClick=${() => choosePlain(false)}>Detailed</button>
+            </div>
+          </div>
+          <div class="opt-group">
+        <div class="flex flex-wrap items-center gap-3 text-sm">
+          <span class="label">Alignment</span>
+          <button class="switch" role="switch" aria-checked=${warp ? "true" : "false"} onClick=${() => { stopPlay(); setWarp((v) => !v); }} style=${{ fontSize: 13 }}>
+            <span class="track"><span class="knob"></span></span>Follow my timing
+          </button>
+          ${warp
+            ? html`<span class="text-xs muted">${alignment.warped ? "Lined up phrase by phrase" : "Couldn't follow your timing on this take, so a fixed offset is used"}</span>`
+            : html`<${React.Fragment}>
+                <button class="btn" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => nudge(-5)}>−0.1 s</button>
+                <span class="mono text-xs">${offSec === 0 ? "Starts together" : "Your take " + (offSec > 0 ? "starts " + offSec.toFixed(2) + " s later" : "starts " + (-offSec).toFixed(2) + " s earlier")}</span>
+                <button class="btn" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => nudge(5)}>+0.1 s</button>
+              <//>`}
+          <button class="btn btn-ghost" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => { stopPlay(); realign(); }}>Auto-align</button>
+          <button class="switch" role="switch" aria-checked=${octaveFree ? "true" : "false"} onClick=${() => setOctaveFree((v) => !v)} style=${{ fontSize: 13 }}>
+            <span class="track"><span class="knob"></span></span>Ignore octave
+          </button>
+          <button class="switch" role="switch" aria-checked=${keyFree ? "true" : "false"} onClick=${() => { stopPlay(); setKeyFree((v) => !v); }} style=${{ fontSize: 13 }}>
+            <span class="track"><span class="knob"></span></span>Match my key
+          </button>
+        </div>
+          </div>
+        <//>
+      <//>`}
     </div>`;
   }
 
@@ -1838,7 +1911,7 @@ select.btn { appearance: auto; }
     </div>`;
   }
 
-  function Learn({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics }) {
+  function Learn({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, focus, onGo }) {
     const data = orig && orig.data ? orig.data : null;
     const notes = data ? data.notes : [];
     const [playing, setPlaying] = useState(false);
@@ -1851,6 +1924,7 @@ select.btn { appearance: auto; }
     const [loop, setLoop] = useState(null);
     const [turn, setTurn] = useState(null);
     const [learned, setLearned] = useState([]);
+    const [optOpen, setOptOpen] = useState(false);
     const [listen, setListen] = useState(false);
     const [micMsg, setMicMsg] = useState("");
     const [mastery, setMastery] = useState(() => loadJSON("pitchstaff.mastery.v1", false));
@@ -2089,6 +2163,16 @@ select.btn { appearance: auto; }
     const chooseMoreTime = (v) => { moreTimeRef.current = v; setMoreTime(v); saveJSON("pitchstaff.moretime.v1", v); };
     const startLoop = (a, b) => { const lp = { a: Math.max(0, a), b }; loopRef.current = lp; setLoop(lp); startPlay(Math.max(0, a - 0.3)); };
     const clearLoop = () => { loopRef.current = null; setLoop(null); };
+    // sent here from Karaoke or the Analyst: get that part ready to loop
+    useEffect(() => {
+      if (!focus || !data) return;
+      stopAll();
+      modeRef.current = "play"; setModeState("play");
+      const lp = { a: Math.max(0, focus.a), b: focus.b };
+      loopRef.current = lp; setLoop(lp); setCursor(Math.max(0, focus.a - 0.3));
+      setToast("That part is set to loop. Tap play when you're ready.");
+      setTimeout(() => setToast(""), 4000);
+    }, [focus && focus.id]);
     const seek = (t) => { setCursor(t); if (playing) startPlay(t); };
     const tapNote = (n) => {
       setCursor(n.pos);
@@ -2146,33 +2230,21 @@ select.btn { appearance: auto; }
     const linesIn = (a, b) => spans.filter((l) => l.start < b && l.end > a).map((l) => l.text);
     const btn = { padding: "5px 10px", fontSize: 13 };
 
-    return html`<div class="flex flex-col gap-5">
-      <div class="panel p-4 flex flex-wrap items-center justify-between gap-3">
-        <div class="min-w-0">
-          <span class="label">Learning</span>
-          <h3 class="display text-xl font-bold" style=${{ overflowWrap: "anywhere" }}>${orig.name}</h3>
-          <p class="text-xs muted">Shared with Karaoke and the Singing Analyst</p>
-        </div>
-        <button class="btn" onClick=${() => fileRef.current && fileRef.current.click()}>Change song</button>
-        <input id="learn-change" ref=${fileRef} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPickOrig(f); }} />
+    const lo2 = notes.length ? notes.reduce((m, n) => Math.min(m, n.midi), 999) : 0, hi2 = notes.length ? notes.reduce((m, n) => Math.max(m, n.midi), 0) : 0;
+    return html`<div class="flex flex-col gap-4">
+      <div class="mode-seg" role="group" aria-label="Practice mode">
+        <button aria-pressed=${mode === "play" ? "true" : "false"} onClick=${() => chooseMode("play")}>Listen</button>
+        <button aria-pressed=${mode === "repeat" ? "true" : "false"} onClick=${() => chooseMode("repeat")}>Repeat after me</button>
       </div>
+      ${mode === "repeat" && !listen && html`<p class="text-xs muted">Plays a phrase, then gives you time to sing it back. Turn on Listen to me in options to get scored.</p>`}
+      ${micMsg && mode === "repeat" && html`<div class="notice" role="alert">${micMsg}</div>`}
 
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 panel p-4">
-        <${Stat} label="Key" value=${key ? keyName(key, tr) : "—"} note=${tr ? "Moved " + signed(tr) + " for you" : key && key.conf < 0.6 ? "Best guess" : "Likely key"} />
-        <${Stat} label="Range" value=${pretty(midiInfo(lo + tr).label) + " – " + pretty(midiInfo(hi + tr).label)} note=${spanText + " from lowest to highest"} />
-        <${Stat} label="Phrases" value=${String(phrases.length)} note=${notes.length + " notes in total"} />
+      <section class="panel p-4 flex flex-col gap-2 min-w-0">
+        <div class="flex items-center justify-between gap-2 text-xs muted">
+          <span>${key ? keyName(key, tr) : ""}${notes.length ? " · " + pretty(midiInfo(lo2 + tr).label) + "–" + pretty(midiInfo(hi2 + tr).label) : ""}</span>
+          <span>${learned.length} of ${phrases.length} learned</span>
+        </div>
         <div class="flex flex-col gap-1 min-w-0">
-          <span class="label">Learned</span>
-          <span class="mono text-lg font-semibold">${learned.length} of ${phrases.length}</span>
-          <div class="level" style=${{ height: 6 }}><div style=${{ width: (phrases.length ? (100 * learned.length) / phrases.length : 0) + "%", background: "var(--good)" }}></div></div>
-        </div>
-      </div>
-
-      <${LyricsCard} orig=${orig} lyrics=${lyrics} updateLyrics=${updateLyrics} count=${spans.length} hint="Shows the words above the melody and on each phrase. Saved for this song on this device." />
-
-      <section class="panel p-4 sm:p-5 flex flex-col gap-4 min-w-0">
-        <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] items-start">
-          <div class="flex flex-col gap-1 min-w-0">
             <span class="label">${turn ? "Your turn" : "Now singing"}</span>
             ${turn
               ? html`<div class="flex flex-col gap-2">
@@ -2186,38 +2258,8 @@ select.btn { appearance: auto; }
                 </div>`}
             ${spans.length > 0 && !turn && html`<p class="display font-bold" style=${{ fontSize: 19, lineHeight: 1.3, marginTop: 4 }}>${curLine >= 0 ? spans[curLine].text : "♪"}</p>`}
           </div>
-          <div class="flex flex-col gap-2 items-start sm:items-end">
-            <div class="seg" role="group" aria-label="Practice mode">
-              <button aria-pressed=${mode === "play" ? "true" : "false"} onClick=${() => chooseMode("play")}>Play through</button>
-              <button aria-pressed=${mode === "repeat" ? "true" : "false"} onClick=${() => chooseMode("repeat")}>Repeat after me</button>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap">
-              <button class="btn btn-primary" onClick=${() => (playing ? stopAll() : startPlay(cursor || 0))}>${playing ? "❚❚ Pause" : "▶ Play"}</button>
-              <span class="mono text-xs muted">${fmt(cursor || 0)} / ${fmt(data.duration)}</span>
-            </div>
-            ${loop && html`<span class="chip" style=${{ borderColor: "var(--accent)" }}><span class="text-xs">↻ Looping</span><b class="mono text-xs">${fmt(loop.a)}–${fmt(loop.b)}</b>
-              <button class="text-xs" style=${{ color: "var(--accent)", background: "none", border: 0, cursor: "pointer", fontWeight: 600 }} onClick=${clearLoop} aria-label="Stop looping">✕</button></span>`}
-          </div>
-        </div>
-        ${mode === "repeat" && html`<div class="flex flex-col gap-3 listen-box">
-          <p class="text-xs muted">Repeat after me plays one phrase, then gives you the same amount of time to sing it back, and moves on. With a loop on, it repeats the same phrase.</p>
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <button class="switch" role="switch" aria-checked=${listen ? "true" : "false"} onClick=${toggleListen} style=${{ fontSize: 13 }}>
-              <span class="track"><span class="knob"></span></span>Listen to me
-            </button>
-            <button class="switch" role="switch" aria-checked=${mastery ? "true" : "false"} onClick=${toggleMastery} style=${{ fontSize: 13 }} disabled=${!listen} title=${listen ? "" : "Turn on Listen to me first"}>
-              <span class="track"><span class="knob"></span></span>Move on at 80%+
-            </button>
-            <div class="flex items-center gap-2">
-              <span class="label">Sing-back time</span>
-              <div class="seg" role="group" aria-label="Sing-back time">
-                ${[[0, "Normal"], [1, "+1 s"], [2, "+2 s"]].map(([v, l]) => html`<button key=${l} aria-pressed=${moreTime === v ? "true" : "false"} onClick=${() => chooseMoreTime(v)}>${l}</button>`)}
-              </div>
-            </div>
-          </div>
-          ${listen && html`<p class="text-xs muted">The app listens only during "Sing it back" and scores each try. Your line shows in blue on the melody. Two tries of 85% or more in a row mark a phrase as learned.</p>`}
-          ${micMsg && html`<div class="notice" role="alert">${micMsg}</div>`}
-        </div>`}
+      </section>
+
         ${toast && html`<div class="notice" role="status" style=${{ borderColor: "var(--good)", background: "color-mix(in srgb, var(--good) 10%, var(--surface))" }}>${toast}</div>`}
         ${(attempt || scoring) && mode === "repeat" && html`<div class="attempt">
           ${scoring && !attempt && html`<p class="text-sm muted">Checking your try…</p>`}
@@ -2257,41 +2299,6 @@ select.btn { appearance: auto; }
         </div>`}
 
         <${MelodyMap} data=${data} notes=${notes} tr=${tr} nameOf=${nameOf} phrases=${phrases} lyrics=${spans} loop=${loop} cursor=${cursor} curIdx=${curIdx} onTapNote=${tapNote} onSeek=${seek} themeKey=${themeKey} overlay=${liveLine} />
-        <p class="text-xs muted">Tap a note bar to hear that note. Tap anywhere else to jump there. The faint line is how the singer actually moves between notes.</p>
-
-        <div class="mixer" style=${{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-          ${[["o", "Original vocal"], ["g", "Guide notes"]].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"lmix-" + k}>
-            <span class="text-xs font-semibold">${l}</span>
-            <input id=${"lmix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
-            <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
-          </label>`)}
-        </div>
-
-        <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
-          <div class="flex items-center gap-2">
-            <span class="label">Speed</span>
-            <div class="seg" role="group" aria-label="Speed">
-              ${[[0.5, "50%"], [0.75, "75%"], [1, "100%"]].map(([v, l]) => html`<button key=${l} aria-pressed=${speed === v ? "true" : "false"} onClick=${() => chooseSpeed(v)}>${l}</button>`)}
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="label">Guide key</span>
-            <button class="btn" style=${btn} onClick=${() => shiftKey(-1)} aria-label="Lower the guide notes">−</button>
-            <span class="mono text-xs" style=${{ minWidth: 70, textAlign: "center" }}>${tr === 0 ? "Original" : signed(tr) + " " + (Math.abs(tr) === 1 ? "key" : "keys")}</span>
-            <button class="btn" style=${btn} onClick=${() => shiftKey(1)} aria-label="Raise the guide notes">+</button>
-            ${tr !== 0 && html`<button class="btn btn-ghost" style=${btn} onClick=${resetKey}>Reset</button>`}
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="label">Names</span>
-            <div class="seg" role="group" aria-label="Note names">
-              <button aria-pressed=${names === "letters" ? "true" : "false"} onClick=${() => chooseNames("letters")}>C D E</button>
-              <button aria-pressed=${names === "solfege" ? "true" : "false"} onClick=${() => chooseNames("solfege")}>Do Re Mi</button>
-            </div>
-          </div>
-        </div>
-        ${(speed < 1 || (tr !== 0 && mix.o > 0)) && html`<p class="text-xs muted">${speed < 1 ? "The original vocal is muted below 100% speed, because slowing a recording down also makes it lower. The guide notes stay in tune at any speed. " : ""}${tr !== 0 && mix.o > 0 ? "The original vocal stays in its own key; only the guide notes move." : ""}</p>`}
-        ${names === "solfege" && key && html`<p class="text-xs muted">Do is ${(key.minor ? KEY_MIN : KEY_MAJ)[(key.doPc) % 12]}${key.minor ? ", so the song's home note is La" : ", the song's home note"}.</p>`}
-      </section>
 
       <section class="panel p-4 sm:p-5 flex flex-col gap-3">
         <div class="flex flex-wrap items-end justify-between gap-2">
@@ -2319,6 +2326,79 @@ select.btn { appearance: auto; }
           </div>`;
         })}
       </section>
+
+      <div class="flex justify-center">
+        <button class="btn" onClick=${() => onGo && onGo("karaoke")}>Ready? Try it in Karaoke →</button>
+      </div>
+
+      <div class="playbar">
+        <button class="round-btn primary" onClick=${() => (playing ? stopAll() : startPlay(turn ? phrases[turn.idx].start : cursor || 0))} aria-label=${playing ? "Pause" : "Play"}><${Icon} name=${playing ? "pause" : "play"} /></button>
+        <span class="flex flex-col gap-1 min-w-0" style=${{ flex: 1 }}>
+          <input id="practice-seek" type="range" min="0" max=${data.duration} step="0.1" value=${cursor || 0} onChange=${(e) => seek(parseFloat(e.target.value))} aria-label="Position in the song" />
+          <span class="flex justify-between gap-2 mono text-xs muted">
+            <span>${fmt(cursor || 0)}</span>
+            <span>${loop ? "Looping " + fmt(loop.a) + "–" + fmt(loop.b) : (speed < 1 ? Math.round(speed * 100) + "% speed" : "") + (tr ? (speed < 1 ? " · " : "") + "key " + signed(tr) : "")}</span>
+          </span>
+        </span>
+        ${loop && html`<button class="icon-btn" onClick=${clearLoop} aria-label="Stop looping" style=${{ color: "var(--accent)", borderColor: "var(--accent)" }}><${Icon} name="loop" /></button>`}
+        <button class="icon-btn" onClick=${() => setOptOpen(true)} aria-label="Practice options"><${Icon} name="sliders" /></button>
+      </div>
+
+      <${Sheet} open=${optOpen} title="Practice options" onClose=${() => setOptOpen(false)}>
+        <div class="opt-group">
+          <span class="label">Sound</span>
+        <div class="mixer" style=${{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+          ${[["o", "Original vocal"], ["g", "Guide notes"]].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"lmix-" + k}>
+            <span class="text-xs font-semibold">${l}</span>
+            <input id=${"lmix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
+            <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
+          </label>`)}
+        </div>
+
+        </div>
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div class="flex items-center gap-2">
+            <span class="label">Speed</span>
+            <div class="seg" role="group" aria-label="Speed">
+              ${[[0.5, "50%"], [0.75, "75%"], [1, "100%"]].map(([v, l]) => html`<button key=${l} aria-pressed=${speed === v ? "true" : "false"} onClick=${() => chooseSpeed(v)}>${l}</button>`)}
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="label">Guide key</span>
+            <button class="btn" style=${btn} onClick=${() => shiftKey(-1)} aria-label="Lower the guide notes">−</button>
+            <span class="mono text-xs" style=${{ minWidth: 70, textAlign: "center" }}>${tr === 0 ? "Original" : signed(tr) + " " + (Math.abs(tr) === 1 ? "key" : "keys")}</span>
+            <button class="btn" style=${btn} onClick=${() => shiftKey(1)} aria-label="Raise the guide notes">+</button>
+            ${tr !== 0 && html`<button class="btn btn-ghost" style=${btn} onClick=${resetKey}>Reset</button>`}
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="label">Names</span>
+            <div class="seg" role="group" aria-label="Note names">
+              <button aria-pressed=${names === "letters" ? "true" : "false"} onClick=${() => chooseNames("letters")}>C D E</button>
+              <button aria-pressed=${names === "solfege" ? "true" : "false"} onClick=${() => chooseNames("solfege")}>Do Re Mi</button>
+            </div>
+          </div>
+        </div>
+        ${(speed < 1 || (tr !== 0 && mix.o > 0)) && html`<p class="text-xs muted">${speed < 1 ? "The original vocal is muted below 100% speed, because slowing a recording down also makes it lower. The guide notes stay in tune at any speed. " : ""}${tr !== 0 && mix.o > 0 ? "The original vocal stays in its own key; only the guide notes move." : ""}</p>`}
+        ${names === "solfege" && key && html`<p class="text-xs muted">Do is ${(key.minor ? KEY_MIN : KEY_MAJ)[(key.doPc) % 12]}${key.minor ? ", so the song's home note is La" : ", the song's home note"}.</p>`}
+        ${mode === "repeat" && html`<div class="opt-group">
+          <span class="label">Repeat after me</span>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <button class="switch" role="switch" aria-checked=${listen ? "true" : "false"} onClick=${toggleListen} style=${{ fontSize: 13 }}>
+              <span class="track"><span class="knob"></span></span>Listen to me
+            </button>
+            <button class="switch" role="switch" aria-checked=${mastery ? "true" : "false"} onClick=${toggleMastery} style=${{ fontSize: 13 }} disabled=${!listen} title=${listen ? "" : "Turn on Listen to me first"}>
+              <span class="track"><span class="knob"></span></span>Move on at 80%+
+            </button>
+            <div class="flex items-center gap-2">
+              <span class="label">Sing-back time</span>
+              <div class="seg" role="group" aria-label="Sing-back time">
+                ${[[0, "Normal"], [1, "+1 s"], [2, "+2 s"]].map(([v, l]) => html`<button key=${l} aria-pressed=${moreTime === v ? "true" : "false"} onClick=${() => chooseMoreTime(v)}>${l}</button>`)}
+              </div>
+            </div>
+          </div>
+          ${listen && html`<p class="text-xs muted">The app listens only during "Sing it back" and scores each try. Your line shows in blue on the melody. Two tries of 85% or more in a row mark a phrase as learned.</p>`}
+        </div>`}
+      <//>
     </div>`;
   }
 
@@ -2762,7 +2842,7 @@ select.btn { appearance: auto; }
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
-  function Karaoke({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, onSendTake, inst, onPickInst, sync, syncMsg, keyWarn, onSync, onAutoSync }) {
+  function Karaoke({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, onSendTake, onTakeReady, onPractice, inst, onPickInst, sync, syncMsg, keyWarn, onSync, onAutoSync }) {
     const data = orig && orig.data ? orig.data : null;
     const notes = data ? data.notes : [];
     const songName = data ? orig.name : null;
@@ -2779,6 +2859,9 @@ select.btn { appearance: auto; }
     const [saveMsg, setSaveMsg] = useState("");
     const tape = useRef({ on: false, sr: 24000, chunks: [] });
     const [withMusic, setWithMusic] = useState(true);
+    const [optOpen, setOptOpen] = useState(false);
+    const [hpAsk, setHpAsk] = useState(false);
+    const [showMix, setShowMix] = useState(false);
     const [pl, setPl] = useState({ on: false, pos: 0 });
     const player = useRef({ nodes: [], g: null, raf: 0 });
     const [mixVol, setMixVol] = useState(() => loadJSON("pitchstaff.karaout.v1", { v: 1, m: 0.75, verb: true }));
@@ -2884,7 +2967,7 @@ select.btn { appearance: auto; }
       stopAll();
       setHp("checking"); hpRef.current = "checking";
       const ok = await ensureMic();
-      if (!ok) { setHp("nomic"); hpRef.current = "nomic"; return; }
+      if (!ok) { setHp("nomic"); hpRef.current = "nomic"; return "nomic"; }
       const ctx = ensureCtx(), an = mic.current.an, buf = new Float32Array(an.fftSize);
       const f = SETTINGS.a4 * 2, t0 = ctx.currentTime + 0.05;
       [0, 0.45, 0.9].forEach((d) => {
@@ -2905,6 +2988,7 @@ select.btn { appearance: auto; }
       });
       const st = hits >= 3 ? "heard" : "ok";
       setHp(st); hpRef.current = st;
+      return st;
     };
 
     // ---- scoring as you sing ----
@@ -2960,6 +3044,7 @@ select.btn { appearance: auto; }
       const t = Object.values(R.tally);
       const v = t.reduce((s, x) => s + x.v, 0), ok = t.reduce((s, x) => s + x.ok, 0);
       const tb = buildTake();
+      if (tb && onTakeReady) onTakeReady({ id: Date.now(), name: "Karaoke take · " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), buffer: tb });
       setTakeBuf(tb); setSaveMsg(""); setMixMsg(""); setNudgeV(0); setPl({ on: false, pos: 0 });
       setLat(tb ? estimateLatency() : 0);
       if (!listening || v < 50) { setFinal(tb ? { score: null, lines: 0 } : null); return; }
@@ -3213,91 +3298,28 @@ select.btn { appearance: auto; }
       heard: "The mic heard the test beeps, so it would hear the music too. Plug in headphones and check again.",
       override: "Scoring is on without headphones. Expect messy results.",
       nomic: "The microphone isn't available here, so you can sing along but without scoring. Use your GitHub Pages site or Chrome on your computer for scoring.",
+      skip: "Singing without scoring. Check your headphones to turn scoring and recording on.",
     }[hp];
 
-    return html`<div class="flex flex-col gap-5">
-      <div class="panel p-4 flex flex-wrap items-center justify-between gap-3">
-        <div class="min-w-0">
-          <span class="label">Karaoke</span>
-          <h3 class="display text-xl font-bold" style=${{ overflowWrap: "anywhere" }}>${orig.name}</h3>
-          <p class="text-xs muted">${best != null ? "Your best score: " + best : "Shared with Practice and the Singing Analyst"}</p>
+    const liveScore = (() => { const v = Object.values(lineScores); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; })();
+    const startPressed = (fresh) => {
+      if (!playing && (fresh || cursor < 0.05) && hpRef.current === "unknown") { setHpAsk(true); return; }
+      if (fresh) { startAt(0, true); return; }
+      playing ? stopAll() : startAt(cursor >= songEnd - 0.2 ? 0 : cursor, cursor < 0.05);
+    };
+    const checkThenSing = async () => {
+      const st = await runCheck();
+      if (st === "ok") { setHpAsk(false); startAt(0, true); }
+    };
+    const singWithout = () => { setHp("skip"); hpRef.current = "skip"; setHpAsk(false); startAt(0, true); };
+
+    return html`<div class="flex flex-col gap-4">
+      ${final ? html`<${React.Fragment}>
+      <section class="flex flex-col gap-4">
+        <div class="flex items-center justify-between gap-3">
+          <button class="btn btn-ghost" style=${{ padding: "6px 10px" }} onClick=${() => { playerStop(); setFinal(null); }}><span class="flex items-center gap-1"><${Icon} name="back" size=${18} />Back to the song</span></button>
+          <button class="btn" onClick=${() => { playerStop(); clearLoop(); setCursor(0); startPressed(true); }}>Sing again</button>
         </div>
-        <button class="btn" onClick=${() => fileRef.current && fileRef.current.click()}>Change song</button>
-        <input id="kara-change" ref=${fileRef} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPickOrig(f); }} />
-      </div>
-
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div class="panel p-4 flex flex-col gap-2 min-w-0">
-          <span class="label">Music</span>
-          <h3 class="display text-lg font-bold">Instrumental</h3>
-          ${inst && inst.buffer
-            ? html`<p class="text-sm" style=${{ overflowWrap: "anywhere" }}><b>${inst.name}</b> <span class="muted mono text-xs">· ${fmt(inst.buffer.duration)}</span></p>`
-            : inst && inst.busy ? html`<p class="text-sm muted">Reading the music…</p>`
-            : html`<p class="text-sm muted">The karaoke version of the song (no vocals). Without it, Karaoke plays the guide vocal and guide notes instead.</p>`}
-          ${inst && inst.error && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${inst.error}</p>`}
-          ${keyWarn !== 0 && html`<div class="notice">This instrumental seems to be ${pianoKeys(Math.abs(keyWarn))} ${keyWarn > 0 ? "higher" : "lower"} than the acapella, so they'll clash. Look for a version in the original key.</div>`}
-          <div><button class=${"btn" + (inst && inst.buffer ? "" : " btn-primary")} disabled=${inst && inst.busy} onClick=${() => document.getElementById("inst-file").click()}>${inst && inst.buffer ? "Replace music" : "Upload instrumental"}</button></div>
-          <input id="inst-file" type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) pickInst(f); }} />
-        </div>
-        <div class="panel p-4 flex flex-col gap-2 min-w-0">
-          <span class="label">Before you sing</span>
-          <h3 class="display text-lg font-bold">Headphone check</h3>
-          <p class=${"text-sm" + (hp === "ok" ? "" : " muted")} style=${{ color: hp === "ok" ? "var(--good)" : hp === "heard" ? "var(--warn)" : undefined }}>${hpText}</p>
-          <div class="flex flex-wrap gap-2">
-            <button class=${"btn" + (hp === "ok" ? "" : " btn-primary")} disabled=${hp === "checking"} onClick=${runCheck}>${hp === "unknown" ? "Run headphone check" : "Check again"}</button>
-            ${hp === "heard" && html`<button class="btn btn-ghost" onClick=${() => { setHp("override"); hpRef.current = "override"; }}>Score anyway</button>`}
-          </div>
-        </div>
-      </div>
-
-      <${LyricsCard} orig=${orig} lyrics=${lyrics} updateLyrics=${updateLyrics} count=${spans.length} hint="Shows big scrolling lyrics. Files with word-by-word timing light up one word at a time. Saved for this song on this device." />
-
-      ${inst && inst.buffer && html`<div class="panel p-4 flex flex-wrap items-center gap-3">
-        <span class="label">Music timing</span>
-        <button class="btn" style=${small} onClick=${() => nudge(-0.1)} aria-label="Music earlier">−0.1 s</button>
-        <span class="mono text-xs" style=${{ minWidth: 110, textAlign: "center" }}>${sync === 0 ? "No shift" : "Music " + (sync > 0 ? "skips " + sync.toFixed(2) + " s" : "waits " + (-sync).toFixed(2) + " s")}</span>
-        <button class="btn" style=${small} onClick=${() => nudge(0.1)} aria-label="Music later">+0.1 s</button>
-        <button class="btn btn-ghost" style=${small} onClick=${runAutoSync}>Auto-sync</button>
-        <button class="btn" style=${small} onClick=${checkTiming}>▶ Check timing</button>
-        <span class="text-xs muted" style=${{ flexBasis: "100%" }}>${syncMsg || "Check timing plays the music with the original voice up loud. Nudge until they line up."}</span>
-      </div>`}
-
-      <section class="panel p-4 sm:p-5 flex flex-col gap-4 min-w-0">
-        <div class="stage">
-          <${KaraokeLine} line=${prevIdx >= 0 ? lines[prevIdx] : null} t=${null} size=${15} dim=${true} />
-          <${KaraokeLine} line=${showLine || (nextIdx >= 0 ? lines[nextIdx] : null)} t=${showLine ? cursor : null} size=${30} />
-          <${KaraokeLine} line=${showLine && nextIdx >= 0 ? lines[nextIdx] : null} t=${null} size=${17} dim=${true} />
-          ${!spans.length && html`<p class="text-xs muted">Add a lyrics file above to see the words here.</p>`}
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <button class="btn btn-primary" onClick=${() => (playing ? stopAll() : startAt(cursor >= songEnd - 0.2 ? 0 : cursor, cursor < 0.05))}>${playing ? "❚❚ Pause" : cursor > 0.05 && cursor < songEnd - 0.2 ? "▶ Resume" : "▶ Start"}</button>
-          ${(playing || (cursor > 0.05 && cursor < songEnd - 0.2)) && html`<button class="btn" onClick=${stopSession}>■ Stop</button>`}
-          <button class="btn" onClick=${() => { clearLoop(); setCursor(0); startAt(0, true); }}>↺ From the top</button>
-          <span class="mono text-xs muted">${fmt(cursor)} / ${fmt(songEnd)}</span>
-          ${listening ? html`<span class="flex items-center gap-2 text-xs muted"><span class="rec-dot"></span>${playing ? "Recording and scoring" : "Scoring on"}</span>` : html`<span class="text-xs muted">Not scoring</span>`}
-          ${loop && html`<span class="chip" style=${{ borderColor: "var(--accent)" }}><span class="text-xs">↻ Looping</span><b class="mono text-xs">${fmt(loop.a)}–${fmt(loop.b)}</b>
-            <button class="text-xs" style=${{ color: "var(--accent)", background: "none", border: 0, cursor: "pointer", fontWeight: 600 }} onClick=${clearLoop} aria-label="Stop looping">✕</button></span>`}
-        </div>
-
-        <${MelodyMap} data=${data} notes=${notes} tr=${0} nameOf=${nameOf} phrases=${phrases} lyrics=${[]} loop=${loop} cursor=${cursor} curIdx=${curIdx}
-          onTapNote=${(n) => { setCursor(n.pos); if (playing) startAt(n.pos, false); }} onSeek=${(t) => { setCursor(t); if (playing) startAt(t, false); }} themeKey=${themeKey} overlay=${overlay} height=${170} marks=${marks} />
-
-        <div class="mixer">
-          ${[["m", "Music"], ["v", "Guide vocal"], ["g", "Guide notes"]].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"kmix-" + k}>
-            <span class="text-xs font-semibold">${l}</span>
-            <input id=${"kmix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
-            <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
-          </label>`)}
-        </div>
-        <p class="text-xs muted">Guide vocal is the original singer, quietly, like the guide button on a karaoke machine. Turn it off once you know the song. Any octave counts when scoring.</p>
-
-        ${scored.length > 0 && html`<div class="flex flex-wrap gap-2">
-          ${Object.entries(lineScores).sort((a, b) => a[0] - b[0]).slice(-6).map(([i, s]) => html`<span key=${i} class=${"tag tag-" + (s >= 80 ? "good" : s >= 50 ? "warn" : "bad")}>${lines[i].text ? (lines[i].text.length > 18 ? lines[i].text.slice(0, 18) + "…" : lines[i].text) : "Phrase " + (+i + 1)} · ${s}%</span>`)}
-        </div>`}
-      </section>
-
-      ${final && html`<section class="panel p-4 sm:p-5 flex flex-col gap-4">
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div class="flex items-end gap-3">
             ${final.score != null
@@ -3308,7 +3330,6 @@ select.btn { appearance: auto; }
                 </div>`
               : html`<div class="flex flex-col"><span class="label">Your take</span><span class="text-sm muted">Not enough singing to score, but your recording is ready.</span></div>`}
           </div>
-          <button class="btn" onClick=${() => { clearLoop(); setCursor(0); startAt(0, true); }}>↺ Sing again</button>
         </div>
         ${takeBuf && html`<div class="take-box">
           <div class="flex flex-wrap items-end justify-between gap-2">
@@ -3322,12 +3343,14 @@ select.btn { appearance: auto; }
             </div>
           </div>
           <div class="player">
-            <button class="btn btn-primary" onClick=${() => (pl.on ? playerPause() : playerStart(pl.pos))} aria-label=${pl.on ? "Pause" : "Play"}>${pl.on ? "❚❚" : "▶"}</button>
-            <button class="btn" onClick=${playerStop} aria-label="Stop" disabled=${!pl.on && pl.pos === 0}>■</button>
+            <button class="round-btn primary" onClick=${() => (pl.on ? playerPause() : playerStart(pl.pos))} aria-label=${pl.on ? "Pause" : "Play"}><${Icon} name=${pl.on ? "pause" : "play"} /></button>
+            
+            <button class="round-btn" onClick=${playerStop} aria-label="Stop" disabled=${!pl.on && pl.pos === 0}><${Icon} name="stop" size=${16} /></button>
             <input id="take-seek" type="range" min="0" max=${plEnd()} step="0.05" value=${pl.pos} onChange=${(e) => playerSeek(parseFloat(e.target.value))} aria-label="Position in your recording" style=${{ accentColor: "var(--accent)" }} />
             <span class="mono text-xs muted" style=${{ whiteSpace: "nowrap" }}>${fmt(pl.pos)} / ${fmt(takeBuf.duration)}</span>
           </div>
-          ${withMusic && inst && inst.buffer && html`<div class="flex flex-col gap-3">
+          ${withMusic && inst && inst.buffer && html`<button class="btn btn-ghost" style=${{ alignSelf: "flex-start", padding: "4px 2px", color: "var(--accent)" }} onClick=${() => setShowMix((v) => !v)} aria-expanded=${showMix ? "true" : "false"}>${showMix ? "Hide mix and timing" : "Adjust mix and timing"}</button>`}
+          ${withMusic && inst && inst.buffer && showMix && html`<div class="flex flex-col gap-3">
             <div class="mixer" style=${{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
               ${[["v", "My voice", 1.6], ["m", "Music", 1.2]].map(([k, l, mx]) => html`<label key=${k} class="mix-row" for=${"out-" + k}>
                 <span class="text-xs font-semibold">${l}</span>
@@ -3348,9 +3371,9 @@ select.btn { appearance: auto; }
             <p class="text-xs muted">Drag Voice timing while it plays until your voice sits on the beat. ${lat > 0 ? "It starts " + lat.toFixed(2) + " s earlier to make up for headphone delay." : ""}</p>
           </div>`}
           <div class="flex flex-wrap items-center gap-2">
-            <button class="btn" onClick=${saveTake}>Save just me</button>
+            <button class="btn" onClick=${saveTake}>${withMusic && inst && inst.buffer ? "Save just me" : "Save recording"}</button>
             <button class="btn" onClick=${downloadMix} disabled=${!!mixBusy || !(inst && inst.buffer)} title=${inst && inst.buffer ? "" : "Add the instrumental above first"}>${mixBusy || "Save with music"}</button>
-            <button class="btn btn-primary" onClick=${sendToAnalyst}>Analyze in Singing Analyst →</button>
+            <button class="btn btn-primary" onClick=${sendToAnalyst}>Analyze →</button>
           </div>
           ${(saveMsg || mixMsg) && html`<span class="text-xs muted">${mixMsg || saveMsg}</span>`}
           ${!mixMsg && inst && inst.buffer && html`<span class="text-xs muted">Save with music makes a WAV file of what you hear in "Me + music", about ${Math.max(1, Math.round(mixLength() / 60 * 10))} MB.</span>`}
@@ -3359,14 +3382,99 @@ select.btn { appearance: auto; }
           <div class="flex flex-col gap-2">
             <span class="label">Needs work</span>
             ${scored.slice(0, 3).map(({ i, s }) => html`<div key=${i} class="spot"><span class="mono text-sm font-semibold">${s}%</span><span class="text-sm">${lineLabel(i)}</span>
-              <span><button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => loopLine(lines[i])}>↻ Loop</button></span></div>`)}
+              <span><button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => onPractice && onPractice(lines[i].start, lines[i].end + 0.3)}>Practice</button></span></div>`)}
           </div>
           <div class="flex flex-col gap-2">
             <span class="label">Your best lines</span>
             ${scored.slice(-3).reverse().map(({ i, s }) => html`<div key=${i} class="spot"><span class="mono text-sm font-semibold" style=${{ color: "var(--good)" }}>${s}%</span><span class="text-sm">${lineLabel(i)}</span><span></span></div>`)}
           </div>
         </div>`}
-      </section>`}
+      </section>
+      <//>` : html`<${React.Fragment}>
+      <div class="flex items-center justify-between gap-3">
+        <span class="flex items-center gap-2 text-sm muted">
+          ${listening ? html`<span class="rec-dot"></span>${playing ? "Recording" : "Ready to record"}` : html`<${Icon} name="headphones" size=${18} />${hp === "skip" || hp === "nomic" ? "Singing without scoring" : "Headphones needed for scoring"}`}
+        </span>
+        <span class="flex gap-2">
+          ${best != null && html`<span class="chip"><span class="muted text-xs">Best</span><b class="mono">${best}</b></span>`}
+          ${liveScore != null && html`<span class="chip"><span class="muted text-xs">Score</span><b class="mono" style=${{ color: "var(--accent)" }}>${liveScore}</b></span>`}
+        </span>
+      </div>
+
+        <div class="stage stage-big">
+          <${KaraokeLine} line=${prevIdx >= 0 ? lines[prevIdx] : null} t=${null} size=${15} dim=${true} />
+          <${KaraokeLine} line=${showLine || (nextIdx >= 0 ? lines[nextIdx] : null)} t=${showLine ? cursor : null} size=${30} />
+          <${KaraokeLine} line=${showLine && nextIdx >= 0 ? lines[nextIdx] : null} t=${null} size=${17} dim=${true} />
+          ${!spans.length && html`<p class="text-xs muted">No lyrics for this song yet. Add an .lrc file under Change.</p>`}
+        </div>
+
+        ${scored.length > 0 && html`<div class="flex flex-wrap gap-2">
+          ${Object.entries(lineScores).sort((a, b) => a[0] - b[0]).slice(-6).map(([i, s]) => html`<span key=${i} class=${"tag tag-" + (s >= 80 ? "good" : s >= 50 ? "warn" : "bad")}>${lines[i].text ? (lines[i].text.length > 18 ? lines[i].text.slice(0, 18) + "…" : lines[i].text) : "Phrase " + (+i + 1)} · ${s}%</span>`)}
+        </div>`}
+        <${MelodyMap} data=${data} notes=${notes} tr=${0} nameOf=${nameOf} phrases=${phrases} lyrics=${[]} loop=${loop} cursor=${cursor} curIdx=${curIdx}
+          onTapNote=${(n) => { setCursor(n.pos); if (playing) startAt(n.pos, false); }} onSeek=${(t) => { setCursor(t); if (playing) startAt(t, false); }} themeKey=${themeKey} overlay=${overlay} height=${170} marks=${marks} />
+
+
+      <div class="playbar" style=${{ flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
+        <span class="flex items-center gap-3">
+          <span class="mono text-xs muted">${fmt(cursor)}</span>
+          <input id="kara-seek" type="range" min="0" max=${songEnd} step="0.1" value=${cursor} onChange=${(e) => { const t = parseFloat(e.target.value); setCursor(t); if (playing) startAt(t, false); }} aria-label="Position in the song" />
+          <span class="mono text-xs muted">${fmt(songEnd)}</span>
+        </span>
+        <span class="flex items-center justify-center gap-5">
+          <button class="round-btn" onClick=${() => setOptOpen(true)} aria-label="Mix and options"><${Icon} name="sliders" /></button>
+          <button class="round-btn primary big" onClick=${() => startPressed(false)} aria-label=${playing ? "Pause" : cursor > 0.05 && cursor < songEnd - 0.2 ? "Resume" : "Start"}><${Icon} name=${playing ? "pause" : "play"} size=${26} /></button>
+          <button class="round-btn" onClick=${stopSession} aria-label="Stop and see results" disabled=${!(playing || (cursor > 0.05 && cursor < songEnd - 0.2))}><${Icon} name="stop" size=${16} /></button>
+        </span>
+        ${loop && html`<span class="flex items-center justify-center gap-2 text-xs"><span style=${{ color: "var(--accent)" }}>Looping ${fmt(loop.a)}–${fmt(loop.b)}</span><button class="btn btn-ghost" style=${{ padding: "2px 8px", fontSize: 12 }} onClick=${clearLoop}>Stop looping</button></span>`}
+      </div>
+      <//>`}
+
+      <${Sheet} open=${optOpen} title="Karaoke options" onClose=${() => setOptOpen(false)}>
+        <div class="opt-group">
+          <span class="label">Mix</span>
+        <div class="mixer">
+          ${[["m", "Music"], ["v", "Guide vocal"], ["g", "Guide notes"]].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"kmix-" + k}>
+            <span class="text-xs font-semibold">${l}</span>
+            <input id=${"kmix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
+            <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
+          </label>`)}
+        </div>
+        <p class="text-xs muted">Guide vocal is the original singer, quietly, like the guide button on a karaoke machine. Turn it off once you know the song. Any octave counts when scoring.</p>
+
+        </div>
+        <div class="opt-group">
+          <span class="label">Music timing</span>
+          ${inst && inst.buffer
+            ? html`<div class="flex flex-wrap items-center gap-2">
+                <button class="btn" style=${small} onClick=${() => nudge(-0.1)} aria-label="Music earlier">−0.1 s</button>
+                <span class="mono text-xs" style=${{ minWidth: 110, textAlign: "center" }}>${sync === 0 ? "No shift" : "Music " + (sync > 0 ? "skips " + sync.toFixed(2) + " s" : "waits " + (-sync).toFixed(2) + " s")}</span>
+                <button class="btn" style=${small} onClick=${() => nudge(0.1)} aria-label="Music later">+0.1 s</button>
+                <button class="btn btn-ghost" style=${small} onClick=${runAutoSync}>Auto-sync</button>
+                <button class="btn" style=${small} onClick=${() => { setOptOpen(false); checkTiming(); }}>▶ Check timing</button>
+              </div>
+              <p class="text-xs muted">${syncMsg || "Check timing plays the music with the original voice up loud. Nudge until they line up."}</p>`
+            : html`<p class="text-sm muted">No instrumental for this song. Add one under Change to sing with music.</p>`}
+        </div>
+        <div class="opt-group">
+          <span class="label">Headphones</span>
+          <p class="text-sm" style=${{ color: hp === "ok" ? "var(--good)" : hp === "heard" ? "var(--warn)" : undefined }}>${hpText}</p>
+          <div class="flex flex-wrap gap-2">
+            <button class="btn" disabled=${hp === "checking"} onClick=${runCheck}>${hp === "unknown" || hp === "skip" ? "Check headphones" : "Check again"}</button>
+            ${hp === "heard" && html`<button class="btn btn-ghost" onClick=${() => { setHp("override"); hpRef.current = "override"; }}>Score anyway</button>`}
+          </div>
+        </div>
+      <//>
+
+      <${Sheet} open=${hpAsk} title="Headphones on?" onClose=${() => setHpAsk(false)}>
+        <p class="text-sm">For scoring and recording, the mic must hear only you, not the music. A quick check plays three beeps and listens.</p>
+        ${hp !== "unknown" && html`<p class="text-sm" style=${{ color: hp === "ok" ? "var(--good)" : "var(--warn)" }}>${hpText}</p>`}
+        <div class="flex flex-col gap-2">
+          <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} disabled=${hp === "checking"} onClick=${checkThenSing}>${hp === "checking" ? "Listening…" : hp === "heard" ? "Check again" : "Check and start"}</button>
+          ${hp === "heard" && html`<button class="btn" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => { setHp("override"); hpRef.current = "override"; setHpAsk(false); startAt(0, true); }}>Score anyway</button>`}
+          <button class="btn btn-ghost" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${singWithout}>Sing without scoring</button>
+        </div>
+      <//>
     </div>`;
   }
 
@@ -3402,11 +3510,11 @@ select.btn { appearance: auto; }
     return { vocal, inst, lrc };
   }
 
-  function SongLibrary({ onLoad, current }) {
+  function SongLibrary({ onLoad, current, inline }) {
     const [songs, setSongs] = useState(null);
     const [err, setErr] = useState("");
     const [busy, setBusy] = useState(null); // { id, step }
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(!!inline);
     const blockedHere = !DRIVE_KEY || !/github\.io$/.test(location.hostname);
     useEffect(() => {
       if (!open || songs || blockedHere) return;
@@ -3431,14 +3539,14 @@ select.btn { appearance: auto; }
           inst: iBlob ? new File([iBlob], parts.inst.name, { type: iBlob.type || "audio/mpeg" }) : null,
           lyricText, lyricName: parts.lrc ? parts.lrc.name : null,
         });
-        setOpen(false);
+        if (!inline) setOpen(false);
       } catch (e) {
         setErr(e && e.message === "no vocal" ? "That song folder has no audio files." : "Couldn't download that song. Try again in a moment.");
       }
       setBusy(null);
     };
-    return html`<div class="panel p-4 flex flex-col gap-3">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+    return html`<div class=${inline ? "flex flex-col gap-3" : "panel p-4 flex flex-col gap-3"}>
+      <div class="flex flex-wrap items-center justify-between gap-3" hidden=${inline}>
         <div class="min-w-0">
           <span class="label">Sample songs</span>
           <p class="text-sm">${current ? html`Now loaded: <b>${current}</b>` : "Pick a song to load its vocal, music and lyrics in one go."}</p>
@@ -3452,13 +3560,109 @@ select.btn { appearance: auto; }
             ${!songs && !err && html`<p class="text-sm muted">Loading songs…</p>`}
             ${songs && songs.length === 0 && html`<p class="text-sm muted">No songs yet. Add a folder per song inside Tono › Songs in your Google Drive.</p>`}
             ${songs && songs.map((sg) => html`<div key=${sg.id} class="song-row">
-              <span class="display font-bold" style=${{ overflowWrap: "anywhere" }}>${sg.name}</span>
+              <span class="flex items-center gap-3 min-w-0">
+                <span class="song-ico"><${Icon} name="music" size=${20} /></span>
+                <span class="display font-bold" style=${{ overflowWrap: "anywhere" }}>${sg.name}</span>
+              </span>
               ${busy && busy.id === sg.id
                 ? html`<span class="text-xs muted">${busy.step}</span>`
-                : html`<button class="btn" style=${{ padding: "5px 12px", fontSize: 13 }} disabled=${!!busy} onClick=${() => load(sg)}>${current === sg.name ? "Reload" : "Load"}</button>`}
+                : current === sg.name
+                  ? html`<span class="flex items-center gap-1 text-xs" style=${{ color: "var(--good)" }}><${Icon} name="check" size=${16} />Loaded</span>`
+                  : html`<button class="btn btn-primary" style=${{ padding: "6px 14px", fontSize: 13 }} disabled=${!!busy} onClick=${() => load(sg)}>Load</button>`}
             </div>`)}
-            <p class="text-xs muted">Songs come from Tono › Songs in Google Drive. Each is downloaded once, then saved on this device for quick loading.</p>
+            <p class="text-xs muted">Add more in Google Drive › Tono › Songs. Each song downloads once, then loads instantly.</p>
           </div>`)}
+    </div>`;
+  }
+
+  /* ---------- shared UI pieces ---------- */
+  const ICONS = {
+    play: '<path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"></path>',
+    pause: '<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"></rect><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"></rect>',
+    stop: '<rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none"></rect>',
+    loop: '<path d="M17 2l4 4-4 4"></path><path d="M3 11v-1a4 4 0 0 1 4-4h14"></path><path d="M7 22l-4-4 4-4"></path><path d="M21 13v1a4 4 0 0 1-4 4H3"></path>',
+    check: '<path d="M20 6L9 17l-5-5"></path>',
+    sliders: '<path d="M4 6h10"></path><circle cx="16" cy="6" r="2"></circle><path d="M10 12h10"></path><circle cx="8" cy="12" r="2"></circle><path d="M4 18h12"></path><circle cx="18" cy="18" r="2"></circle>',
+    music: '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>',
+    mic: '<rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0"></path><path d="M12 17v5"></path>',
+    chart: '<path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-7"></path><path d="M22 20H2"></path>',
+    gauge: '<path d="M3 15a9 9 0 0 1 18 0"></path><path d="M12 15l4-5"></path><circle cx="12" cy="15" r="1.5"></circle>',
+    gear: '<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path>',
+    back: '<path d="M15 18l-6-6 6-6"></path>',
+    x: '<path d="M18 6L6 18"></path><path d="M6 6l12 12"></path>',
+    sun: '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>',
+    moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>',
+    headphones: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3zM3 19a2 2 0 0 0 2 2h1v-6H3z"></path>',
+  };
+  function Icon({ name, size = 20 }) {
+    return html`<svg width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML=${{ __html: ICONS[name] || "" }}></svg>`;
+  }
+  // a panel that slides up from the bottom, for settings that don't need to be on screen all the time
+  function Sheet({ open, title, onClose, children }) {
+    useEffect(() => {
+      if (!open) return;
+      const k = (e) => { if (e.key === "Escape") onClose(); };
+      document.addEventListener("keydown", k);
+      return () => document.removeEventListener("keydown", k);
+    }, [open]);
+    if (!open) return null;
+    return html`<div class="sheet-wrap" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label=${title}>
+        <div class="sheet-head">
+          <h2 class="display text-lg font-bold">${title}</h2>
+          <button class="btn btn-ghost" style=${{ padding: "6px 12px" }} onClick=${onClose}>Done</button>
+        </div>
+        <div class="sheet-body">${children}</div>
+      </div>
+    </div>`;
+  }
+  function FileRow({ id, title, sub, slot, onPick, disabled }) {
+    const ref = useRef(null);
+    const ready = slot && (slot.data || slot.buffer);
+    return html`<div class="file-row">
+      <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
+        <span class="font-semibold text-sm">${title}</span>
+        <span class="text-xs muted" style=${{ overflowWrap: "anywhere" }}>${slot && slot.busy ? (slot.progress != null ? "Analyzing " + Math.round(slot.progress * 100) + "%" : "Reading…") : slot && slot.error ? slot.error : ready ? slot.name : sub}</span>
+      </span>
+      ${ready && html`<span style=${{ color: "var(--good)" }}><${Icon} name="check" size=${18} /></span>`}
+      <button class="btn" style=${{ padding: "6px 12px", fontSize: 13 }} disabled=${disabled || (slot && slot.busy)} onClick=${() => ref.current && ref.current.click()}>${ready ? "Replace" : "Upload"}</button>
+      <input id=${id} ref=${ref} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPick(f); }} />
+    </div>`;
+  }
+  function songTitle(sampleName, vocal) {
+    if (sampleName) return sampleName;
+    return vocal && vocal.name ? vocal.name.replace(/\.[^.]+$/, "") : "";
+  }
+  // the song picker: sample songs first, then your own files
+  function SongSetup({ vocal, music, lyricsEntry, updateLyrics, onPickVocal, onPickMusic, onLoadSample, sampleName, sync, onSync, onAutoSync, syncMsg, keyWarn, onDone, onContinue }) {
+    const ready = vocal && vocal.data;
+    const spans = ready ? lyricSpans(lyricsEntry, vocal.data.duration) : [];
+    const small = { padding: "5px 10px", fontSize: 13 };
+    return html`<div class="flex flex-col gap-5">
+      <section class="flex flex-col gap-2">
+        <span class="label">Sample songs</span>
+        <${SongLibrary} inline=${true} onLoad=${async (x) => { await onLoadSample(x); onDone && onDone(); }} current=${ready ? sampleName : null} />
+      </section>
+      <section class="flex flex-col gap-2">
+        <span class="label">Or use your own files</span>
+        <div class="file-list">
+          <${FileRow} id="setup-vocal" title="Vocal (acapella)" sub="Needed. The singer's voice on its own." slot=${vocal} onPick=${onPickVocal} />
+          <${FileRow} id="setup-music" title="Instrumental" sub="For Karaoke. The song without vocals." slot=${music} onPick=${onPickMusic} disabled=${!ready} />
+          <${LyricsCard} orig=${vocal} lyrics=${lyricsEntry} updateLyrics=${updateLyrics} count=${spans.length} hint="Optional. Timed lyrics show while you sing." />
+        </div>
+        ${keyWarn !== 0 && music && music.buffer && html`<p class="text-xs" style=${{ color: "var(--warn)" }}>This instrumental seems to be ${pianoKeys(Math.abs(keyWarn))} ${keyWarn > 0 ? "higher" : "lower"} than the vocal, so they may clash. Look for a version in the original key.</p>`}
+      </section>
+      ${ready && music && music.buffer && html`<section class="flex flex-col gap-2">
+        <span class="label">Music timing</span>
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="btn" style=${small} onClick=${() => onSync(Math.round((sync - 0.1) * 100) / 100)}>−0.1 s</button>
+          <span class="mono text-xs" style=${{ minWidth: 110, textAlign: "center" }}>${sync === 0 ? "No shift" : "Music " + (sync > 0 ? "skips " + sync.toFixed(2) + " s" : "waits " + (-sync).toFixed(2) + " s")}</span>
+          <button class="btn" style=${small} onClick=${() => onSync(Math.round((sync + 0.1) * 100) / 100)}>+0.1 s</button>
+          <button class="btn btn-ghost" style=${small} onClick=${onAutoSync}>Auto-sync</button>
+        </div>
+        <p class="text-xs muted">${syncMsg || "Lines the music up with the vocal. Check it by ear in Karaoke's options."}</p>
+      </section>`}
+      ${onContinue && ready && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 50, fontSize: 16 }} onClick=${onContinue}>Continue</button>`}
     </div>`;
   }
 
@@ -3470,6 +3674,11 @@ select.btn { appearance: auto; }
     const [matchStatus, setMatchStatus] = useState(null);
     const [showSettings, setShowSettings] = useState(false);
     const [handoff, setHandoff] = useState(null);
+    const [lastTake, setLastTake] = useState(null);
+    const [setupOpen, setSetupOpen] = useState(false);
+    const [pickStay, setPickStay] = useState(false);
+    const [focus, setFocus] = useState(null);
+
     const sendTake = useCallback((t) => { setHandoff(t); setTab("analyst"); setVisited((v) => ({ ...v, analyst: true })); try { window.scrollTo(0, 0); } catch (e) {} }, []);
     const [, bumpSettings] = useState(0);
     const [visited, setVisited] = useState({ live: true });
@@ -3599,6 +3808,8 @@ select.btn { appearance: auto; }
       setMode("idle"); setLive(null); setLevel(0);
     }, []);
     const stop = useCallback(() => { stopInput(); pausePlayback(false); }, [stopInput, pausePlayback]);
+    const goTab = useCallback((k) => { if (k !== "live") stop(); setTab(k); setVisited((v) => ({ ...v, [k]: true })); try { window.scrollTo(0, 0); } catch (e) {} }, [stop]);
+    const practiceRange = useCallback((a, b) => { setFocus({ a, b, id: Date.now() }); goTab("learn"); }, [goTab]);
     useEffect(() => stop, [stop]);
 
     // show the note sounding at song time ct, plus the notes before it
@@ -3848,27 +4059,54 @@ select.btn { appearance: auto; }
     const showExample = !running && trail.length === 0;
     const tm = matchTarget && matchStatus && matchStatus.midi === matchTarget.midi ? matchStatus : null;
 
-    return html`<div class="wrap flex flex-col gap-5">
-      <header class="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 class="display text-3xl sm:text-4xl font-bold">Tono</h1>
-          <p class="muted text-sm">${tab === "live" ? "Sing, whistle or play one clean note and see exactly which note it is." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : tab === "karaoke" ? "Sing along to the music with scrolling lyrics and a live score." : "Compare your singing with the original vocal, phrase by phrase."}</p>
+    const songReady = !!(vocal && vocal.data);
+    const songNeeded = tab !== "live";
+    const showPick = songNeeded && (!songReady || pickStay);
+    const lyricsReady = !!(vocalLyrics && vocalLyrics.lines && vocalLyrics.lines.length);
+    return html`<div class="wrap app-wrap flex flex-col gap-5">
+      <header class="flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <h1 class="display text-3xl font-bold">Tono</h1>
+          <p class="muted text-sm" hidden=${songNeeded && songReady}>${tab === "live" ? "Sing, whistle or play one clean note and see exactly which note it is." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : tab === "karaoke" ? "Sing along to the music with scrolling lyrics and a live score." : "Compare your singing with the original vocal, phrase by phrase."}</p>
         </div>
         <div class="flex gap-2">
-          <button class="btn btn-ghost" onClick=${() => setShowSettings((v) => !v)} aria-expanded=${showSettings ? "true" : "false"}>⚙ Settings</button>
-          <button class="btn btn-ghost" onClick=${() => setTheme(isDark ? "light" : "dark")} aria-label="Switch theme">
-            ${isDark ? "☀ Light" : "☾ Dark"}
-          </button>
+          <button class="icon-btn" onClick=${() => setShowSettings((v) => !v)} aria-expanded=${showSettings ? "true" : "false"} aria-label="Settings"><${Icon} name="gear" /></button>
+          <button class="icon-btn" onClick=${() => setTheme(isDark ? "light" : "dark")} aria-label=${isDark ? "Switch to light theme" : "Switch to dark theme"}><${Icon} name=${isDark ? "sun" : "moon"} /></button>
         </div>
       </header>
 
       ${showSettings && html`<${SettingsPanel} listening=${mode === "mic"} level=${level} onClose=${() => setShowSettings(false)}
         onChange=${() => bumpSettings((n) => n + 1)} onMicChange=${() => { if (mode === "mic") startMic(); }} />`}
 
-      <div class="tabs" role="tablist">
-        ${[["live", "Tuner"], ["learn", "Practice"], ["karaoke", "Karaoke"], ["analyst", "Singing Analyst"]].map(([k, l]) => html`<button key=${k} class="tab" role="tab" aria-selected=${tab === k ? "true" : "false"}
-          onClick=${() => { if (k !== "live") stop(); setTab(k); setVisited((v) => ({ ...v, [k]: true })); }}>${l}</button>`)}
-      </div>
+      <nav class="bottom-nav" aria-label="Main">
+        ${[["live", "Tuner", "gauge"], ["learn", "Practice", "music"], ["karaoke", "Karaoke", "mic"], ["analyst", "Analyze", "chart"]].map(([k, l, ic]) => html`<button key=${k} aria-current=${tab === k ? "page" : undefined}
+          onClick=${() => goTab(k)}><${Icon} name=${ic} size=${22} />${l}</button>`)}
+      </nav>
+
+      ${songNeeded && !showPick && html`<div class="song-bar">
+        <span class="song-ico"><${Icon} name="music" /></span>
+        <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
+          <span class="display font-bold text-lg" style=${{ overflowWrap: "anywhere", lineHeight: 1.2 }}>${songTitle(sampleName, vocal)}</span>
+          <span class="text-xs muted">Vocal${music && music.buffer ? " · Music" : ""}${lyricsReady ? " · Lyrics" : ""}${music && music.busy ? " · loading music…" : ""}</span>
+        </span>
+        <button class="btn" style=${{ padding: "7px 14px", fontSize: 13 }} onClick=${() => setSetupOpen(true)}>Change</button>
+      </div>`}
+
+      ${showPick && html`<section class="flex flex-col gap-5">
+        <div class="empty-hero">
+          <h2 class="display text-3xl font-bold" style=${{ letterSpacing: "-0.02em" }}>Pick a song</h2>
+          <p class="muted text-sm">Practice, Karaoke and the Analyst all use the song you pick here.</p>
+          ${vocal && vocal.busy && html`<p class="text-sm" style=${{ color: "var(--accent)" }}>Analyzing ${vocal.name}… ${Math.round((vocal.progress || 0) * 100)}%</p>`}
+        </div>
+        <${SongSetup} vocal=${vocal} music=${music} lyricsEntry=${vocalLyrics} updateLyrics=${updateVocalLyrics} onPickVocal=${(f) => { setPickStay(true); setSampleName(null); pickVocal(f); }} onPickMusic=${pickMusic}
+          onLoadSample=${loadSample} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn}
+          onDone=${() => setPickStay(false)} onContinue=${() => setPickStay(false)} />
+      </section>`}
+
+      <${Sheet} open=${setupOpen} title="Song" onClose=${() => setSetupOpen(false)}>
+        <${SongSetup} vocal=${vocal} music=${music} lyricsEntry=${vocalLyrics} updateLyrics=${updateVocalLyrics} onPickVocal=${(f) => { setSampleName(null); pickVocal(f); }} onPickMusic=${pickMusic}
+          onLoadSample=${loadSample} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn} onDone=${() => setSetupOpen(false)} />
+      <//>
 
       ${tab === "live" && html`<${React.Fragment}>
       <div class="flex flex-wrap items-center gap-2">
@@ -3923,10 +4161,9 @@ select.btn { appearance: auto; }
 
       <${MatchTrainer} hookRef=${matchHook} listening=${mode === "mic"} onStartMic=${startMic} onTarget=${setMatchTarget} onStatus=${setMatchStatus} sung=${live ? live.midi : null} />
       <//>`}
-      ${tab !== "live" && html`<${SongLibrary} onLoad=${loadSample} current=${vocal && vocal.name && sampleName && vocalName ? sampleName : null} />`}
-      <div hidden=${tab !== "learn"}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
-      <div hidden=${tab !== "karaoke"}>${visited.karaoke && html`<${Karaoke} themeKey=${isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} ...${musicProps} />`}</div>
-      <div hidden=${tab !== "analyst"}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} incomingTake=${handoff} ...${musicProps} />`}</div>
+      <div hidden=${tab !== "learn" || showPick}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} focus=${focus} onGo=${goTab} />`}</div>
+      <div hidden=${tab !== "karaoke" || showPick}>${visited.karaoke && html`<${Karaoke} themeKey=${isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} onTakeReady=${setLastTake} onPractice=${practiceRange} ...${musicProps} />`}</div>
+      <div hidden=${tab !== "analyst" || showPick}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} incomingTake=${handoff} lastTake=${lastTake} onUseTake=${(t) => setHandoff({ ...t, id: Date.now() })} onPractice=${practiceRange} onGo=${goTab} ...${musicProps} />`}</div>
     </div>`;
   }
 
