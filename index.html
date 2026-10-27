@@ -207,6 +207,45 @@ select.btn { appearance: auto; }
 .karaoke .cur { font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 1.25; text-wrap: balance; }
 .karaoke .nxt { font-size: 13px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- Karaoke stage theme (always dark) ---------- */
+:root.kara, :root.kara[data-theme] {
+  --bg: #0a0910; --surface: #15121f; --surface-2: #1d1930; --line: #2e2845;
+  --fg: #f4efe4; --muted: #a59fbd; --accent: #e2b65c; --accent-ink: #1a1408;
+  --good: #5fd39a; --warn: #e7a54b; --bad: #ef6f6c; --rec: #ff5d5d; --you: #8fbcff;
+  color-scheme: dark;
+}
+:root.kara body { min-height: 100dvh; background: radial-gradient(120% 55% at 50% 30%, rgba(139,92,246,.24), transparent 62%), radial-gradient(90% 40% at 50% 100%, rgba(226,182,92,.13), transparent 70%), #0a0910; background-attachment: fixed; }
+.bottom-nav .nav-ico { display: grid; place-items: center; width: 52px; height: 30px; border-radius: 999px; transition: background .2s, box-shadow .2s; }
+:root.kara .bottom-nav { background: rgba(12,10,20,.94); border-color: rgba(139,92,246,.28); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+:root.kara .bottom-nav button[aria-current="page"] { color: #f3d18c; font-weight: 700; }
+:root.kara .bottom-nav button[aria-current="page"] .nav-ico { background: linear-gradient(135deg, rgba(139,92,246,.6), rgba(226,182,92,.45)); box-shadow: 0 0 16px rgba(139,92,246,.5); color: #fff; }
+:root.kara .stage { background: transparent; border-color: transparent; }
+:root.kara .stage .kline:not(.dim) { filter: drop-shadow(0 0 14px rgba(226,182,92,.28)); }
+:root.kara .playbar { background: rgba(21,18,31,.92); border-color: rgba(139,92,246,.25); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+:root.kara .playbar input[type=range] { accent-color: #b98cf0; }
+.kara-lane { position: relative; }
+.kara-pop { position: absolute; left: 50%; top: 12px; z-index: 3; padding: 4px 14px; border-radius: 999px; font-family: var(--font-display); font-weight: 700; font-size: 16px; color: #1a1408; background: linear-gradient(90deg, #f3d18c, #e2b65c); box-shadow: 0 6px 20px rgba(226,182,92,.45); pointer-events: none; white-space: nowrap; animation: kpop .95s ease-out forwards; }
+.kara-pop.great { background: linear-gradient(90deg, #c4b5fd, #8b5cf6); color: #fff; box-shadow: 0 6px 20px rgba(139,92,246,.45); }
+@keyframes kpop { 0% { opacity: 0; transform: translateX(-50%) translateY(8px) scale(.8) rotate(-4deg); } 20% { opacity: 1; transform: translateX(-50%) scale(1.08) rotate(-4deg); } 70% { opacity: 1; transform: translateX(-50%) scale(1) rotate(-4deg); } 100% { opacity: 0; transform: translateX(-50%) translateY(-10px) rotate(-4deg); } }
+.combo-chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 4px 10px; border-radius: 999px; background: rgba(139,92,246,.18); border: 1px solid rgba(139,92,246,.42); color: #c4b5fd; font-size: 12px; font-weight: 700; }
+.score-chip { display: inline-flex; flex-direction: column; align-items: flex-end; padding: 3px 12px; border-radius: 14px; background: rgba(226,182,92,.12); border: 1px solid rgba(226,182,92,.35); }
+.score-chip b { font-family: var(--font-display); font-size: 22px; line-height: 1; color: #f3d18c; }
+.mic-ring { position: relative; flex: none; width: max-content; display: grid; place-items: center; border-radius: 50%; }
+.mic-ring::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; border: 3px solid rgba(226,182,92,.5); box-shadow: 0 0 calc(6px + 30px * var(--lv, 0)) rgba(226,182,92, calc(.2 + .5 * var(--lv, 0))); transform: scale(calc(1 + .14 * var(--lv, 0))); transition: transform .08s linear, box-shadow .08s linear; pointer-events: none; }
+.ready-mic { position: relative; width: 96px; height: 96px; border-radius: 50%; border: 0; background: linear-gradient(160deg, #f3d18c, #d9a748); color: #1a1408; display: grid; place-items: center; cursor: pointer; box-shadow: 0 10px 30px rgba(226,182,92,.35), 0 0 0 10px rgba(226,182,92,.08), 0 0 0 22px rgba(226,182,92,.04); }
+.ready-mic:focus-visible { outline: 2px solid #f3d18c; outline-offset: 6px; }
+.k-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); color: var(--fg); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.kara-count { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(8,6,14,.55); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); border: 0; cursor: pointer; }
+.count-num { font-family: var(--font-display); font-weight: 700; font-size: 140px; line-height: 1; color: #f3d18c; text-shadow: 0 0 40px rgba(226,182,92,.55); animation: kcount .7s ease-out both; }
+@keyframes kcount { 0% { opacity: 0; transform: scale(1.6); } 30% { opacity: 1; transform: scale(1); } 100% { opacity: .2; transform: scale(.85); } }
+.kara-hero { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 18px 8px 6px; }
+.rank-title { font-family: var(--font-display); font-weight: 700; font-size: 38px; line-height: 1.05; letter-spacing: -0.02em; background: linear-gradient(90deg, #f3d18c, #ffffff 50%, #c4b5fd); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.confetti { position: absolute; left: -16px; right: -16px; top: -10px; height: 320px; overflow: hidden; pointer-events: none; }
+.confetti i { position: absolute; top: -14px; width: 7px; height: 12px; border-radius: 2px; opacity: 0; animation: kfall 2.8s ease-in forwards; }
+@keyframes kfall { 0% { opacity: 1; transform: translateY(0) rotate(0); } 85% { opacity: 1; } 100% { opacity: 0; transform: translateY(300px) rotate(540deg); } }
+.part-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+@media (prefers-reduced-motion: reduce) { .kara-pop, .count-num { animation-duration: .01s; } .kara-pop { animation: none; opacity: 1; transform: translateX(-50%) rotate(-4deg); } .confetti { display: none; } .mic-ring::before { transition: none; } }
 </style>
 
 </head><body><div id="root"></div>
@@ -216,7 +255,7 @@ select.btn { appearance: auto; }
 <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
 <script>
 (function () {
-  const { useState, useEffect, useRef, useCallback, useMemo } = React;
+  const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
   const html = htm.bind(React.createElement);
 
   /* ---------- music helpers ---------- */
@@ -3230,6 +3269,15 @@ select.btn { appearance: auto; }
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
+  const karaStars = (sc) => (sc >= 90 ? 5 : sc >= 75 ? 4 : sc >= 60 ? 3 : sc >= 40 ? 2 : 1);
+  const KARA_RANKS = ["Warming up", "Getting there", "Rising star", "Showstopper", "Superstar"];
+  function Stars({ n, size = 36, big }) {
+    return html`<span class="flex items-end gap-1" role="img" aria-label=${n + " out of 5 stars"}>
+      ${[0, 1, 2, 3, 4].map((i) => html`<svg key=${i} width=${big && i === 2 ? size + 8 : size} height=${big && i === 2 ? size + 8 : size} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z" fill=${i < n ? "#f3d18c" : "none"} stroke=${i < n ? "#f3d18c" : "var(--line)"} strokeWidth="1.3" strokeLinejoin="round"></path></svg>`)}
+    </span>`;
+  }
+  const CONFETTI = Array.from({ length: 36 }, (_, i) => ({ l: (i * 37) % 100, d: ((i * 53) % 90) / 100, c: ["#f3d18c", "#8b5cf6", "#8fbcff", "#5fd39a", "#ff7a9c"][i % 5], r: (i * 29) % 360, w: i % 3 ? 7 : 9, h: i % 2 ? 12 : 8 }));
+
   function Karaoke({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, onSendTake, onTakeReady, onPractice, inst, onPickInst, sync, syncMsg, keyWarn, onSync, onAutoSync }) {
     const data = orig && orig.data ? orig.data : null;
     const notes = data ? data.notes : [];
@@ -3261,10 +3309,15 @@ select.btn { appearance: auto; }
     const prev = useRef(null);
     const [loop, setLoop] = useState(null);
     const [best, setBest] = useState(null);
+    const [combo, setCombo] = useState(0);
+    const [pop, setPop] = useState(null);
+    const [count, setCount] = useState(null);
+    const countTimers = useRef([]);
+    const ringRef = useRef(null);
     const mixRef = useRef(mix), syncRef = useRef(0), loopRef = useRef(null), hpRef = useRef("unknown");
     const play = useRef({ ctx: null, srcs: [], guide: [], buses: [], raf: 0 });
     const mic = useRef({});
-    const run = useRef({ her: null, lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {} });
+    const run = useRef({ her: null, lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {}, combo: 0, bestCombo: 0, perfect: 0 });
     const fileRef = useRef(null);
     syncRef.current = sync;
 
@@ -3273,6 +3326,7 @@ select.btn { appearance: auto; }
     const lines = useMemo(() => (spans.length ? spans : phrases.map((p) => ({ start: p.start, end: p.end, text: "", phrase: p.i }))), [spans, phrases]);
     const songEnd = data ? Math.max(data.duration, inst && inst.buffer ? inst.buffer.duration - sync : 0) : 0;
     const listening = hp === "ok" || hp === "override";
+    const isListening = () => hpRef.current === "ok" || hpRef.current === "override";
 
     const ensureCtx = () => {
       const p = play.current;
@@ -3284,6 +3338,7 @@ select.btn { appearance: auto; }
       const p = play.current;
       tape.current.on = false; tape.current.pos = null; p.songAt = null;
       cancelAnimationFrame(p.raf);
+      if (ringRef.current) ringRef.current.style.setProperty("--lv", "0");
       if (p.hear) { try { p.hear.stop(); } catch (e) {} p.hear = null; setHearing(false); }
       stopPlayerNodes();
       [...p.srcs, ...p.guide].forEach((s) => { try { s.stop(); } catch (e) {} });
@@ -3337,7 +3392,9 @@ select.btn { appearance: auto; }
         return true;
       } catch (e) { closeMic(); return false; }
     };
-    useEffect(() => { if (!active) { stopAll(); closeMic(); } }, [active, stopAll, closeMic]);
+    const cancelCount = () => { countTimers.current.forEach(clearTimeout); countTimers.current = []; setCount(null); };
+    useEffect(() => { if (!active) { stopAll(); closeMic(); cancelCount(); } }, [active, stopAll, closeMic]);
+    useEffect(() => () => countTimers.current.forEach(clearTimeout), []);
     useEffect(() => () => { killSources(); closeMic(); if (play.current.ctx) play.current.ctx.close().catch(() => {}); }, []);
 
     // new song: reset the session and bring back saved timing/best score
@@ -3401,8 +3458,21 @@ select.btn { appearance: auto; }
         const cut = Math.floor((k1 - k0) * 0.2);
         let v = 0, ok = 0;
         for (let k = k0 + cut; k < k1 - cut; k++) { if (data.grid[k] !== data.grid[k]) continue; v++; if (matchAt(k)) ok++; }
-        if (v) newMarks.push({ i, pos: n.pos, end: n.end, midi: n.midi, ok: ok / v >= 0.5 });
+        if (v) newMarks.push({ i, pos: n.pos, end: n.end, midi: n.midi, ok: ok / v >= 0.5, q: ok / v });
       });
+      if (newMarks.length) {
+        newMarks.sort((x, y) => x.pos - y.pos);
+        let last = null;
+        newMarks.forEach((mk) => {
+          if (mk.ok) { R.combo++; if (mk.q >= 0.85) R.perfect++; R.bestCombo = Math.max(R.bestCombo, R.combo); last = mk; }
+          else R.combo = 0;
+        });
+        setCombo(R.combo);
+        if (last && R.combo > 0) {
+          const milestone = R.combo >= 10 && R.combo % 10 === 0;
+          setPop({ id: Date.now() + Math.random(), kind: milestone || last.q >= 0.85 ? "perfect" : "great", text: milestone ? "×" + R.combo + " combo!" : last.q >= 0.85 ? "Perfect!" : "Great!" });
+        }
+      }
       if (newMarks.length) setMarks((m) => [...m.filter((x) => !newMarks.some((y) => y.i === x.i)), ...newMarks]);
       const upd = {};
       lines.forEach((l, i) => {
@@ -3436,9 +3506,10 @@ select.btn { appearance: auto; }
       setTakeBuf(tb); setSaveMsg(""); setMixMsg(""); setNudgeV(0); setPl({ on: false, pos: 0 });
       setLat(tb ? estimateLatency() : 0);
       const reached = Math.max(0, Math.min(songEnd, play.current.lastSongT || cursor || 0));
-      if (!listening || v < 50) { setFinal({ score: null, lines: 0, scoring: listening, reached }); return; }
+      const lis = isListening();
+      if (!lis || v < 50) { setFinal({ score: null, lines: 0, scoring: lis, reached }); return; }
       const score = Math.round((100 * ok) / v);
-      setFinal({ score, lines: Object.keys(R.tally).length, scoring: true, reached });
+      setFinal({ score, lines: Object.keys(R.tally).length, scoring: true, reached, bestCombo: R.bestCombo, perfect: R.perfect, prevBest: best });
       if (songName) {
         const all = loadJSON(KARA_BEST_KEY, {});
         if (!(all[songName] >= score)) { all[songName] = score; saveJSON(KARA_BEST_KEY, all); setBest(score); }
@@ -3449,13 +3520,15 @@ select.btn { appearance: auto; }
       if (!data) return;
       killSources();
       const ctx = ensureCtx();
-      if (listening) await ensureMic();
+      const lis = isListening();
+      if (lis) await ensureMic();
       const p = play.current, mx = mixRef.current, sy = syncRef.current, lp = loopRef.current;
       const end = lp ? lp.b : songEnd;
       if (lp && (t < lp.a - 1 || t >= lp.b)) t = Math.max(0, lp.a - 0.6);
       if (t >= end - 0.1) t = lp ? Math.max(0, lp.a - 0.6) : 0;
       if (fresh || t < 0.05) {
-        run.current = { her: new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN), lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {} };
+        run.current = { her: new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN), lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {}, combo: 0, bestCombo: 0, perfect: 0 };
+        setCombo(0); setPop(null);
         tape.current = { on: false, sr: 24000, chunks: [], pos: null };
         play.current.lastSongT = 0;
         setMarks([]); setLineScores({}); setFinal(null); setOverlay(null); setTakeBuf(null);
@@ -3479,9 +3552,9 @@ select.btn { appearance: auto; }
       p.guide = scheduleGuide(ctx, p.gG, notes, t, end, now, 0, 1);
       p.songAt = () => t + Math.max(0, ctx.currentTime - now);
       tape.current.pos = null;
-      tape.current.on = !!(listening && mic.current.an && !check);
+      tape.current.on = !!(lis && mic.current.an && !check);
       setPlaying(true);
-      const an = listening ? mic.current.an : null, buf = an ? new Float32Array(an.fftSize) : null;
+      const an = lis ? mic.current.an : null, buf = an ? new Float32Array(an.fftSize) : null;
       let frame = 0;
       const tick = () => {
         const songT = t + Math.max(0, ctx.currentTime - now);
@@ -3489,6 +3562,7 @@ select.btn { appearance: auto; }
           an.getFloatTimeDomainData(buf);
           const d = detectPitch(buf, ctx.sampleRate, micGate());
           const m = d.freq > 0 ? 69 + 12 * Math.log2(d.freq / SETTINGS.a4) : NaN;
+          if (ringRef.current) ringRef.current.style.setProperty("--lv", Math.min(1, (d.rms || 0) * 9).toFixed(2));
           const R = run.current, k = Math.round(songT / GRID);
           if (k < R.her.length) { for (let q = Math.max(R.lastK + 1, k - 4); q <= k; q++) R.her[q] = m; R.lastK = k; }
           R.points.push({ t: songT, m });
@@ -3528,7 +3602,7 @@ select.btn { appearance: auto; }
     const loopLine = (l) => { const lp = { a: Math.max(0, l.start), b: l.end + 0.3 }; loopRef.current = lp; setLoop(lp); startAt(Math.max(0, lp.a - 0.6), false); };
     const clearLoop = () => { loopRef.current = null; setLoop(null); };
     const stopSession = () => {
-      if (listening) judge(cursor + 0.5);
+      if (isListening()) judge(cursor + 0.5);
       killSources(); setPlaying(false);
       finish();
     };
@@ -3691,32 +3765,45 @@ select.btn { appearance: auto; }
       skip: "Singing without scoring. Check your headphones to turn scoring and recording on.",
     }[hp];
 
+    const ready = !playing && cursor < 0.05;
+    const firstLines = spans.slice(0, 2).map((l) => l.text);
     const liveScore = (() => { const v = Object.values(lineScores); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; })();
+    // 3-2-1 before a fresh start, so it feels like stepping on stage
+    const countIn = (fn) => {
+      cancelCount(); ensureCtx();
+      setCount(3);
+      countTimers.current = [setTimeout(() => setCount(2), 700), setTimeout(() => setCount(1), 1400), setTimeout(() => { countTimers.current = []; setCount(null); fn(); }, 2100)];
+    };
     const startPressed = (fresh) => {
+      if (count != null) { cancelCount(); return; }
       if (!playing && (fresh || cursor < 0.05) && hpRef.current === "unknown") { setHpAsk(true); return; }
-      if (fresh) { startAt(0, true); return; }
-      playing ? stopAll() : startAt(cursor >= songEnd - 0.2 ? 0 : cursor, cursor < 0.05);
+      if (playing && !fresh) { stopAll(); return; }
+      const t = cursor >= songEnd - 0.2 ? 0 : cursor;
+      if (fresh || t < 0.05) { if (playing) stopAll(); countIn(() => startAt(0, true)); } else startAt(t, false);
     };
     const checkThenSing = async () => {
       const st = await runCheck();
-      if (st === "ok") { setHpAsk(false); startAt(0, true); }
+      if (st === "ok") { setHpAsk(false); countIn(() => startAt(0, true)); }
     };
-    const singWithout = () => { setHp("skip"); hpRef.current = "skip"; setHpAsk(false); startAt(0, true); };
+    const singWithout = () => { setHp("skip"); hpRef.current = "skip"; setHpAsk(false); countIn(() => startAt(0, true)); };
 
     return html`<div class="flex flex-col gap-4">
       ${final ? html`<${React.Fragment}>
       <section class="flex flex-col gap-4">
         <div class="flex items-center justify-between gap-3">
           <button class="btn btn-ghost" style=${{ padding: "6px 10px" }} onClick=${() => { playerStop(); setFinal(null); }}><span class="flex items-center gap-1"><${Icon} name="back" size=${18} />Back to the song</span></button>
-          <button class="btn" onClick=${() => { playerStop(); clearLoop(); setCursor(0); startPressed(true); }}>Sing again</button>
+          <button class="btn btn-primary" onClick=${() => { playerStop(); clearLoop(); setCursor(0); startPressed(true); }}>Sing again</button>
         </div>
-        <div class="flex flex-wrap items-end justify-between gap-3">
-          <div class="flex items-end gap-3">
+        <div class="flex flex-wrap items-end justify-center gap-3">
+          <div class="flex items-end gap-3" style=${{ width: final.score != null ? "100%" : undefined }}>
             ${final.score != null
-              ? html`<span class="display font-bold" style=${{ fontSize: 72, lineHeight: 1, color: "var(--accent)" }}>${final.score}</span>
-                <div class="flex flex-col pb-2">
-                  <span class="label">Karaoke score</span>
-                  <span class="text-xs muted">${final.lines} lines scored${best != null && best === final.score ? " · new best!" : best != null ? " · best " + best : ""}</span>
+              ? html`<div class="kara-hero" style=${{ width: "100%" }}>
+                  ${final.score >= 75 && html`<div class="confetti" aria-hidden="true">${CONFETTI.map((c, i) => html`<i key=${i} style=${{ left: c.l + "%", background: c.c, width: c.w, height: c.h, animationDelay: c.d + "s", transform: "rotate(" + c.r + "deg)" }}></i>`)}</div>`}
+                  <${Stars} n=${karaStars(final.score)} size=${36} big=${true} />
+                  <span class="rank-title">${KARA_RANKS[karaStars(final.score) - 1]}</span>
+                  <span class="display font-bold" style=${{ fontSize: 64, lineHeight: 1, color: "#f3d18c", textShadow: "0 0 28px rgba(226,182,92,.45)" }}>${final.score}<span style=${{ fontSize: 28 }}>%</span></span>
+                  <span class="text-sm muted">${final.bestCombo ? html`Best combo <b style=${{ color: "#c4b5fd" }}>×${final.bestCombo}</b> · ` : ""}${final.perfect || 0} perfect note${final.perfect === 1 ? "" : "s"} · ${final.lines} lines</span>
+                  ${final.prevBest == null || final.score > final.prevBest ? html`<span class="tag tag-good" style=${{ marginTop: 4 }}>${final.prevBest == null ? "First score on this song" : "New best!"}</span>` : html`<span class="text-xs muted">Your best: ${best}%</span>`}
                 </div>`
               : html`<div class="flex flex-col gap-1">
                   <span class="label">${takeBuf ? "Your take" : "Session ended"}</span>
@@ -3726,6 +3813,15 @@ select.btn { appearance: auto; }
                 </div>`}
           </div>
         </div>
+        ${scored.length > 0 && html`<div class="flex flex-col gap-2">
+          ${(() => { const b = scored[scored.length - 1]; return html`<div class="part-card">
+            <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><span class="label">Best part · <span class="mono">${fmt(lines[b.i].start)}</span></span><span class="text-sm" style=${{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${lineLabel(b.i)}</span></span>
+            <span class="display font-bold" style=${{ fontSize: 18, color: "var(--good)" }}>${b.s}%</span></div>`; })()}
+          ${scored.length > 1 && scored.slice(0, Math.min(3, scored.length - 1)).filter(({ s }) => s < 90).slice(0, scored.length > 4 ? 2 : 1).map(({ i, s }, k) => html`<div key=${i} class="part-card">
+            <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><span class="label">${k === 0 ? "Hardest part" : "Also practise"} · <span class="mono">${fmt(lines[i].start)}</span></span><span class="text-sm" style=${{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${lineLabel(i)}</span></span>
+            <span class="display font-bold" style=${{ fontSize: 18, color: s >= 80 ? "var(--good)" : s >= 50 ? "var(--warn)" : "var(--bad)" }}>${s}%</span>
+            <button class="link-btn text-sm" style=${{ textDecoration: "none" }} onClick=${() => onPractice && onPractice(lines[i].start, lines[i].end + 0.3)}>Practise</button></div>`)}
+        </div>`}
         ${takeBuf && html`<div class="take-box">
           <div class="flex flex-wrap items-end justify-between gap-2">
             <div class="flex flex-col min-w-0">
@@ -3773,26 +3869,32 @@ select.btn { appearance: auto; }
           ${(saveMsg || mixMsg) && html`<span class="text-xs muted">${mixMsg || saveMsg}</span>`}
           ${!mixMsg && inst && inst.buffer && html`<span class="text-xs muted">Save with music makes a WAV file of what you hear in "Me + music", about ${Math.max(1, Math.round(mixLength() / 60 * 10))} MB.</span>`}
         </div>`}
-        ${scored.length > 0 && html`<div class="grid gap-3 sm:grid-cols-2">
-          <div class="flex flex-col gap-2">
-            <span class="label">Needs work</span>
-            ${scored.slice(0, 3).map(({ i, s }) => html`<div key=${i} class="spot"><span class="mono text-sm font-semibold">${s}%</span><span class="text-sm">${lineLabel(i)}</span>
-              <span><button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => onPractice && onPractice(lines[i].start, lines[i].end + 0.3)}>Practice</button></span></div>`)}
-          </div>
-          <div class="flex flex-col gap-2">
-            <span class="label">Your best lines</span>
-            ${scored.slice(-3).reverse().map(({ i, s }) => html`<div key=${i} class="spot"><span class="mono text-sm font-semibold" style=${{ color: "var(--good)" }}>${s}%</span><span class="text-sm">${lineLabel(i)}</span><span></span></div>`)}
-          </div>
-        </div>`}
       </section>
       <//>` : html`<${React.Fragment}>
+      ${ready ? html`<section class="flex flex-col items-center gap-4 text-center" style=${{ paddingTop: 12 }}>
+        <span class="label" style=${{ color: "#c4b5fd", letterSpacing: "0.12em" }}>Up first</span>
+        <p class="display font-bold" style=${{ fontSize: 30, lineHeight: 1.15, margin: 0, maxWidth: "20ch" }}>${firstLines[0] || "♪"}</p>
+        ${firstLines[1] && html`<p class="display font-semibold muted" style=${{ fontSize: 17, margin: 0, maxWidth: "26ch" }}>${firstLines[1]}</p>`}
+        ${!spans.length && html`<p class="text-xs muted" style=${{ margin: 0 }}>No lyrics for this song yet. Add an .lrc file under Change.</p>`}
+        ${best != null && html`<span class="k-chip" style=${{ cursor: "default" }}><span class="muted" style=${{ fontWeight: 500 }}>Your best</span><span class="mono" style=${{ color: "#f3d18c" }}>${best}%</span><span style=${{ color: "#f3d18c", letterSpacing: 1 }} aria-label=${karaStars(best) + " stars"}>${"★".repeat(karaStars(best))}</span></span>`}
+        <div class="flex flex-col items-center gap-3" style=${{ marginTop: 18 }}>
+          <button class="ready-mic" onClick=${() => startPressed(false)} aria-label="Start singing"><${Icon} name="mic" size=${36} /></button>
+          <span class="display font-bold" style=${{ fontSize: 18, marginTop: 6 }}>Tap to sing</span>
+          <span class="text-sm muted">3-2-1 countdown, then the music starts</span>
+          <div class="flex flex-wrap justify-center gap-2" style=${{ marginTop: 4 }}>
+            <button class="k-chip" onClick=${() => setHpAsk(true)}><${Icon} name="headphones" size=${16} />${hp === "ok" ? "Headphones on" : hp === "override" ? "No headphones" : "Check headphones"}</button>
+            <span class="k-chip" style=${{ cursor: "default", color: listening ? "var(--good)" : "var(--muted)", borderColor: listening ? "rgba(95,211,154,.35)" : undefined }}>${listening ? "Scoring on" : "Scoring off"}</span>
+            <button class="k-chip" onClick=${() => setOptOpen(true)}><${Icon} name="sliders" size=${16} />Mix</button>
+          </div>
+        </div>
+      </section>` : html`<${React.Fragment}>
       <div class="flex items-center justify-between gap-3">
         <span class="flex items-center gap-2 text-sm muted">
-          ${listening ? html`<span class="rec-dot"></span>${playing ? "Recording" : "Ready to record"}` : html`<${Icon} name="headphones" size=${18} />${hp === "skip" || hp === "nomic" ? "Singing without scoring" : "Headphones needed for scoring"}`}
+          ${listening ? html`<span class="rec-dot"></span>${playing ? "Recording" : "Paused"}` : html`<${Icon} name="headphones" size=${18} />${hp === "skip" || hp === "nomic" ? "Singing without scoring" : "Headphones needed for scoring"}`}
         </span>
-        <span class="flex gap-2">
-          ${best != null && html`<span class="chip"><span class="muted text-xs">Best</span><b class="mono">${best}</b></span>`}
-          ${liveScore != null && html`<span class="chip"><span class="muted text-xs">Score</span><b class="mono" style=${{ color: "var(--accent)" }}>${liveScore}</b></span>`}
+        <span class="flex items-center gap-2">
+          ${combo >= 2 && html`<span class="combo-chip">Combo <span class="mono" style=${{ fontSize: 14 }}>×${combo}</span></span>`}
+          ${listening && html`<span class="score-chip"><span class="label" style=${{ fontSize: 9, color: "#c9a866" }}>Score</span><b>${liveScore != null ? liveScore + "%" : "—"}</b></span>`}
         </span>
       </div>
 
@@ -3806,8 +3908,11 @@ select.btn { appearance: auto; }
         ${scored.length > 0 && html`<div class="flex flex-wrap gap-2">
           ${Object.entries(lineScores).sort((a, b) => a[0] - b[0]).slice(-6).map(([i, s]) => html`<span key=${i} class=${"tag tag-" + (s >= 80 ? "good" : s >= 50 ? "warn" : "bad")}>${lines[i].text ? (lines[i].text.length > 18 ? lines[i].text.slice(0, 18) + "…" : lines[i].text) : "Phrase " + (+i + 1)} · ${s}%</span>`)}
         </div>`}
-        <${MelodyMap} data=${data} notes=${notes} tr=${0} nameOf=${nameOf} phrases=${phrases} lyrics=${[]} loop=${loop} cursor=${cursor} curIdx=${curIdx}
-          onTapNote=${(n) => { setCursor(n.pos); if (playing) startAt(n.pos, false); }} onSeek=${(t) => { setCursor(t); if (playing) startAt(t, false); }} themeKey=${themeKey} overlay=${overlay} height=${170} marks=${marks} />
+        <div class="kara-lane">
+          ${pop && playing && html`<span key=${pop.id} class=${"kara-pop" + (pop.kind === "great" ? " great" : "")} aria-hidden="true">${pop.text}</span>`}
+          <${MelodyMap} data=${data} notes=${notes} tr=${0} nameOf=${nameOf} phrases=${phrases} lyrics=${[]} loop=${loop} cursor=${cursor} curIdx=${curIdx}
+            onTapNote=${(n) => { setCursor(n.pos); if (playing) startAt(n.pos, false); }} onSeek=${(t) => { setCursor(t); if (playing) startAt(t, false); }} themeKey=${themeKey} overlay=${overlay} height=${170} marks=${marks} />
+        </div>
 
 
       <div class="playbar" style=${{ flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
@@ -3818,12 +3923,14 @@ select.btn { appearance: auto; }
         </span>
         <span class="flex items-center justify-center gap-5">
           <button class="round-btn" onClick=${() => setOptOpen(true)} aria-label="Mix and options"><${Icon} name="sliders" /></button>
-          <button class="round-btn primary big" onClick=${() => startPressed(false)} aria-label=${playing ? "Pause" : cursor > 0.05 && cursor < songEnd - 0.2 ? "Resume" : "Start"}><${Icon} name=${playing ? "pause" : "play"} size=${26} /></button>
+          <span class="mic-ring" ref=${ringRef}><button class="round-btn primary big" onClick=${() => startPressed(false)} aria-label=${playing ? "Pause" : cursor > 0.05 && cursor < songEnd - 0.2 ? "Resume" : "Start"}><${Icon} name=${playing ? "pause" : "play"} size=${26} /></button></span>
           <button class="round-btn" onClick=${stopSession} aria-label="Stop and see results" disabled=${!(playing || (cursor > 0.05 && cursor < songEnd - 0.2))}><${Icon} name="stop" size=${16} /></button>
         </span>
         ${loop && html`<span class="flex items-center justify-center gap-2 text-xs"><span style=${{ color: "var(--accent)" }}>Looping ${fmt(loop.a)}–${fmt(loop.b)}</span><button class="btn btn-ghost" style=${{ padding: "2px 8px", fontSize: 12 }} onClick=${clearLoop}>Stop looping</button></span>`}
       </div>
       <//>`}
+      <//>`}
+      ${count != null && html`<button class="kara-count" onClick=${cancelCount} aria-label="Cancel countdown"><span key=${count} class="count-num" aria-live="assertive">${count}</span></button>`}
 
       <${Sheet} open=${optOpen} title="Karaoke options" onClose=${() => setOptOpen(false)}>
         <div class="opt-group">
@@ -3866,7 +3973,7 @@ select.btn { appearance: auto; }
         ${hp !== "unknown" && html`<p class="text-sm" style=${{ color: hp === "ok" ? "var(--good)" : "var(--warn)" }}>${hpText}</p>`}
         <div class="flex flex-col gap-2">
           <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} disabled=${hp === "checking"} onClick=${checkThenSing}>${hp === "checking" ? "Listening…" : hp === "heard" ? "Check again" : "Check and start"}</button>
-          ${hp === "heard" && html`<button class="btn" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => { setHp("override"); hpRef.current = "override"; setHpAsk(false); startAt(0, true); }}>Score anyway</button>`}
+          ${hp === "heard" && html`<button class="btn" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => { setHp("override"); hpRef.current = "override"; setHpAsk(false); countIn(() => startAt(0, true)); }}>Score anyway</button>`}
           <button class="btn btn-ghost" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${singWithout}>Sing without scoring</button>
         </div>
       <//>
@@ -4450,6 +4557,7 @@ select.btn { appearance: auto; }
     const info = live ? midiInfo(live.midi) : null;
     const tuneColor = !live ? "var(--muted)" : Math.abs(live.cents) <= 10 ? "var(--good)" : Math.abs(live.cents) <= 25 ? "var(--warn)" : "var(--bad)";
     const isDark = theme ? theme === "dark" : !window.matchMedia("(prefers-color-scheme: light)").matches;
+    useLayoutEffect(() => { document.documentElement.classList.toggle("kara", tab === "karaoke"); }, [tab]);
     const running = mode !== "idle";
     const showExample = !running && trail.length === 0;
     const tm = matchTarget && matchStatus && matchStatus.midi === matchTarget.midi ? matchStatus : null;
@@ -4475,7 +4583,7 @@ select.btn { appearance: auto; }
 
       <nav class="bottom-nav" aria-label="Main">
         ${[["live", "Tuner", "gauge"], ["learn", "Practice", "music"], ["karaoke", "Karaoke", "mic"], ["analyst", "Analyze", "chart"]].map(([k, l, ic]) => html`<button key=${k} aria-current=${tab === k ? "page" : undefined}
-          onClick=${() => goTab(k)}><${Icon} name=${ic} size=${22} />${l}</button>`)}
+          onClick=${() => goTab(k)}><span class="nav-ico"><${Icon} name=${ic} size=${22} /></span>${l}</button>`)}
       </nav>
 
       ${songNeeded && !showPick && html`<div class="song-bar">
@@ -4505,7 +4613,7 @@ select.btn { appearance: auto; }
 
       ${tab === "live" && html`<${MatchTrainer} hookRef=${matchHook} listening=${mode === "mic"} onStartMic=${startMic} onStopMic=${stop} onTarget=${setMatchTarget} onStatus=${setMatchStatus} sung=${live ? live.midi : null} live=${live} level=${level} error=${error} />`}
       <div hidden=${tab !== "learn" || showPick}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} focus=${focus} onGo=${goTab} inst=${music} sync=${msync.sync} />`}</div>
-      <div hidden=${tab !== "karaoke" || showPick}>${visited.karaoke && html`<${Karaoke} themeKey=${isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} onTakeReady=${setLastTake} onPractice=${practiceRange} ...${musicProps} />`}</div>
+      <div hidden=${tab !== "karaoke" || showPick}>${visited.karaoke && html`<${Karaoke} themeKey=${tab === "karaoke" ? "kara" : isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} onTakeReady=${setLastTake} onPractice=${practiceRange} ...${musicProps} />`}</div>
       <div hidden=${tab !== "analyst" || showPick}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} incomingTake=${handoff} lastTake=${lastTake} onUseTake=${(t) => setHandoff({ ...t, id: Date.now() })} onPractice=${practiceRange} onGo=${goTab} ...${musicProps} />`}</div>
     </div>`;
   }
