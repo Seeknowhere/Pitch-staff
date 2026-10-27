@@ -2834,7 +2834,7 @@ select.btn { appearance: auto; }
       <header class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 class="display text-3xl sm:text-4xl font-bold">Pitch Staff</h1>
-          <p class="muted text-sm">${tab === "live" ? "Sing, whistle or play one clean note. It lands on the staff as you hold it." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : "Compare your singing with the original vocal, phrase by phrase."}</p>
+          <p class="muted text-sm">${tab === "live" ? "Sing, whistle or play one clean note and see exactly which note it is." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : "Compare your singing with the original vocal, phrase by phrase."}</p>
         </div>
         <div class="flex gap-2">
           <button class="btn btn-ghost" onClick=${() => setShowSettings((v) => !v)} aria-expanded=${showSettings ? "true" : "false"}>⚙ Settings</button>
@@ -2897,11 +2897,8 @@ select.btn { appearance: auto; }
               <div class="flex justify-between mono text-xs muted"><span>−50¢</span><span>0</span><span>+50¢</span></div>`}
         </div>
 
-        <div class="staff-box">
-          <${Staff} trail=${showExample ? EXAMPLE : trail} live=${live} example=${showExample} target=${matchTarget} />
-        </div>
-        <div class="flex items-center justify-between gap-3 text-xs muted">
-          <span>${showExample ? "Example scale shown. Start the mic to replace it with your notes." : "Faded notes are your recent notes. The gold one is live."}</span>
+        <div class="flex items-center justify-end gap-3 text-xs muted">
+          <span>Mic level</span>
           <div class="level" style=${{ width: 90 }} title="Input level"><div style=${{ width: level * 100 + "%" }}></div></div>
         </div>
       </section>
