@@ -148,6 +148,7 @@ select.btn { appearance: auto; }
 .player { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
 .player input { width: 100%; min-width: 0; }
 .take-box { display: flex; flex-direction: column; gap: 12px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 12px; background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
+.song-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
 .stage { display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; padding: 18px 8px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); min-height: 150px; justify-content: center; }
 .kline { margin: 0; font-family: var(--font-display); font-weight: 700; line-height: 1.25; text-wrap: balance; max-width: 34ch; }
 .kline.dim { font-weight: 600; opacity: .55; }
@@ -3369,6 +3370,98 @@ select.btn { appearance: auto; }
     </div>`;
   }
 
+  /* ---------- sample songs from Google Drive ---------- */
+  const DRIVE_FOLDER = "1wPR3_B8Yn-fawCBnQD8wFt5JiKZFa_vK"; // Tono > Songs (shared: anyone with the link can view)
+  const DRIVE_KEY = "AIzaSyBxpIBmELpY8JDFsYggMuZU_eROl4KYRrI"; // restricted to seeknowhere.github.io and the Drive API
+  const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
+  async function driveList(parent) {
+    const q = encodeURIComponent("'" + parent + "' in parents and trashed = false");
+    const r = await fetch(DRIVE_API + "?q=" + q + "&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=name&pageSize=200&key=" + DRIVE_KEY);
+    if (!r.ok) throw new Error("list " + r.status);
+    return (await r.json()).files || [];
+  }
+  async function driveFile(f) {
+    const url = DRIVE_API + "/" + f.id + "?alt=media&key=" + DRIVE_KEY;
+    const cacheKey = "https://tono.cache/" + f.id + "/" + (f.modifiedTime || "");
+    let cache = null;
+    try { cache = window.caches ? await caches.open("tono-songs-v1") : null; } catch (e) { cache = null; }
+    if (cache) { try { const hit = await cache.match(cacheKey); if (hit) return await hit.blob(); } catch (e) {} }
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("file " + r.status);
+    const blob = await r.blob();
+    if (cache) { try { await cache.put(cacheKey, new Response(blob)); } catch (e) {} }
+    return blob;
+  }
+  function sortSongFiles(files) {
+    const lrc = files.find((f) => /\.lrc$/i.test(f.name));
+    const audio = files.filter((f) => /^audio\//.test(f.mimeType || "") || /\.(mp3|m4a|wav|aac|ogg|flac)$/i.test(f.name));
+    let vocal = audio.find((f) => /vocal|acapella|a ?cappella|voice/i.test(f.name));
+    let inst = audio.find((f) => f !== vocal && /instrument|karaoke|minus ?one|backing|accomp|no ?vocal/i.test(f.name));
+    if (!vocal) vocal = audio.find((f) => f !== inst);
+    if (!inst) inst = audio.find((f) => f !== vocal);
+    return { vocal, inst, lrc };
+  }
+
+  function SongLibrary({ onLoad, current }) {
+    const [songs, setSongs] = useState(null);
+    const [err, setErr] = useState("");
+    const [busy, setBusy] = useState(null); // { id, step }
+    const [open, setOpen] = useState(false);
+    const blockedHere = !DRIVE_KEY || !/github\.io$/.test(location.hostname);
+    useEffect(() => {
+      if (!open || songs || blockedHere) return;
+      driveList(DRIVE_FOLDER)
+        .then((fs) => setSongs(fs.filter((f) => f.mimeType === "application/vnd.google-apps.folder")))
+        .catch(() => setErr("Couldn't reach the song folder. Check your connection and try again."));
+    }, [open]);
+    const load = async (song) => {
+      setErr(""); setBusy({ id: song.id, step: "Finding files…" });
+      try {
+        const parts = sortSongFiles(await driveList(song.id));
+        if (!parts.vocal) throw new Error("no vocal");
+        let lyricText = null;
+        if (parts.lrc) { setBusy({ id: song.id, step: "Getting lyrics…" }); lyricText = await (await driveFile(parts.lrc)).text(); }
+        setBusy({ id: song.id, step: "Downloading vocal…" });
+        const vBlob = await driveFile(parts.vocal);
+        let iBlob = null;
+        if (parts.inst) { setBusy({ id: song.id, step: "Downloading music…" }); iBlob = await driveFile(parts.inst); }
+        await onLoad({
+          name: song.name,
+          vocal: new File([vBlob], parts.vocal.name, { type: vBlob.type || "audio/mpeg" }),
+          inst: iBlob ? new File([iBlob], parts.inst.name, { type: iBlob.type || "audio/mpeg" }) : null,
+          lyricText, lyricName: parts.lrc ? parts.lrc.name : null,
+        });
+        setOpen(false);
+      } catch (e) {
+        setErr(e && e.message === "no vocal" ? "That song folder has no audio files." : "Couldn't download that song. Try again in a moment.");
+      }
+      setBusy(null);
+    };
+    return html`<div class="panel p-4 flex flex-col gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="min-w-0">
+          <span class="label">Sample songs</span>
+          <p class="text-sm">${current ? html`Now loaded: <b>${current}</b>` : "Pick a song to load its vocal, music and lyrics in one go."}</p>
+        </div>
+        <button class=${"btn" + (open ? "" : " btn-primary")} onClick=${() => setOpen((v) => !v)} aria-expanded=${open ? "true" : "false"}>${open ? "Close" : "Browse songs"}</button>
+      </div>
+      ${open && (blockedHere
+        ? html`<p class="text-sm muted">${!DRIVE_KEY ? "The song library isn't connected yet." : "The song library works on your Tono website (seeknowhere.github.io). Here, upload the files yourself below."}</p>`
+        : html`<div class="flex flex-col gap-2">
+            ${err && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${err}</p>`}
+            ${!songs && !err && html`<p class="text-sm muted">Loading songs…</p>`}
+            ${songs && songs.length === 0 && html`<p class="text-sm muted">No songs yet. Add a folder per song inside Tono › Songs in your Google Drive.</p>`}
+            ${songs && songs.map((sg) => html`<div key=${sg.id} class="song-row">
+              <span class="display font-bold" style=${{ overflowWrap: "anywhere" }}>${sg.name}</span>
+              ${busy && busy.id === sg.id
+                ? html`<span class="text-xs muted">${busy.step}</span>`
+                : html`<button class="btn" style=${{ padding: "5px 12px", fontSize: 13 }} disabled=${!!busy} onClick=${() => load(sg)}>${current === sg.name ? "Reload" : "Load"}</button>`}
+            </div>`)}
+            <p class="text-xs muted">Songs come from Tono › Songs in Google Drive. Each is downloaded once, then saved on this device for quick loading.</p>
+          </div>`)}
+    </div>`;
+  }
+
   /* ---------- app ---------- */
   function App() {
     const [tab, setTab] = useState("live");
@@ -3433,6 +3526,17 @@ select.btn { appearance: auto; }
       if (saved && saved.inst === music.name) setMsync((x) => ({ ...x, sync: saved.sync, msg: "Using the timing you saved for this song." }));
       else autoMusicSync();
     }, [vocal, music]);
+    const [sampleName, setSampleName] = useState(null);
+    const loadSample = useCallback(async ({ name, vocal: vf, inst: inf, lyricText, lyricName }) => {
+      if (lyricText) {
+        const lines = parseLrc(lyricText);
+        if (lines.filter((l) => l.text).length) saveLyricsFor(vf.name, { name: lyricName, lines, offset: (loadLyricsStore()[vf.name] || {}).offset || 0 });
+      }
+      setSampleName(name);
+      const jobs = [pickVocal(vf)];
+      if (inf) jobs.push(pickMusic(inf));
+      await Promise.all(jobs);
+    }, [pickVocal, pickMusic]);
     const musicProps = { inst: music, onPickInst: pickMusic, sync: msync.sync, syncMsg: msync.msg, keyWarn: msync.keyWarn, onSync: saveMusicSync, onAutoSync: autoMusicSync };
     const [mode, setMode] = useState("idle"); // idle | mic | file
     const [error, setError] = useState("");
@@ -3819,6 +3923,7 @@ select.btn { appearance: auto; }
 
       <${MatchTrainer} hookRef=${matchHook} listening=${mode === "mic"} onStartMic=${startMic} onTarget=${setMatchTarget} onStatus=${setMatchStatus} sung=${live ? live.midi : null} />
       <//>`}
+      ${tab !== "live" && html`<${SongLibrary} onLoad=${loadSample} current=${vocal && vocal.name && sampleName && vocalName ? sampleName : null} />`}
       <div hidden=${tab !== "learn"}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
       <div hidden=${tab !== "karaoke"}>${visited.karaoke && html`<${Karaoke} themeKey=${isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} ...${musicProps} />`}</div>
       <div hidden=${tab !== "analyst"}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} incomingTake=${handoff} ...${musicProps} />`}</div>
