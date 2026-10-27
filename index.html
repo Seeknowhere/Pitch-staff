@@ -145,7 +145,9 @@ body { font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
 .tuner-hit { border-color: var(--good); background: color-mix(in srgb, var(--good) 18%, var(--surface-2)); }
 .match-card.hit { border-color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--surface-2)); }
 select.btn { appearance: auto; }
-.take-box { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 12px; background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
+.player { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.player input { width: 100%; min-width: 0; }
+.take-box { display: flex; flex-direction: column; gap: 12px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 12px; background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
 .stage { display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; padding: 18px 8px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); min-height: 150px; justify-content: center; }
 .kline { margin: 0; font-family: var(--font-display); font-weight: 700; line-height: 1.25; text-wrap: balance; max-width: 34ch; }
 .kline.dim { font-weight: 600; opacity: .55; }
@@ -1190,7 +1192,7 @@ select.btn { appearance: auto; }
     </div>`;
   }
 
-  function Analyst({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, incomingTake }) {
+  function Analyst({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, incomingTake, inst, onPickInst, sync, keyWarn }) {
     const [take, setTake] = useState(null);
     const [off, setOff] = useState(0);
     const [octaveFree, setOctaveFree] = useState(true);
@@ -1199,7 +1201,7 @@ select.btn { appearance: auto; }
     const [ks, setKs] = useState(0);
     const [plain, setPlain] = useState(() => { try { return localStorage.getItem("pitchstaff.plain") !== "0"; } catch (e) { return true; } });
     const choosePlain = (v) => { setPlain(v); try { localStorage.setItem("pitchstaff.plain", v ? "1" : "0"); } catch (e) {} };
-    const [mix, setMix] = useState(() => { try { const v = JSON.parse(localStorage.getItem(MIX_KEY) || "null"); if (v && typeof v.o === "number") return v; } catch (e) {} return { o: 0.8, g: 0, t: 0.9 }; });
+    const [mix, setMix] = useState(() => { try { const v = JSON.parse(localStorage.getItem(MIX_KEY) || "null"); if (v && typeof v.o === "number") return { m: 0, ...v }; } catch (e) {} return { o: 0.8, g: 0, t: 0.9, m: 0 }; });
     const mixRef = useRef(mix);
     const [loop, setLoop] = useState(null);
     const loopRef = useRef(null);
@@ -1216,9 +1218,9 @@ select.btn { appearance: auto; }
     const stopPlay = useCallback(() => {
       const p = play.current;
       cancelAnimationFrame(p.raf);
-      [p.origSrc, p.takeSrc, ...(p.guide || [])].forEach((s) => { if (s) { s.onended = null; try { s.stop(); } catch (e) {} } });
-      [p.gO, p.gG, p.gT].forEach((g) => { if (g) { try { g.disconnect(); } catch (e) {} } });
-      p.origSrc = null; p.takeSrc = null; p.guide = []; p.gO = p.gG = p.gT = null;
+      [p.origSrc, p.takeSrc, p.musicSrc, ...(p.guide || [])].forEach((s) => { if (s) { s.onended = null; try { s.stop(); } catch (e) {} } });
+      [p.gO, p.gG, p.gT, p.gM].forEach((g) => { if (g) { try { g.disconnect(); } catch (e) {} } });
+      p.origSrc = null; p.takeSrc = null; p.musicSrc = null; p.guide = []; p.gO = p.gG = p.gT = p.gM = null;
       setPlaying(false);
     }, []);
     useEffect(() => () => { stopPlay(); if (play.current.ctx) play.current.ctx.close().catch(() => {}); }, [stopPlay]);
@@ -1283,7 +1285,8 @@ select.btn { appearance: auto; }
       if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
       const ctx = p.ctx;
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
-      const map = result.map, takeOnly = mx.o === 0 && mx.g === 0;
+      const hasMusic = !!(inst && inst.buffer);
+      const map = result.map, takeOnly = mx.o === 0 && mx.g === 0 && !(hasMusic && (mx.m || 0) > 0);
       let end = takeOnly ? invTime(map, take.data.duration) : orig.data.duration;
       if (loop) {
         end = Math.min(end, loop.b);
@@ -1292,7 +1295,7 @@ select.btn { appearance: auto; }
       if (t >= end - 0.05 || t < 0) t = loop ? Math.max(0, loop.a - 0.3) : 0;
       const now = ctx.currentTime + 0.05;
       const bus = (v) => { const g = ctx.createGain(); g.gain.value = v; g.connect(ctx.destination); return g; };
-      p.gO = bus(mx.o); p.gG = bus(mx.g); p.gT = bus(mx.t);
+      p.gO = bus(mx.o); p.gG = bus(mx.g); p.gT = bus(mx.t); p.gM = bus(mx.m || 0);
       const make = (buf, at, when, dest) => {
         const src = ctx.createBufferSource(); src.buffer = buf; src.connect(dest);
         if (at >= 0) src.start(when, at); else src.start(when - at, 0);
@@ -1305,6 +1308,7 @@ select.btn { appearance: auto; }
       };
       if (!takeOnly) {
         p.origSrc = make(orig.buffer, t, now, p.gO);
+        if (hasMusic) p.musicSrc = make(inst.buffer, t + (sync || 0), now, p.gM);
         p.guide = scheduleGuide(ctx, p.gG, orig.data.notes, t, end, now, result.shift);
       }
       startTake(mapTime(map, t), now);
@@ -1340,9 +1344,10 @@ select.btn { appearance: auto; }
       const wasTakeOnly = play.current.takeOnly;
       mixRef.current = next; setMix(next);
       try { localStorage.setItem(MIX_KEY, JSON.stringify(next)); } catch (e) {}
-      const p = play.current, node = { o: p.gO, g: p.gG, t: p.gT }[key];
+      const p = play.current, node = { o: p.gO, g: p.gG, t: p.gT, m: p.gM }[key];
       if (node && p.ctx) node.gain.setTargetAtTime(v, p.ctx.currentTime, 0.02);
-      if (playing && (next.o === 0 && next.g === 0) !== wasTakeOnly) startPlay(cursor || 0);
+      const hasMusic = !!(inst && inst.buffer);
+      if (playing && (next.o === 0 && next.g === 0 && !(hasMusic && (next.m || 0) > 0)) !== wasTakeOnly) startPlay(cursor || 0);
     };
     const startLoop = (a, b) => {
       const lp = { a: Math.max(0, a), b };
@@ -1374,6 +1379,21 @@ select.btn { appearance: auto; }
       <div class="grid gap-4 sm:grid-cols-2">
         <${UploadSlot} id="orig-file" step="1" title="Original acapella" hint="The isolated vocal of the song. One lead voice works best; harmonies make the melody harder to read." slot=${orig} onPick=${onPickOrig} />
         <${UploadSlot} id="take-file" step="2" title="Your singing" hint="A recording of you singing the same part, like a Voice Memo. Record somewhere quiet, ideally with headphones so the music isn't picked up." slot=${take} onPick=${(f) => pick("take", f)} />
+      </div>
+
+      <div class="panel p-4 flex flex-wrap items-center gap-3">
+        <div class="flex-1 min-w-0" style=${{ minWidth: 200 }}>
+          <span class="label">Optional</span>
+          <h3 class="display text-lg font-bold">Instrumental</h3>
+          ${inst && inst.buffer
+            ? html`<p class="text-sm" style=${{ overflowWrap: "anywhere" }}><b>${inst.name}</b> <span class="muted mono text-xs">· shared with Karaoke${sync ? " · timing " + signed(sync.toFixed(2)) + " s" : ""}</span></p>`
+            : inst && inst.busy ? html`<p class="text-sm muted">Reading the music…</p>`
+            : html`<p class="muted text-sm">Add the karaoke version to hear your take over the music. It's shared with Karaoke, where you can fine-tune its timing.</p>`}
+          ${inst && inst.error && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${inst.error}</p>`}
+          ${keyWarn !== 0 && inst && inst.buffer && html`<p class="text-xs" style=${{ color: "var(--warn)" }}>This instrumental seems to be in a different key from the acapella.</p>`}
+        </div>
+        <button class=${"btn" + (inst && inst.buffer ? "" : " btn-primary")} disabled=${!orig || !orig.data || (inst && inst.busy)} onClick=${() => document.getElementById("an-inst-file").click()}>${inst && inst.buffer ? "Replace music" : "Upload instrumental"}</button>
+        <input id="an-inst-file" type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPickInst(f); }} />
       </div>
 
       <${LyricsCard} orig=${orig} lyrics=${lyrics} updateLyrics=${updateLyrics} count=${spans.length} hint="Shows the words above the chart and names the line in each practice tip. Saved for this song on this device." />
@@ -1420,13 +1440,13 @@ select.btn { appearance: auto; }
             ${curNote && html`<span class="chip"><span class="muted text-xs">Now</span><b class="mono">${pretty(midiInfo(curNote.n.midi).label)}</b>${!curNote.missed && html`<span class="mono text-xs" style=${{ color: "var(--" + curNote.tone + ")" }}>${signed(curNote.cents)}¢</span>`}</span>`}
           </div>
           <div class="mixer">
-            ${[["o", "Original"], ["g", "Guide notes"], ["t", "My take"]].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"mix-" + k}>
+            ${[["o", "Original"], ["g", "Guide notes"], ["t", "My take"], ...(inst && inst.buffer ? [["m", "Music"]] : [])].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"mix-" + k}>
               <span class="text-xs font-semibold">${l}</span>
               <input id=${"mix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
               <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
             </label>`)}
           </div>
-          <p class="text-xs muted">Guide notes play the original melody as clean tones${result.shift !== 0 ? " in your key" : ""}. Turn Original and Guide off to hear only your take at your own pace.</p>
+          <p class="text-xs muted">Guide notes play the original melody as clean tones${result.shift !== 0 ? " in your key" : ""}. Turn ${inst && inst.buffer ? "Original, Guide and Music" : "Original and Guide"} off to hear only your take at your own pace.${inst && inst.buffer ? " Turn Original off and Music up to hear yourself with the instrumental." : ""}</p>
           ${spans.length > 0 && html`<div class="karaoke" aria-live="polite">
             <div class="flex items-start justify-between gap-3">
               <p class="cur">${curLine >= 0 ? spans[curLine].text : "♪"}</p>
@@ -2741,14 +2761,10 @@ select.btn { appearance: auto; }
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
-  function Karaoke({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, onSendTake }) {
+  function Karaoke({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, onSendTake, inst, onPickInst, sync, syncMsg, keyWarn, onSync, onAutoSync }) {
     const data = orig && orig.data ? orig.data : null;
     const notes = data ? data.notes : [];
     const songName = data ? orig.name : null;
-    const [inst, setInst] = useState(null);
-    const [sync, setSync] = useState(0);
-    const [syncMsg, setSyncMsg] = useState("");
-    const [keyWarn, setKeyWarn] = useState(0);
     const [hp, setHp] = useState("unknown"); // unknown | checking | ok | heard | override | nomic
     const [mix, setMix] = useState(() => loadJSON("pitchstaff.karamix.v1", { m: 0.9, v: 0.25, g: 0 }));
     const [playing, setPlaying] = useState(false);
@@ -2761,7 +2777,9 @@ select.btn { appearance: auto; }
     const [hearing, setHearing] = useState(false);
     const [saveMsg, setSaveMsg] = useState("");
     const tape = useRef({ on: false, sr: 24000, chunks: [] });
-    const [mixOpen, setMixOpen] = useState(false);
+    const [withMusic, setWithMusic] = useState(true);
+    const [pl, setPl] = useState({ on: false, pos: 0 });
+    const player = useRef({ nodes: [], g: null, raf: 0 });
     const [mixVol, setMixVol] = useState(() => loadJSON("pitchstaff.karaout.v1", { v: 1, m: 0.75, verb: true }));
     const [lat, setLat] = useState(0);
     const [nudgeV, setNudgeV] = useState(0);
@@ -2775,7 +2793,8 @@ select.btn { appearance: auto; }
     const play = useRef({ ctx: null, srcs: [], guide: [], buses: [], raf: 0 });
     const mic = useRef({});
     const run = useRef({ her: null, lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {} });
-    const instJob = useRef(0), fileRef = useRef(null), instRef = useRef(null);
+    const fileRef = useRef(null);
+    syncRef.current = sync;
 
     const spans = useMemo(() => (data ? lyricSpans(lyrics, data.duration) : []), [lyrics, data]);
     const phrases = useMemo(() => buildPhrases(notes), [notes]);
@@ -2794,7 +2813,7 @@ select.btn { appearance: auto; }
       tape.current.on = false; tape.current.pos = null; p.songAt = null;
       cancelAnimationFrame(p.raf);
       if (p.hear) { try { p.hear.stop(); } catch (e) {} p.hear = null; setHearing(false); }
-      if (prev.current) { prev.current.forEach((n) => { try { n.stop(); } catch (e) {} }); prev.current = null; setPreviewing(false); }
+      stopPlayerNodes();
       [...p.srcs, ...p.guide].forEach((s) => { try { s.stop(); } catch (e) {} });
       p.buses.forEach((g) => { try { g.disconnect(); } catch (e) {} });
       p.srcs = []; p.guide = []; p.buses = [];
@@ -2827,11 +2846,18 @@ select.btn { appearance: auto; }
           if (half) for (let i = 0; i < out.length; i++) out[i] = (inp[2 * i] + inp[2 * i + 1]) / 2; else out.set(inp);
           T.sr = half ? sr / 2 : sr;
           // place the first block by song time, then lay the rest end to end so there are no gaps or overlaps (which click)
-          if (T.pos == null) {
-            T.pos = Math.max(0, Math.round((p.songAt() - inp.length / sr) * T.sr));
-            const f = Math.min(240, out.length);
-            for (let i = 0; i < f; i++) out[i] *= i / f;
+          const expected = Math.round((p.songAt() - inp.length / sr) * T.sr);
+          let fade = false;
+          if (T.pos == null) { T.pos = Math.max(0, expected); T.lag = []; fade = true; }
+          else {
+            // callbacks only ever run late, so the smallest gap over the last few blocks is the real drift;
+            // if audio was dropped (common on iPhone), re-line up with the song clock
+            T.lag.push(expected - T.pos);
+            if (T.lag.length > 12) T.lag.shift();
+            const drift = T.lag.length >= 8 ? Math.min(...T.lag) : 0;
+            if (Math.abs(drift) > T.sr * 0.03) { T.pos = Math.max(0, T.pos + drift); T.lag = []; fade = true; }
           }
+          if (fade) { const f = Math.min(240, out.length); for (let i = 0; i < f; i++) out[i] *= i / f; }
           T.chunks.push({ i: T.pos, d: out });
           T.pos += out.length;
         };
@@ -2849,41 +2875,9 @@ select.btn { appearance: auto; }
       setBest(songName ? (loadJSON(KARA_BEST_KEY, {})[songName] ?? null) : null);
     }, [data, songName, stopAll]);
 
-    const saveSync = (v) => {
-      syncRef.current = v; setSync(v);
-      if (songName && instRef.current) { const all = loadJSON(KARA_SYNC_KEY, {}); all[songName] = { inst: instRef.current.name, sync: v }; saveJSON(KARA_SYNC_KEY, all); }
-    };
-    const runAutoSync = () => {
-      const i = instRef.current;
-      if (!data || !i || !i.onset) return;
-      const r = autoSync(onsetEnvelope(orig.buffer), i.onset);
-      if (r.z >= 6) { saveSync(Math.round(r.off * 100) / 100); setSyncMsg("Lined up automatically. Use Check timing to confirm by ear."); }
-      else { saveSync(0); setSyncMsg("Couldn't line them up automatically. Use Check timing and the nudge buttons."); }
-    };
-
-    // instrumental + vocal analysis once both are loaded
-    useEffect(() => {
-      if (!data || !inst || !inst.buffer) return;
-      const saved = loadJSON(KARA_SYNC_KEY, {})[songName];
-      if (saved && saved.inst === inst.name) { syncRef.current = saved.sync; setSync(saved.sync); setSyncMsg("Using the timing you saved for this song."); }
-      else runAutoSync();
-      setKeyWarn(inst.chroma ? keyGap(notes, inst.chroma) : 0);
-    }, [data, inst]);
-
-    const pickInst = async (file) => {
-      const job = ++instJob.current;
-      stopAll(); setSyncMsg(""); setKeyWarn(0);
-      setInst({ name: file.name, busy: true });
-      let buffer;
-      try { buffer = await decodeFile(file); }
-      catch (e) { if (instJob.current === job) setInst({ name: file.name, error: "That file couldn't be read as audio. Try an MP3, M4A or WAV." }); return; }
-      const onset = onsetEnvelope(buffer);
-      const chroma = await chromaOf(buffer, () => instJob.current !== job);
-      if (instJob.current !== job) return;
-      const next = { name: file.name, buffer, onset, chroma };
-      instRef.current = next;
-      setInst(next);
-    };
+    const saveSync = (v) => { syncRef.current = v; onSync(v); };
+    const runAutoSync = () => onAutoSync();
+    const pickInst = (file) => { stopAll(); onPickInst(file); };
 
     const runCheck = async () => {
       stopAll();
@@ -2965,7 +2959,8 @@ select.btn { appearance: auto; }
       const t = Object.values(R.tally);
       const v = t.reduce((s, x) => s + x.v, 0), ok = t.reduce((s, x) => s + x.ok, 0);
       const tb = buildTake();
-      setTakeBuf(tb); setSaveMsg(""); setMixOpen(false); setMixMsg(""); setNudgeV(0);
+      setTakeBuf(tb); setSaveMsg(""); setMixMsg(""); setNudgeV(0); setPl({ on: false, pos: 0 });
+      setLat(tb ? estimateLatency() : 0);
       if (!listening || v < 50) { setFinal(tb ? { score: null, lines: 0 } : null); return; }
       const score = Math.round((100 * ok) / v);
       setFinal({ score, lines: Object.keys(R.tally).length });
@@ -3048,7 +3043,7 @@ select.btn { appearance: auto; }
       const p = play.current, node = { m: p.gM, v: p.gV, g: p.gG }[k];
       if (node && p.ctx) node.gain.setTargetAtTime(v, p.ctx.currentTime, 0.02);
     };
-    const nudge = (d) => { const v = Math.round((syncRef.current + d) * 100) / 100; saveSync(v); setSyncMsg(""); if (playing) startAt(cursor, false); };
+    const nudge = (d) => { const v = Math.round((syncRef.current + d) * 100) / 100; saveSync(v); if (playing) startAt(cursor, false); };
     const checkTiming = () => {
       const first = notes.length ? notes[0].pos : 0;
       loopRef.current = null; setLoop(null);
@@ -3060,15 +3055,6 @@ select.btn { appearance: auto; }
       if (listening) judge(cursor + 0.5);
       killSources(); setPlaying(false);
       finish();
-    };
-    const hearSelf = () => {
-      const p = play.current;
-      if (p.hear) { try { p.hear.stop(); } catch (e) {} p.hear = null; setHearing(false); return; }
-      if (!takeBuf) return;
-      stopAll();
-      const ctx = ensureCtx(), s = ctx.createBufferSource();
-      s.buffer = takeBuf; s.connect(ctx.destination); s.onended = () => { if (p.hear === s) { p.hear = null; setHearing(false); } };
-      s.start(); p.hear = s; setHearing(true);
     };
     const takeName = () => "Karaoke take · " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     const saveTake = async () => {
@@ -3096,51 +3082,86 @@ select.btn { appearance: auto; }
       }
       return best > 40 ? bestL * GRID : 0;
     };
-    const openMix = () => { setLat(estimateLatency()); setNudgeV(0); setMixMsg(""); setMixOpen(true); };
-    const setOut = (k, v) => { const next = { ...mixVol, [k]: v }; setMixVol(next); saveJSON("pitchstaff.karaout.v1", next); };
+    const setOut = (k, v) => {
+      const next = { ...mixVol, [k]: v };
+      setMixVol(next); saveJSON("pitchstaff.karaout.v1", next);
+      const g = player.current.g, ctx = play.current.ctx;
+      if (g && ctx) {
+        if (k === "v" && g.vG) g.vG.gain.setTargetAtTime(v * g.norm, ctx.currentTime, 0.03);
+        if (k === "m" && g.mG) g.mG.gain.setTargetAtTime(v, ctx.currentTime, 0.03);
+        if (k === "verb" && g.wet) g.wet.gain.setTargetAtTime(v ? 0.22 : 0, ctx.currentTime, 0.03);
+      }
+    };
     const mixLength = () => takeBuf.duration + 2;
-    // builds the mix into any audio context (live for preview, offline for the file); from = song time to start at
-    const buildMix = (ctx, from) => {
-      const nodes = [];
-      const shift = Math.max(-0.5, lat + nudgeV);
+    // builds the mix into any audio context (live for the player, offline for the file); from = song time to start at
+    const buildMix = (ctx, from, music, live) => {
+      const nodes = [], g = {};
+      const shift = music ? Math.max(-0.5, lat + nudgeV) : 0;
       const out = ctx.createDynamicsCompressor();
       out.threshold.value = -8; out.ratio.value = 4; out.attack.value = 0.005; out.release.value = 0.2;
       out.connect(ctx.destination);
-      // music
-      const mG = ctx.createGain(); mG.gain.value = mixVol.m; mG.connect(out);
-      const mSrc = ctx.createBufferSource(); mSrc.buffer = inst.buffer; mSrc.connect(mG);
-      const mAt = from + syncRef.current;
-      if (mAt >= 0) mSrc.start(ctx.currentTime, mAt); else mSrc.start(ctx.currentTime - mAt, 0);
-      nodes.push(mSrc);
+      const when = ctx.currentTime + (live ? 0.05 : 0);
+      if (music && inst && inst.buffer) {
+        g.mG = ctx.createGain(); g.mG.gain.value = mixVol.m; g.mG.connect(out);
+        const mSrc = ctx.createBufferSource(); mSrc.buffer = inst.buffer; mSrc.connect(g.mG);
+        const mAt = from + syncRef.current;
+        if (mAt >= 0) mSrc.start(when, mAt); else mSrc.start(when - mAt, 0);
+        nodes.push(mSrc);
+      }
       // voice: cleaned up, brought to a steady level, then a touch of echo
       const vSrc = ctx.createBufferSource(); vSrc.buffer = takeBuf;
       const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 90;
       const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -24; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25;
-      const vG = ctx.createGain(); vG.gain.value = mixVol.v * Math.min(8, 0.5 / peakOf(takeBuf));
-      vSrc.connect(hp); hp.connect(comp); comp.connect(vG); vG.connect(out);
-      if (mixVol.verb) {
+      g.norm = Math.min(8, 0.5 / peakOf(takeBuf));
+      g.vG = ctx.createGain(); g.vG.gain.value = (music ? mixVol.v : 1) * g.norm;
+      vSrc.connect(hp); hp.connect(comp); comp.connect(g.vG); g.vG.connect(out);
+      if (music && (live || mixVol.verb)) {
         const conv = ctx.createConvolver(); conv.buffer = makeImpulse(ctx);
-        const wet = ctx.createGain(); wet.gain.value = 0.22;
-        vG.connect(conv); conv.connect(wet); wet.connect(out);
+        g.wet = ctx.createGain(); g.wet.gain.value = mixVol.verb ? 0.22 : 0;
+        g.vG.connect(conv); conv.connect(g.wet); g.wet.connect(out);
       }
       const vAt = from + shift;
-      if (vAt >= 0) vSrc.start(ctx.currentTime, vAt); else vSrc.start(ctx.currentTime - vAt, 0);
+      if (vAt >= 0) vSrc.start(when, vAt); else vSrc.start(when - vAt, 0);
       nodes.push(vSrc);
-      return nodes;
+      return { nodes, g, when };
     };
-    const firstSung = () => {
-      const her = run.current.her;
-      if (her) for (let k = 0; k < her.length; k++) if (her[k] === her[k]) return Math.max(0, k * GRID - 2);
-      return 0;
-    };
-    const previewMix = () => {
-      if (prev.current) { prev.current.forEach((n) => { try { n.stop(); } catch (e) {} }); prev.current = null; setPreviewing(false); return; }
-      stopAll();
+    // ---- player for your take: play/pause, stop, drag to seek ----
+    function stopPlayerNodes() {
+      const P = player.current;
+      cancelAnimationFrame(P.raf);
+      P.nodes.forEach((n) => { try { n.stop(); } catch (e) {} });
+      P.nodes = []; P.g = null;
+    }
+    const plEnd = () => (takeBuf ? takeBuf.duration + 0.5 : 0);
+    const playerStart = (from) => {
+      if (!takeBuf) return;
+      killSources(); setPlaying(false);
       const ctx = ensureCtx();
-      const nodes = buildMix(ctx, firstSung());
-      prev.current = nodes; setPreviewing(true);
-      nodes[1].onended = () => { if (prev.current === nodes) { prev.current = null; setPreviewing(false); } };
+      if (from >= plEnd() - 0.1) from = 0;
+      const music = withMusic && !!(inst && inst.buffer);
+      const { nodes, g, when } = buildMix(ctx, from, music, true);
+      const P = player.current;
+      P.nodes = nodes; P.g = g;
+      setPl({ on: true, pos: from });
+      const tick = () => {
+        const pos = from + Math.max(0, ctx.currentTime - when);
+        if (pos >= plEnd()) { stopPlayerNodes(); setPl({ on: false, pos: 0 }); return; }
+        setPl({ on: true, pos });
+        P.raf = requestAnimationFrame(tick);
+      };
+      tick();
     };
+    const playerPause = () => { stopPlayerNodes(); setPl((x) => ({ on: false, pos: x.pos })); };
+    const playerStop = () => { stopPlayerNodes(); setPl({ on: false, pos: 0 }); };
+    const playerSeek = (v) => { if (pl.on) playerStart(v); else setPl({ on: false, pos: v }); };
+    const plRef = useRef(pl); plRef.current = pl;
+    // timing or mode changes: restart from where you are so you hear the change right away
+    const restartTimer = useRef(0);
+    useEffect(() => {
+      if (!plRef.current.on) return;
+      clearTimeout(restartTimer.current);
+      restartTimer.current = setTimeout(() => { if (plRef.current.on) playerStart(plRef.current.pos); }, 120);
+    }, [nudgeV, withMusic]);
     const downloadMix = async () => {
       if (!takeBuf || !inst || !inst.buffer) return;
       stopAll();
@@ -3149,7 +3170,7 @@ select.btn { appearance: auto; }
         const sr = inst.buffer.sampleRate, len = Math.ceil(mixLength() * sr);
         const Off = window.OfflineAudioContext || window.webkitOfflineAudioContext;
         const off = new Off(2, len, sr);
-        buildMix(off, 0);
+        buildMix(off, 0, true, false);
         const rendered = await new Promise((res, rej) => {
           off.oncomplete = (e) => res(e.renderedBuffer);
           const pr = off.startRendering();
@@ -3289,54 +3310,49 @@ select.btn { appearance: auto; }
           <button class="btn" onClick=${() => { clearLoop(); setCursor(0); startAt(0, true); }}>↺ Sing again</button>
         </div>
         ${takeBuf && html`<div class="take-box">
-          <div class="flex flex-col min-w-0">
-            <span class="label">Your recording</span>
-            <span class="text-sm">${fmt(takeBuf.duration)} of your voice, lined up with the song</span>
-            ${saveMsg && html`<span class="text-xs muted">${saveMsg}</span>`}
+          <div class="flex flex-wrap items-end justify-between gap-2">
+            <div class="flex flex-col min-w-0">
+              <span class="label">Your recording</span>
+              <span class="text-sm">${fmt(takeBuf.duration)} of your voice, lined up with the song</span>
+            </div>
+            <div class="seg" role="group" aria-label="What to hear">
+              <button aria-pressed=${!withMusic || !(inst && inst.buffer) ? "true" : "false"} onClick=${() => setWithMusic(false)}>Just me</button>
+              <button aria-pressed=${withMusic && inst && inst.buffer ? "true" : "false"} disabled=${!(inst && inst.buffer)} onClick=${() => setWithMusic(true)} title=${inst && inst.buffer ? "" : "Add the instrumental above first"}>Me + music</button>
+            </div>
           </div>
-          <div class="flex flex-wrap gap-2">
-            <button class="btn" onClick=${hearSelf}>${hearing ? "■ Stop playback" : "▶ Hear yourself"}</button>
-            <button class="btn" onClick=${saveTake}>Save recording</button>
-            <button class="btn" onClick=${() => (mixOpen ? setMixOpen(false) : openMix())} aria-expanded=${mixOpen ? "true" : "false"}>Download with music</button>
+          <div class="player">
+            <button class="btn btn-primary" onClick=${() => (pl.on ? playerPause() : playerStart(pl.pos))} aria-label=${pl.on ? "Pause" : "Play"}>${pl.on ? "❚❚" : "▶"}</button>
+            <button class="btn" onClick=${playerStop} aria-label="Stop" disabled=${!pl.on && pl.pos === 0}>■</button>
+            <input id="take-seek" type="range" min="0" max=${plEnd()} step="0.05" value=${pl.pos} onChange=${(e) => playerSeek(parseFloat(e.target.value))} aria-label="Position in your recording" style=${{ accentColor: "var(--accent)" }} />
+            <span class="mono text-xs muted" style=${{ whiteSpace: "nowrap" }}>${fmt(pl.pos)} / ${fmt(takeBuf.duration)}</span>
+          </div>
+          ${withMusic && inst && inst.buffer && html`<div class="flex flex-col gap-3">
+            <div class="mixer" style=${{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              ${[["v", "My voice", 1.6], ["m", "Music", 1.2]].map(([k, l, mx]) => html`<label key=${k} class="mix-row" for=${"out-" + k}>
+                <span class="text-xs font-semibold">${l}</span>
+                <input id=${"out-" + k} type="range" min="0" max=${mx} step="0.05" value=${mixVol[k]} onInput=${(e) => setOut(k, parseFloat(e.target.value))} onChange=${(e) => setOut(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
+                <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${Math.round(mixVol[k] * 100)}</span>
+              </label>`)}
+            </div>
+            <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <button class="switch" role="switch" aria-checked=${mixVol.verb ? "true" : "false"} onClick=${() => setOut("verb", !mixVol.verb)} style=${{ fontSize: 13 }}>
+                <span class="track"><span class="knob"></span></span>Echo (reverb)
+              </button>
+              <label class="mix-row" for="voice-timing" style=${{ flex: "1 1 260px" }}>
+                <span class="text-xs font-semibold">Voice timing</span>
+                <input id="voice-timing" type="range" min=${-0.3 - lat} max=${0.6 - lat} step="0.01" value=${nudgeV} onChange=${(e) => setNudgeV(parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
+                <span class="mono text-xs muted" style=${{ minWidth: 86, textAlign: "right" }}>${Math.abs(lat + nudgeV) < 0.005 ? "no shift" : (lat + nudgeV > 0 ? "earlier " : "later ") + Math.abs(lat + nudgeV).toFixed(2) + " s"}</span>
+              </label>
+            </div>
+            <p class="text-xs muted">Drag Voice timing while it plays until your voice sits on the beat. ${lat > 0 ? "It starts " + lat.toFixed(2) + " s earlier to make up for headphone delay." : ""}</p>
+          </div>`}
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="btn" onClick=${saveTake}>Save just me</button>
+            <button class="btn" onClick=${downloadMix} disabled=${!!mixBusy || !(inst && inst.buffer)} title=${inst && inst.buffer ? "" : "Add the instrumental above first"}>${mixBusy || "Save with music"}</button>
             <button class="btn btn-primary" onClick=${sendToAnalyst}>Analyze in Singing Analyst →</button>
           </div>
-        </div>`}
-        ${takeBuf && mixOpen && html`<div class="panel p-4 flex flex-col gap-3" style=${{ background: "var(--surface-2)" }}>
-          <div class="flex items-start justify-between gap-2">
-            <div>
-              <h3 class="display text-lg font-bold">Karaoke track</h3>
-              <p class="text-xs muted">Your voice over the instrumental, saved as one audio file.</p>
-            </div>
-            <button class="btn btn-ghost" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => { stopAll(); setMixOpen(false); }}>Close</button>
-          </div>
-          ${!(inst && inst.buffer)
-            ? html`<p class="text-sm muted">Add the instrumental above first. There's no music to mix without it.</p>`
-            : html`<${React.Fragment}>
-              <div class="mixer" style=${{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-                ${[["v", "My voice", 1.6], ["m", "Music", 1.2]].map(([k, l, mx]) => html`<label key=${k} class="mix-row" for=${"out-" + k}>
-                  <span class="text-xs font-semibold">${l}</span>
-                  <input id=${"out-" + k} type="range" min="0" max=${mx} step="0.05" value=${mixVol[k]} onChange=${(e) => setOut(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
-                  <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${Math.round(mixVol[k] * 100)}</span>
-                </label>`)}
-              </div>
-              <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
-                <button class="switch" role="switch" aria-checked=${mixVol.verb ? "true" : "false"} onClick=${() => setOut("verb", !mixVol.verb)} style=${{ fontSize: 13 }}>
-                  <span class="track"><span class="knob"></span></span>Echo (reverb)
-                </button>
-                <div class="flex items-center gap-2">
-                  <span class="label">Voice timing</span>
-                  <button class="btn" style=${{ padding: "4px 9px", fontSize: 12 }} onClick=${() => setNudgeV((v) => Math.round((v + 0.05) * 100) / 100)}>Earlier</button>
-                  <span class="mono text-xs" style=${{ minWidth: 92, textAlign: "center" }}>${lat + nudgeV === 0 ? "No shift" : "Voice " + (lat + nudgeV > 0 ? "earlier " : "later ") + Math.abs(lat + nudgeV).toFixed(2) + " s"}</span>
-                  <button class="btn" style=${{ padding: "4px 9px", fontSize: 12 }} onClick=${() => setNudgeV((v) => Math.round((v - 0.05) * 100) / 100)}>Later</button>
-                </div>
-              </div>
-              <p class="text-xs muted">${lat > 0 ? "Your headphones delayed your voice by about " + lat.toFixed(2) + " s, so it's moved earlier to sit on the beat. " : ""}Changes apply the next time you preview or save.</p>
-              <div class="flex flex-wrap items-center gap-2">
-                <button class="btn" onClick=${previewMix} disabled=${!!mixBusy}>${previewing ? "■ Stop preview" : "▶ Preview"}</button>
-                <button class="btn btn-primary" onClick=${downloadMix} disabled=${!!mixBusy}>${mixBusy || "Save karaoke track"}</button>
-                <span class="text-xs muted">${mixMsg || "WAV file, about " + Math.max(1, Math.round(mixLength() / 60 * 10)) + " MB"}</span>
-              </div>
-            <//>`}
+          ${(saveMsg || mixMsg) && html`<span class="text-xs muted">${mixMsg || saveMsg}</span>`}
+          ${!mixMsg && inst && inst.buffer && html`<span class="text-xs muted">Save with music makes a WAV file of what you hear in "Me + music", about ${Math.max(1, Math.round(mixLength() / 60 * 10))} MB.</span>`}
         </div>`}
         ${scored.length > 0 && html`<div class="grid gap-3 sm:grid-cols-2">
           <div class="flex flex-col gap-2">
@@ -3385,6 +3401,39 @@ select.btn { appearance: auto; }
       setVocalLyrics(saved && Array.isArray(saved.lines) ? saved : null);
     }, [vocalName]);
     const updateVocalLyrics = useCallback((next) => { setVocalLyrics(next); if (vocalName) saveLyricsFor(vocalName, next); }, [vocalName]);
+    // the instrumental is shared by Karaoke and the Singing Analyst, with its timing saved per song
+    const [music, setMusic] = useState(null);
+    const musicJob = useRef(0);
+    const pickMusic = useCallback(async (file) => {
+      const job = ++musicJob.current;
+      setMusic({ name: file.name, busy: true });
+      let buffer;
+      try { buffer = await decodeFile(file); }
+      catch (e) { if (musicJob.current === job) setMusic({ name: file.name, error: "That file couldn't be read as audio. Try an MP3, M4A or WAV." }); return; }
+      const onset = onsetEnvelope(buffer);
+      const chroma = await chromaOf(buffer, () => musicJob.current !== job);
+      if (musicJob.current !== job) return;
+      setMusic({ name: file.name, buffer, onset, chroma });
+    }, []);
+    const [msync, setMsync] = useState({ sync: 0, msg: "", keyWarn: 0 });
+    const saveMusicSync = useCallback((v, msg) => {
+      setMsync((x) => ({ ...x, sync: v, msg: msg || "" }));
+      if (vocalName && music && music.buffer) { const all = loadJSON(KARA_SYNC_KEY, {}); all[vocalName] = { inst: music.name, sync: v }; saveJSON(KARA_SYNC_KEY, all); }
+    }, [vocalName, music]);
+    const autoMusicSync = useCallback(() => {
+      if (!vocal || !vocal.buffer || !music || !music.onset) return;
+      const r = autoSync(onsetEnvelope(vocal.buffer), music.onset);
+      if (r.z >= 6) saveMusicSync(Math.round(r.off * 100) / 100, "Lined up automatically. Use Check timing to confirm by ear.");
+      else saveMusicSync(0, "Couldn't line them up automatically. Use Check timing and the nudge buttons.");
+    }, [vocal, music, saveMusicSync]);
+    useEffect(() => {
+      if (!vocal || !vocal.data || !music || !music.buffer) return;
+      const saved = loadJSON(KARA_SYNC_KEY, {})[vocal.name];
+      setMsync((x) => ({ ...x, keyWarn: music.chroma ? keyGap(vocal.data.notes, music.chroma) : 0 }));
+      if (saved && saved.inst === music.name) setMsync((x) => ({ ...x, sync: saved.sync, msg: "Using the timing you saved for this song." }));
+      else autoMusicSync();
+    }, [vocal, music]);
+    const musicProps = { inst: music, onPickInst: pickMusic, sync: msync.sync, syncMsg: msync.msg, keyWarn: msync.keyWarn, onSync: saveMusicSync, onAutoSync: autoMusicSync };
     const [mode, setMode] = useState("idle"); // idle | mic | file
     const [error, setError] = useState("");
     const [recording, setRecording] = useState(false);
@@ -3771,8 +3820,8 @@ select.btn { appearance: auto; }
       <${MatchTrainer} hookRef=${matchHook} listening=${mode === "mic"} onStartMic=${startMic} onTarget=${setMatchTarget} onStatus=${setMatchStatus} sung=${live ? live.midi : null} />
       <//>`}
       <div hidden=${tab !== "learn"}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} />`}</div>
-      <div hidden=${tab !== "karaoke"}>${visited.karaoke && html`<${Karaoke} themeKey=${isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} />`}</div>
-      <div hidden=${tab !== "analyst"}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} incomingTake=${handoff} />`}</div>
+      <div hidden=${tab !== "karaoke"}>${visited.karaoke && html`<${Karaoke} themeKey=${isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} ...${musicProps} />`}</div>
+      <div hidden=${tab !== "analyst"}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} incomingTake=${handoff} ...${musicProps} />`}</div>
     </div>`;
   }
 
