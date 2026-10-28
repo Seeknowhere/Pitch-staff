@@ -2797,25 +2797,41 @@ select.btn { appearance: auto; }
     const when = ctx.currentTime + 0.02;
     const f = SETTINGS.a4 * Math.pow(2, (midi - 69) / 12);
     const out = ctx.createGain();
-    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = Math.min(9000, f * 9);
+    // brightness fades as the string rings, like a real piano
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 0.6;
+    lp.frequency.setValueAtTime(Math.min(12000, f * 12), when);
+    lp.frequency.exponentialRampToValueAtTime(Math.min(5000, f * 3.5), when + Math.min(1.2, dur * 0.55));
     out.connect(lp); lp.connect(ctx.destination);
+    // quick hammer strike, a fast first drop, a slow natural decay, then a soft release
     out.gain.setValueAtTime(0.0001, when);
-    out.gain.exponentialRampToValueAtTime(0.55, when + 0.006);
-    out.gain.exponentialRampToValueAtTime(0.34, when + 0.25);
-    out.gain.exponentialRampToValueAtTime(0.12, when + dur * 0.6);
+    out.gain.linearRampToValueAtTime(0.5, when + 0.005);
+    out.gain.exponentialRampToValueAtTime(0.3, when + 0.15);
+    out.gain.exponentialRampToValueAtTime(0.13, when + dur * 0.78);
     out.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-    const amps = [1, 0.55, 0.3, 0.2, 0.12, 0.07, 0.04];
+    const amps = [1, 0.55, 0.34, 0.22, 0.14, 0.09, 0.055, 0.035];
     const total = amps.reduce((s, v) => s + v, 0);
     amps.forEach((amp, i) => {
-      const n = i + 1, fn = f * n * Math.sqrt(1 + 0.0004 * n * n);
+      const n = i + 1, fn = f * n * Math.sqrt(1 + 0.00012 * n * n);
       if (fn > 12000) return;
-      const o = ctx.createOscillator(); o.type = "sine"; o.frequency.value = fn;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(amp / total, when);
-      g.gain.exponentialRampToValueAtTime((amp / total) * 0.004, when + dur / (1 + i * 0.35));
-      o.connect(g); g.connect(out);
-      o.start(when); o.stop(when + dur + 0.05);
+      // two slightly detuned strings per note give the warm piano shimmer
+      [-0.0006, 0.0006].forEach((dt) => {
+        const o = ctx.createOscillator(); o.type = i === 0 ? "triangle" : "sine"; o.frequency.value = fn * (1 + dt);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime((amp / total) * 0.5, when);
+        g.gain.exponentialRampToValueAtTime((amp / total) * 0.5 * 0.08, when + dur / (1 + i * 0.55));
+        o.connect(g); g.connect(out);
+        o.start(when); o.stop(when + dur + 0.05);
+      });
     });
+    // a tiny felt "thump" from the hammer
+    try {
+      const len = Math.floor(ctx.sampleRate * 0.03), nb = ctx.createBuffer(1, len, ctx.sampleRate), d = nb.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const ns = ctx.createBufferSource(); ns.buffer = nb;
+      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = Math.min(4000, f * 3); bp.Q.value = 1.2;
+      const ng = ctx.createGain(); ng.gain.value = 0.06;
+      ns.connect(bp); bp.connect(ng); ng.connect(ctx.destination); ns.start(when);
+    } catch (e) {}
   }
   function playChime(ctx) {
     [88, 93].forEach((m, i) => {
@@ -4847,7 +4863,7 @@ select.btn { appearance: auto; }
     const [res, setRes] = useState([]);
     const r = useRef({ trail: [] }), phaseRef = useRef("ready"), resRef = useRef([]);
     const T = useTimers();
-    const QUIET = 1700;
+    const QUIET = 2100;
     const go = (p) => { phaseRef.current = p; setPhase(p); };
     const pick = (i) => {
       if (spec.targets && spec.targets.length) return spec.targets[i % spec.targets.length];
@@ -4861,14 +4877,14 @@ select.btn { appearance: auto; }
       const t = pick(i);
       r.current = { last: t, target: t, quietUntil: performance.now() + QUIET, singAt: performance.now() + QUIET, holdStart: 0, lastIn: 0, lastOn: 0, cents: [], all: [], over: 0, prevSide: 0, best: 0, lock: null, doneTry: false, trail: [] };
       setTarget(t); setK(i); setProg(0); setCur(null); go("listen");
-      playPiano(mic.ctx(), t, 1.6);
+      playPiano(mic.ctx(), t, 2);
       T.later(() => { if (phaseRef.current === "listen") go("sing"); }, QUIET);
     };
     const replay = () => {
       const s = r.current;
       if (s.target == null || phaseRef.current === "hit" || phaseRef.current === "miss") return;
       s.quietUntil = performance.now() + QUIET; s.singAt = s.quietUntil; s.holdStart = 0; setProg(0); go("listen");
-      playPiano(mic.ctx(), s.target, 1.6);
+      playPiano(mic.ctx(), s.target, 2);
       T.later(() => { if (phaseRef.current === "listen") go("sing"); }, QUIET);
     };
     const finish = (list) => {
@@ -5180,8 +5196,9 @@ select.btn { appearance: auto; }
         r.current.src0 = src;
         end = len * 1000 + 600;
       } else {
-        tg.forEach((m, j) => T.later(() => { playPiano(mic.ctx(), m, 0.9); setPlayIdx(j); }, j * STEP));
-        end = tg.length * STEP + 650;
+        const ring = Math.min(1.6, STEP / 1000 + 0.9);
+        tg.forEach((m, j) => T.later(() => { playPiano(mic.ctx(), m, ring); setPlayIdx(j); }, j * STEP));
+        end = (tg.length - 1) * STEP + ring * 1000 + 150;
       }
       T.later(() => { setPlayIdx(-1); r.current.quietUntil = performance.now(); r.current.singAt = performance.now(); go("sing"); }, end);
     };
@@ -5372,8 +5389,8 @@ select.btn { appearance: auto; }
       if (view.step === "learn") {
         const preview = () => {
           const ctx = mic.ctx();
-          if (L.type === "hold") playPiano(ctx, range.center, 1.6);
-          if (L.type === "pattern") { const p = patternFor(L, range), b = Math.max(range.full.lo, Math.min(range.lo, range.center - Math.round(Math.max(...p) / 2))); p.forEach((x, j) => setTimeout(() => playPiano(ctx, b + x, 0.9), j * 600)); }
+          if (L.type === "hold") playPiano(ctx, range.center, 2);
+          if (L.type === "pattern") { const p = patternFor(L, range), b = Math.max(range.full.lo, Math.min(range.lo, range.center - Math.round(Math.max(...p) / 2))); p.forEach((x, j) => setTimeout(() => playPiano(ctx, b + x, 1.5), j * 600)); }
         };
         return html`<div class="flex flex-col gap-4">
           ${head}
