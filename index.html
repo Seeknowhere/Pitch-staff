@@ -271,10 +271,10 @@ select.btn { appearance: auto; }
   /* ---------- app-wide settings ---------- */
   const SETTINGS_KEY = "pitchstaff.settings.v1";
   const SETTINGS = (() => {
-    const d = { a4: 440, sens: 4, micId: "" };
+    const d = { a4: 440, sens: 4, micId: "", ai: false };
     try { return { ...d, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {}) }; } catch (e) { return d; }
   })();
-  function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ a4: SETTINGS.a4, sens: SETTINGS.sens, micId: SETTINGS.micId })); } catch (e) {} }
+  function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ a4: SETTINGS.a4, sens: SETTINGS.sens, micId: SETTINGS.micId, ai: SETTINGS.ai })); } catch (e) {} }
   // loudness below this is treated as silence for live listening (sensitivity 1 = least, 10 = most)
   const micGate = () => 0.04 * Math.pow(0.6, SETTINGS.sens - 1);
   async function getMicStream() {
@@ -1733,7 +1733,7 @@ select.btn { appearance: auto; }
 
 
   /* ---------- shared song pieces ---------- */
-  function LyricsCard({ orig, lyrics, updateLyrics, count, hint }) {
+  function LyricsCard({ orig, lyrics, updateLyrics, count, hint, musicName }) {
     const [err, setErr] = useState("");
     const ref = useRef(null);
     const origName = orig && orig.data ? orig.name : null;
@@ -1742,19 +1742,36 @@ select.btn { appearance: auto; }
       setErr("");
       let text = "";
       try { text = await file.text(); } catch (e) { setErr("That file couldn't be read."); return; }
+      if (/^\s*#(TITLE|ARTIST|BPM|GAP|MP3|AUDIO|VERSION)\s*:/im.test(text)) {
+        const us = parseUltraStar(text);
+        if (!us || !us.lines.length) { setErr("This looks like an UltraStar file, but no notes were found in it."); return; }
+        updateLyrics({ name: file.name, lines: us.lines, offset: 0, us: us.notes.map((n) => [n.midi, Math.round(n.pos * 1000) / 1000, Math.round(n.end * 1000) / 1000, { silence: 0, dip: 1, pitch: 2 }[n.cut]]) });
+        return;
+      }
       const lines = parseLrc(text);
-      if (!lines.filter((l) => l.text).length) { setErr("No timed lines found. An .lrc file has lines like [00:12.30] followed by the words."); return; }
+      if (!lines.filter((l) => l.text).length) { setErr("No timed lines found. Use an .lrc file (lines like [00:12.30] followed by the words) or an UltraStar .txt file."); return; }
       updateLyrics({ name: file.name, lines, offset: 0 });
+    };
+    const [expMsg, setExpMsg] = useState("");
+    const exportUs = async () => {
+      if (!orig || !orig.data) return;
+      const spans = lyricSpans(lyrics, orig.data.duration);
+      const base = (orig.name || "song").replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]+/g, "").trim() || "song";
+      const parts = base.split(/\s+-\s+/);
+      const txt = toUltraStar({ title: parts.length > 1 ? parts.slice(1).join(" - ") : base, artist: parts.length > 1 ? parts[0] : "", audio: orig.name, instrumental: musicName, notes: orig.data.notes, spans });
+      try { await saveBlob(new Blob([txt], { type: "text/plain" }), base + ".txt"); setExpMsg("Saved."); }
+      catch (e) { setExpMsg(e && e.code === "declined" ? "Save cancelled." : "Saving isn't available here."); }
     };
     const btn = { padding: "5px 10px", fontSize: 13 };
     return html`<div class="panel p-4 flex flex-wrap items-center gap-3">
       <div class="flex-1 min-w-0" style=${{ minWidth: 200 }}>
         <span class="label">Optional</span>
-        <h3 class="display text-lg font-bold">Timed lyrics (.lrc)</h3>
+        <h3 class="display text-lg font-bold">Timed lyrics (.lrc or UltraStar .txt)</h3>
         ${lyrics
-          ? html`<p class="text-sm" style=${{ overflowWrap: "anywhere" }}><b>${lyrics.name}</b> <span class="muted mono text-xs">· ${count} lines · saved for this song</span></p>`
+          ? html`<p class="text-sm" style=${{ overflowWrap: "anywhere" }}><b>${lyrics.name}</b> <span class="muted mono text-xs">· ${count} lines${lyrics.us ? " · exact notes from the chart" : ""} · saved for this song</span></p>`
           : html`<p class="muted text-sm">${origName ? hint : "Upload the song first, then add its lyrics file."}</p>`}
         ${err && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${err}</p>`}
+        ${lyrics && orig && orig.data && html`<p class="text-xs muted" style=${{ marginTop: 4 }}><button class="link-btn" onClick=${exportUs}>Save as UltraStar file</button>${expMsg ? " · " + expMsg : " · plays in UltraStar and other karaoke games"}</p>`}
       </div>
       ${lyrics && html`<div class="flex items-center gap-2">
         <button class="btn" style=${btn} onClick=${() => updateLyrics({ ...lyrics, offset: Math.round((lyrics.offset - 0.25) * 100) / 100 })}>−0.25 s</button>
@@ -1762,7 +1779,7 @@ select.btn { appearance: auto; }
         <button class="btn" style=${btn} onClick=${() => updateLyrics({ ...lyrics, offset: Math.round((lyrics.offset + 0.25) * 100) / 100 })}>+0.25 s</button>
         <button class="btn btn-ghost" style=${btn} onClick=${() => updateLyrics(null)}>Remove</button>
       </div>`}
-      <button class=${"btn" + (lyrics ? "" : " btn-primary")} disabled=${!origName} onClick=${() => ref.current && ref.current.click()}>${lyrics ? "Replace .lrc" : "Upload .lrc"}</button>
+      <button class=${"btn" + (lyrics ? "" : " btn-primary")} disabled=${!origName} onClick=${() => ref.current && ref.current.click()}>${lyrics ? "Replace lyrics" : "Upload lyrics"}</button>
       <input ref=${ref} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) pickLyrics(f); }} />
     </div>`;
   }
@@ -2169,7 +2186,7 @@ select.btn { appearance: auto; }
     if (g.some((n) => n.end - n.pos >= 1.5)) tags.push("Long hold");
     return tags;
   }
-  function SongSheet({ notes, spans, phrases, tr, nameOf, names, onNames, cursor, curIdx, playing, onPlayLine, onLoop, loop, lineInfo, onMe, you, onAnalyze, onPlayRange, onSaveWords }) {
+  function SongSheet({ notes, spans, phrases, tr, nameOf, names, onNames, cursor, curIdx, playing, onPlayLine, onLoop, loop, lineInfo, onMe, you, onAnalyze, onPlayRange, onSaveWords, onTapSong }) {
     const [open, setOpen] = useState(-1);
     const [tap, setTap] = useState(null); // { k, words, times }
     const timeRef = useRef(0);
@@ -2220,9 +2237,12 @@ select.btn { appearance: auto; }
     const chip = (i, label) => html`<span class="mono" style=${{ fontSize: 12, fontWeight: 600, padding: "3px 6px", borderRadius: 6, background: i === curIdx ? "var(--accent)" : "color-mix(in srgb, var(--accent) 15%, transparent)", color: i === curIdx ? "var(--accent-ink)" : "var(--accent)", whiteSpace: "nowrap" }}>${label}</span>`;
     if (!notes.length) return html`<p class="muted text-sm">No melody found in this vocal yet.</p>`;
     return html`<div class="flex flex-col gap-3">
-      <div class="seg" role="group" aria-label="Note names" style=${{ alignSelf: "flex-start" }}>
-        <button aria-pressed=${names !== "solfege" ? "true" : "false"} onClick=${() => onNames("letters")}>Letters</button>
-        <button aria-pressed=${names === "solfege" ? "true" : "false"} onClick=${() => onNames("solfege")}>Do re mi</button>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="seg" role="group" aria-label="Note names">
+          <button aria-pressed=${names !== "solfege" ? "true" : "false"} onClick=${() => onNames("letters")}>Letters</button>
+          <button aria-pressed=${names === "solfege" ? "true" : "false"} onClick=${() => onNames("solfege")}>Do re mi</button>
+        </div>
+        ${onTapSong && spans.length > 0 && html`<button class="btn" style=${{ padding: "6px 12px", fontSize: 13 }} onClick=${onTapSong}>${spans.every((l) => l.words && l.words.length) ? "Re-tap the song" : "Tap the whole song"}</button>`}
       </div>
       ${!spans.length && html`<p class="text-xs muted" style=${{ margin: 0 }}>No lyrics for this song yet, so lines follow the melody's phrases. Add an .lrc file under Change to see the words.</p>`}
       ${lines.map((l, k) => {
@@ -2341,6 +2361,7 @@ select.btn { appearance: auto; }
     const [tries, setTries] = useState({});
     const [panel, setPanel] = useState(null);
     const [tempPlan, setTempPlan] = useState(null);
+    const [tapSong, setTapSong] = useState(false);
     // keep the coach card in view whenever it changes step
     useEffect(() => {
       const el = coachRef.current;
@@ -2662,6 +2683,13 @@ select.btn { appearance: auto; }
     const btn = { padding: "5px 10px", fontSize: 13 };
 
     const setPlan = (p) => { setPlanState(p); savePlan(songName, p); };
+    if (tapSong) return html`<${TapSong} spans=${spans} buffer=${orig && orig.buffer} onClose=${() => setTapSong(false)} onSave=${(map) => {
+      if (lyrics && lyrics.lines && updateLyrics) {
+        const off = lyrics.offset || 0;
+        updateLyrics({ ...lyrics, lines: lyrics.lines.map((ln, i) => (map[i] ? { ...ln, words: map[i].map((w) => ({ t: Math.max(0, Math.round((w.t - off) * 100) / 100), w: w.w })) } : ln)) });
+      }
+      setTapSong(false); flash("Saved word timing for " + Object.keys(map).length + " lines.");
+    }} />`;
     if (planRun != null && tempPlan) return html`<${PlanFlow} plan=${tempPlan} songTitle=${(songName || "").replace(/\.[^.]+$/, "")} buffer=${orig && orig.buffer} start=${planRun}
       onClose=${() => { setPlanRun(null); setTempPlan(null); }} onUpdate=${setTempPlan} onKaraoke=${() => { setPlanRun(null); setTempPlan(null); onGo && onGo("karaoke"); }} />`;
     if (planRun != null && plan) return html`<${PlanFlow} plan=${plan} songTitle=${(songName || "").replace(/\.[^.]+$/, "")} buffer=${orig && orig.buffer} start=${planRun}
@@ -2719,7 +2747,7 @@ select.btn { appearance: auto; }
         <span class="text-sm muted" style=${{ flex: 1 }}>Make a practice plan from your Repeat after me tries.</span>
         <button class="btn btn-primary" style=${{ padding: "6px 12px", fontSize: 13, whiteSpace: "nowrap" }} onClick=${() => { const rows = Object.values(attemptsRef.current).flat(); const p = makePlan(rows, notes, spans, phrases, "repeat"); if (p) { p.fresh = false; setPlan(p); } else flash("Nothing big to fix yet. Nice!"); }}>Make plan</button>
       </div>`}
-      ${view === "sheet" && mode === "play" ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords}
+      ${view === "sheet" && mode === "play" ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords} onTapSong=${() => { stopAll(); setTapSong(true); }}
         onPlayLine=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.2), l.end + 0.15, () => stopAll()); }}
         onLoop=${(l) => { if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) { clearLoop(); stopAll(); } else startLoop(l.start, l.end + 0.3); }} />` : html`<${React.Fragment}>
       <section class="panel p-4 flex flex-col gap-3 min-w-0 coach" ref=${coachRef} style=${view === "sheet" ? { position: "sticky", top: 8, zIndex: 15, boxShadow: "0 8px 24px rgba(0,0,0,.25)" } : undefined}>
@@ -2812,7 +2840,7 @@ select.btn { appearance: auto; }
       ${toast && html`<div class="notice" role="status" style=${{ borderColor: "var(--good)", background: "color-mix(in srgb, var(--good) 10%, var(--surface))" }}>${toast}</div>`}
 
         ${view === "sheet"
-          ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords}
+          ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords} onTapSong=${() => { stopAll(); setTapSong(true); }}
               onPlayLine=${(l) => { clearLoop(); runRepeat(phraseFor(l)); }}
               onLoop=${(l) => { if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) { clearLoop(); stopAll(); } else startLoop(l.start, l.end + 0.3); }} />`
           : html`<${MelodyMap} data=${data} notes=${notes} tr=${tr} nameOf=${nameOf} phrases=${phrases} lyrics=${spans} loop=${loop} cursor=${cursor} curIdx=${curIdx} onTapNote=${tapNote} onSeek=${seek} themeKey=${themeKey} overlay=${liveLine} />`}
@@ -3491,7 +3519,301 @@ select.btn { appearance: auto; }
             </select>`
           : html`<p class="text-sm muted">Using the default microphone.${devices.length === 0 ? " Other microphones show up here after you allow mic access." : ""}</p>`}
       </div>
+      <div class="flex flex-col gap-2">
+        <span class="label">Note detection</span>
+        <button class="switch" role="switch" aria-checked=${SETTINGS.ai ? "true" : "false"} onClick=${() => set("ai", !SETTINGS.ai)} style=${{ fontSize: 14, alignSelf: "flex-start" }}>
+          <span class="track"><span class="knob"></span></span>High-accuracy notes (AI)
+        </button>
+        <p class="text-xs muted">Experimental. Uses Spotify's Basic Pitch model on this device to split notes where it hears a new syllable starting on the same pitch. It helps a little with fast lines, can add a few extra notes, takes a while on slower phones, and is a one-time 2.5 MB download. The result is saved per song. Applies to the next song you load.</p>
+      </div>
     </section>`;
+  }
+
+  /* ---------- AI note detection (Spotify Basic Pitch, runs on this device) ---------- */
+  const AI_KEY = "pitchstaff.ainotes.v3";
+  const AI_FPS = 22050 / 256;
+  let bpModule = null;
+  const loadBasicPitch = () => (bpModule = bpModule || import(new URL("tono-basic-pitch.js", document.baseURI).href));
+  function aiCacheGet(name, dur) {
+    const all = loadJSON(AI_KEY, {}), e = all[name];
+    if (!e || Math.abs(e.d - dur) > 0.5) return null;
+    return e.n.map(([midi, pos, end, c]) => ({ midi, pos, end, cut: ["silence", "dip", "pitch"][c] || "pitch" }));
+  }
+  function aiCachePut(name, dur, notes) {
+    const all = loadJSON(AI_KEY, {});
+    all[name] = { d: Math.round(dur * 10) / 10, at: Date.now(), n: notes.map((n) => [n.midi, Math.round(n.pos * 1000) / 1000, Math.round(n.end * 1000) / 1000, { silence: 0, dip: 1, pitch: 2 }[n.cut] ?? 2]) };
+    const keys = Object.keys(all).sort((a, b) => (all[b].at || 0) - (all[a].at || 0));
+    keys.slice(15).forEach((k) => delete all[k]);
+    saveJSON(AI_KEY, all);
+  }
+  // Basic Pitch finds where notes start (even repeated ones); our own pitch track gives the exact pitch
+  function aiToMelody(evs, onsets, grid) {
+    const out = [];
+    const ns = evs.map((e) => ({ s: e.startTimeSeconds, e: e.startTimeSeconds + e.durationSeconds, p: e.pitchMidi, a: e.amplitude }))
+      .filter((n) => n.e - n.s >= 0.06 && n.p >= 36 && n.p <= 92).sort((x, y) => x.s - y.s || y.a - x.a);
+    ns.forEach((n) => {
+      // pitch from our tracker over the middle of the note; skip notes with no sung pitch (breaths, noise)
+      const k0 = Math.round((n.s + (n.e - n.s) * 0.15) / GRID), k1 = Math.max(k0 + 1, Math.round((n.e - (n.e - n.s) * 0.15) / GRID));
+      const vals = [];
+      for (let k = k0; k < k1 && k < grid.length; k++) if (grid[k] === grid[k]) vals.push(grid[k]);
+      if (vals.length < Math.max(2, 0.35 * (k1 - k0))) return;
+      const midi = Math.round(median(vals));
+      const f = Math.min(onsets.length - 1, Math.max(0, Math.round(n.s * AI_FPS)));
+      let on = 0;
+      for (let q = Math.max(0, f - 2); q <= Math.min(onsets.length - 1, f + 2); q++) { const row = onsets[q]; for (let b = n.p - 22; b <= n.p - 20; b++) if (row && row[b] > on) on = row[b]; }
+      const last = out[out.length - 1];
+      if (last && n.s < last.end - 0.03) {
+        if (n.e <= last.end + 0.02) return;           // a ghost note inside the current one
+        if (n.s - last.pos < 0.08) return;             // two guesses for the same moment: keep the first
+        last.end = n.s;                                 // a new note starts: cut the previous one here
+      }
+      const prevEnd = last ? last.end : -1;
+      const cut = n.s - prevEnd > 0.12 ? "silence" : on >= 0.5 ? "dip" : "pitch";
+      if (last && cut === "pitch" && last.midi === midi && n.s - last.end < 0.04) { last.end = n.e; return; }
+      out.push({ midi, pos: n.s, end: n.e, cut });
+    });
+    return out.filter((n) => n.end - n.pos >= 0.06);
+  }
+  // keep our notes; split them only where the AI hears a new attack on that pitch AND there's a consonant dip
+  function aiRefine(notes, onsets, grid, loud) {
+    const THR = 0.5, MIN = 0.1, DIP = 4.5, out = [];
+    const onCol = (f, midi) => { const r = onsets[f]; if (!r) return 0; let v = 0; for (let b = midi - 22; b <= midi - 20; b++) if (r[b] > v) v = r[b]; return v; };
+    const dipAt = (t) => {
+      const k = Math.round(t / GRID); let lo = Infinity, unv = false, hiB = -Infinity, hiA = -Infinity;
+      for (let q = k - 3; q <= k + 2; q++) { if (q < 0 || q >= loud.length) continue; lo = Math.min(lo, loud[q]); if (grid[q] !== grid[q]) unv = true; }
+      for (let q = k - 10; q < k - 2; q++) if (q >= 0) hiB = Math.max(hiB, loud[q]);
+      for (let q = k + 2; q < k + 10; q++) if (q < loud.length) hiA = Math.max(hiA, loud[q]);
+      return unv || Math.min(hiB, hiA) - lo >= DIP;
+    };
+    notes.forEach((n) => {
+      const cuts = [];
+      for (let f = Math.ceil((n.pos + MIN) * AI_FPS); f <= Math.floor((n.end - MIN) * AI_FPS); f++) {
+        const v = onCol(f, n.midi);
+        if (v >= THR && v >= onCol(f - 1, n.midi) && v >= onCol(f + 1, n.midi) && dipAt(f / AI_FPS)) {
+          const t = f / AI_FPS, last = cuts.length ? cuts[cuts.length - 1] : n.pos;
+          if (t - last >= MIN && n.end - t >= MIN) cuts.push(t);
+        }
+      }
+      let st = n.pos;
+      cuts.forEach((t, i) => { out.push({ ...n, pos: st, end: t, cut: i === 0 ? n.cut : "dip" }); st = t; });
+      out.push({ ...n, pos: st, end: n.end, cut: cuts.length ? "dip" : n.cut });
+    });
+    return out;
+  }
+  async function aiNotes(buffer, data, onProgress) {
+    const m = await loadBasicPitch();
+    try { await m.tf.setBackend("webgl"); } catch (e) {}
+    await m.tf.ready();
+    const sr = 22050, len = Math.ceil(buffer.duration * sr);
+    const Off = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const off = new Off(1, len, sr), src = off.createBufferSource();
+    src.buffer = buffer; src.connect(off.destination); src.start();
+    const rendered = await new Promise((res, rej) => { off.oncomplete = (e) => res(e.renderedBuffer); const pr = off.startRendering(); if (pr && pr.then) pr.then(res, rej); });
+    const bp = new m.BasicPitch(new URL("bp-model/model.json", document.baseURI).href);
+    const onsets = [];
+    await bp.evaluateModel(rendered.getChannelData(0), (f, o) => { onsets.push(...o); }, (p) => onProgress && onProgress(p));
+    return aiRefine(data.notes, onsets, data.grid, data.loud);
+  }
+
+
+  /* ---------- snap notes to the song's key ---------- */
+  // A sung note sitting between two piano keys can round to the out-of-key one. If the song's key is clear,
+  // move such borderline notes to the nearest in-key note (like UltraSinger does), and rejoin slides that split.
+  function snapToKey(notes, grid) {
+    if (!notes || notes.length < 8) return notes;
+    const key = estimateKey(notes);
+    if (!(key.conf >= 0.9)) return notes; // only when the key is really clear: a wrong key would move good notes
+    const scale = (key.minor ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11]).map((x) => (x + key.tonic) % 12);
+    const inKey = (m) => scale.includes(((m % 12) + 12) % 12);
+    const out = [];
+    notes.forEach((n) => {
+      let m = n.midi;
+      if (!inKey(m)) {
+        const k0 = Math.round((n.pos + (n.end - n.pos) * 0.15) / GRID), k1 = Math.max(k0 + 1, Math.round((n.end - (n.end - n.pos) * 0.15) / GRID));
+        const vals = [];
+        for (let k = k0; k < k1 && k < grid.length; k++) if (grid[k] === grid[k]) vals.push(grid[k]);
+        if (vals.length >= 3) {
+          const v = median(vals);
+          const cand = [m + 1, m - 1].filter(inKey).sort((a, b) => Math.abs(v - a) - Math.abs(v - b))[0];
+          if (cand != null && Math.abs(v - cand) <= 0.65) m = cand;
+        }
+      }
+      const last = out[out.length - 1];
+      if (last && m === last.midi && n.cut === "pitch" && n.pos - last.end < 0.03) { last.end = n.end; return; }
+      out.push(m === n.midi ? n : { ...n, midi: m, snapped: true });
+    });
+    return out;
+  }
+
+  /* ---------- UltraStar karaoke files (.txt) ---------- */
+  // Each line ": beat length pitch syllable". Pitch 0 = C4. A leading space starts a new word; "~" continues a syllable.
+  function parseUltraStar(text) {
+    const rows = text.replace(/^﻿/, "").split(/\r?\n/);
+    const hdr = {};
+    rows.forEach((r) => { const m = r.match(/^#([^:]+):(.*)$/); if (m) hdr[m[1].trim().toUpperCase()] = m[2].trim(); });
+    const bpm = parseFloat((hdr.BPM || "").replace(",", "."));
+    if (!(bpm > 0)) return null;
+    const gap = parseFloat((hdr.GAP || "0").replace(",", ".")) || 0;
+    const rel = /^yes$/i.test(hdr.RELATIVE || "");
+    const spb = 60 / (bpm * 4), time = (b) => gap / 1000 + b * spb;
+    const items = [];
+    let base = 0;
+    for (const r of rows) {
+      const c = r[0];
+      if (c === "E") break;
+      if (c === ":" || c === "*" || c === "F" || c === "R" || c === "G") {
+        const m = r.match(/^[:*FRG]\s*(-?\d+)\s+(\d+)\s+(-?\d+)\s?(.*)$/);
+        if (m) items.push({ kind: "n", type: c, beat: +m[1] + base, len: +m[2], pitch: +m[3], text: m[4] });
+      } else if (c === "-") {
+        const m = r.match(/^-\s*(-?\d+)(?:\s+(-?\d+))?/);
+        if (m) { items.push({ kind: "b", beat: +m[1] + base }); if (rel) base += m[2] != null ? +m[2] : +m[1]; }
+      }
+    }
+    const lines = [], notes = [];
+    let cur = null, word = null;
+    const flush = () => { if (cur && cur.words.length) { cur.text = cur.words.map((w) => w.w).join(" "); lines.push(cur); } cur = null; word = null; };
+    items.forEach((it) => {
+      if (it.kind === "b") { flush(); return; }
+      const t0 = time(it.beat), t1 = time(it.beat + Math.max(1, it.len));
+      const raw = it.text || "";
+      const cont = /^\s*~/.test(raw), newWord = !cur || /^\s/.test(raw) || !word;
+      const syl = raw.replace(/~/g, "").trim();
+      if (!cur) cur = { t: t0, text: "", words: [] };
+      if (!cont && (newWord || !word)) { word = { t: t0, w: syl }; cur.words.push(word); }
+      else if (!cont && word) word.w += syl;
+      if (it.type !== "F" && it.type !== "R" && it.type !== "G") notes.push({ midi: it.pitch + 60, pos: t0, end: t1, cut: cont ? "pitch" : newWord ? "silence" : "dip", gold: it.type === "*" });
+    });
+    flush();
+    lines.forEach((l) => { l.words = l.words.filter((w) => w.w); });
+    return { title: hdr.TITLE || "", artist: hdr.ARTIST || "", lines: lines.filter((l) => l.words.length), notes };
+  }
+  // UltraStar charts often sit an octave or two away from the real voice: move them to where the vocal actually is
+  function usNotesFor(entry, data) {
+    if (!entry || !entry.us || !entry.us.length) return null;
+    const off = entry.offset || 0;
+    const ns = entry.us.map(([midi, pos, end, c]) => ({ midi, pos: pos + off, end: end + off, cut: ["silence", "dip", "pitch"][c] || "pitch" }));
+    const diffs = [];
+    ns.forEach((n) => { for (let k = Math.round(n.pos / GRID); k < Math.round(n.end / GRID) && k < data.grid.length; k++) if (data.grid[k] === data.grid[k]) diffs.push(data.grid[k] - n.midi); });
+    const sh = diffs.length > 20 ? 12 * Math.round(median(diffs) / 12) : 0;
+    return ns.map((n) => ({ ...n, midi: n.midi + sh }));
+  }
+  function toUltraStar({ title, artist, audio, instrumental, notes, spans }) {
+    const spb = 0.05, gapMs = Math.max(0, Math.round((notes.length ? notes[0].pos : 0) * 1000));
+    const beat = (t) => Math.max(0, Math.round((t - gapMs / 1000) / spb));
+    const tl = looksTagalog(spans);
+    const out = ["#VERSION:1.1.0", "#TITLE:" + (title || "Untitled"), "#ARTIST:" + (artist || "Unknown")];
+    if (audio) { out.push("#MP3:" + audio, "#AUDIO:" + audio, "#VOCALS:" + audio); }
+    if (instrumental) out.push("#INSTRUMENTAL:" + instrumental);
+    out.push("#BPM:300", "#GAP:" + gapMs);
+    let lastEnd = null;
+    spans.forEach((l) => {
+      const idx = [];
+      notes.forEach((n, i) => { if (n.pos >= l.start - 0.08 && n.pos < l.end - 0.02) idx.push(i); });
+      if (!idx.length || !l.text) return;
+      let words;
+      if (l.words && l.words.length) words = l.words.map((w, k) => { const e = k + 1 < l.words.length ? l.words[k + 1].t : l.end; return { w: w.w, idx: idx.filter((i) => notes[i].pos >= w.t - 0.08 && notes[i].pos < e - 0.02) }; });
+      else { const m = wordsToNotes(l.text, idx.map((i) => notes[i]), tl); words = m ? m.map((x) => ({ w: x.w, idx: x.idx.map((j) => idx[j]) })) : []; }
+      if (lastEnd != null) out.push("- " + beat(lastEnd));
+      let first = true, pending = "";
+      words.forEach((w) => {
+        // a word with no note of its own rides along with the next sung word, so no lyrics are lost
+        if (!w.idx.length) { pending += (pending ? " " : "") + w.w; return; }
+        w.idx.forEach((i, j) => {
+          const n = notes[i], b = beat(n.pos), len = Math.max(1, Math.round((n.end - n.pos) / spb));
+          const txt = j === 0 ? (first ? "" : " ") + (pending ? pending + " " : "") + w.w : "~";
+          out.push(": " + b + " " + len + " " + (n.midi - 60) + " " + txt);
+          first = false; lastEnd = n.end; pending = "";
+        });
+      });
+      if (pending && out.length && out[out.length - 1].startsWith(":")) out[out.length - 1] = out[out.length - 1].replace(/ ~$/, " ~") + " " + pending;
+    });
+    out.push("E");
+    return out.join("\n") + "\n";
+  }
+
+  /* ---------- tap the whole song ---------- */
+  function TapSong({ spans, buffer, onSave, onClose }) {
+    const lines = useMemo(() => spans.filter((l) => l.text && l.src != null).map((l) => ({ ...l, ws: l.text.split(/\s+/).filter(Boolean) })), [spans]);
+    const [li, setLi] = useState(0);
+    const [taps, setTaps] = useState({});
+    const [playing, setPlaying] = useState(false);
+    const [rate, setRate] = useState(1);
+    const [now, setNow] = useState(0);
+    const [done, setDone] = useState(false);
+    const A = useRef({ ctx: null, src: null, t0: 0, at: 0, raf: 0 });
+    const songNow = () => { const a = A.current; return a.ctx && playing ? a.at + (a.ctx.currentTime - a.t0) * rate : a.at; };
+    const stop = () => { const a = A.current; cancelAnimationFrame(a.raf); if (a.src) { try { a.src.stop(); } catch (e) {} a.src = null; } };
+    const play = (from) => {
+      const a = A.current;
+      stop();
+      if (!a.ctx) { const C = window.AudioContext || window.webkitAudioContext; a.ctx = new C(); }
+      if (a.ctx.state === "suspended") a.ctx.resume().catch(() => {});
+      const s = a.ctx.createBufferSource();
+      s.buffer = buffer; s.playbackRate.value = rate; s.connect(a.ctx.destination);
+      s.start(0, Math.max(0, from)); a.src = s; a.t0 = a.ctx.currentTime; a.at = Math.max(0, from);
+      s.onended = () => { if (A.current.src === s) { setPlaying(false); } };
+      setPlaying(true);
+      const tick = () => { setNow(a.at + (a.ctx.currentTime - a.t0) * rate); a.raf = requestAnimationFrame(tick); };
+      tick();
+    };
+    const pause = () => { const a = A.current; a.at = a.at + (a.ctx ? (a.ctx.currentTime - a.t0) * rate : 0); stop(); setPlaying(false); };
+    useEffect(() => () => { stop(); if (A.current.ctx) A.current.ctx.close().catch(() => {}); }, []);
+    const L = lines[li], got = (taps[li] || []).length;
+    const tap = () => {
+      if (!playing || !L || done) return;
+      const t = Math.max(0, now - 0.04 * rate); // people tap a hair late
+      const arr = [...(taps[li] || []), t];
+      const next = { ...taps, [li]: arr };
+      setTaps(next);
+      if (arr.length >= L.ws.length) { if (li + 1 < lines.length) setLi(li + 1); else { setDone(true); pause(); } }
+    };
+    const undo = () => {
+      if (got > 0) setTaps({ ...taps, [li]: (taps[li] || []).slice(0, -1) });
+      else if (li > 0) { const p = li - 1; setLi(p); setTaps({ ...taps, [p]: (taps[p] || []).slice(0, -1) }); setDone(false); }
+    };
+    const redoLine = () => { setTaps({ ...taps, [li]: [] }); setDone(false); play(Math.max(0, L.start - 2)); };
+    useEffect(() => {
+      const k = (e) => { if (e.code === "Space" || e.key === " ") { e.preventDefault(); tap(); } };
+      window.addEventListener("keydown", k);
+      return () => window.removeEventListener("keydown", k);
+    });
+    const finish = () => {
+      const out = {};
+      lines.forEach((l, i) => { const t = taps[i]; if (t && t.length === l.ws.length) out[l.src] = l.ws.map((w, j) => ({ t: t[j], w })); });
+      stop(); onSave(out);
+    };
+    const doneLines = lines.filter((l, i) => (taps[i] || []).length === l.ws.length).length;
+    if (!lines.length) return html`<div class="flex flex-col gap-3"><p>No lyric lines to tap. Add an .lrc file first.</p><button class="btn" onClick=${onClose}>Back</button></div>`;
+    const N = lines[li + 1];
+    return html`<div class="flex flex-col gap-4">
+      <div class="flex items-center gap-3">
+        <button class="icon-btn" onClick=${() => { stop(); onClose(); }} aria-label="Leave without saving"><${Icon} name="x" size=${18} /></button>
+        <span style=${{ flex: 1 }}><${Bar} p=${(100 * doneLines) / lines.length} /></span>
+        <span class="mono text-xs muted">${doneLines}/${lines.length} lines</span>
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="display font-bold" style=${{ fontSize: 24 }}>Tap the whole song</span>
+        <span class="text-sm muted">Tap the big button (or press Space) as each word starts. Your taps place every word exactly, for the song sheet and Karaoke.</span>
+      </div>
+      <section class="tuner-card" style=${{ alignItems: "stretch", gap: 14, minHeight: 230 }}>
+        <span class="label">${done ? "All lines tapped" : "Line " + (li + 1) + " of " + lines.length + " · " + fmt(L.start)}</span>
+        <div class="flex flex-wrap gap-2" aria-live="polite">
+          ${L.ws.map((w, j) => html`<span key=${j} class="display font-bold" style=${{ fontSize: 24, padding: "2px 8px", borderRadius: 8, background: !done && j === got ? "var(--accent)" : "transparent", color: !done && j === got ? "var(--accent-ink)" : j < got || done ? "var(--good)" : "var(--fg)" }}>${w}</span>`)}
+        </div>
+        ${N && !done && html`<span class="text-sm muted">Next: ${N.text}</span>`}
+        <span class="mono text-xs muted">${fmt(now)}${rate !== 1 ? " · " + Math.round(rate * 100) + "% speed" : ""}</span>
+      </section>
+      <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 76, fontSize: 22 }} onPointerDown=${(e) => { e.preventDefault(); tap(); }} disabled=${!playing || done}>Tap</button>
+      <div class="grid grid-cols-2 gap-2">
+        ${playing
+          ? html`<button class="btn" style=${{ justifyContent: "center", minHeight: 44 }} onClick=${pause}>⏸ Pause</button>`
+          : html`<button class="btn" style=${{ justifyContent: "center", minHeight: 44 }} onClick=${() => play(now > 0 ? Math.max(0, now - 1.5) : Math.max(0, lines[0].start - 3))}>▶ ${now > 0 ? "Resume" : "Start"}</button>`}
+        <button class="btn" style=${{ justifyContent: "center", minHeight: 44 }} onClick=${undo} disabled=${li === 0 && got === 0}>↶ Undo tap</button>
+        <button class="btn" style=${{ justifyContent: "center", minHeight: 44 }} onClick=${redoLine}>⟲ Redo this line</button>
+        <button class="btn" style=${{ justifyContent: "center", minHeight: 44 }} onClick=${() => { const r = rate === 1 ? 0.75 : 1; const t = now; setRate(r); if (playing) { A.current.at = t; setTimeout(() => play(t), 0); } }}>${rate === 1 ? "Slow down (75%)" : "Normal speed"}</button>
+      </div>
+      <button class=${"btn" + (doneLines ? " btn-primary" : "")} style=${{ justifyContent: "center", minHeight: 48 }} onClick=${finish} disabled=${!doneLines}>${done ? "Save all lines" : "Save " + doneLines + " finished line" + (doneLines === 1 ? "" : "s")}</button>
+    </div>`;
   }
 
   /* ---------- karaoke ---------- */
@@ -4561,7 +4883,7 @@ select.btn { appearance: auto; }
         <div class="file-list">
           <${FileRow} id="setup-vocal" title="Vocal (acapella)" sub="Needed. The singer's voice on its own." slot=${vocal} onPick=${onPickVocal} />
           <${FileRow} id="setup-music" title="Instrumental" sub="For Karaoke. The song without vocals." slot=${music} onPick=${onPickMusic} disabled=${!ready} />
-          <${LyricsCard} orig=${vocal} lyrics=${lyricsEntry} updateLyrics=${updateLyrics} count=${spans.length} hint="Optional. Timed lyrics show while you sing." />
+          <${LyricsCard} orig=${vocal} musicName=${music && music.buffer ? music.name : null} lyrics=${lyricsEntry} updateLyrics=${updateLyrics} count=${spans.length} hint="Optional. Timed lyrics show while you sing." />
         </div>
         ${keyWarn !== 0 && music && music.buffer && html`<p class="text-xs" style=${{ color: "var(--warn)" }}>This instrumental seems to be ${pianoKeys(Math.abs(keyWarn))} ${keyWarn > 0 ? "higher" : "lower"} than the vocal, so they may clash. Look for a version in the original key.</p>`}
       </section>
@@ -5681,7 +6003,21 @@ select.btn { appearance: auto; }
       catch (e) { if (vocalJob.current === job) setVocal({ name: file.name, error: "That file couldn't be read as audio. Try an MP3, M4A or WAV." }); return; }
       const data = await trackPitch(buffer, (pr) => { if (vocalJob.current === job) setVocal((v) => (v ? { ...v, progress: pr } : v)); }, () => vocalJob.current !== job);
       if (!data || vocalJob.current !== job) return;
-      setVocal({ name: file.name, buffer, data });
+      data.notes = snapToKey(data.notes, data.grid);
+      if (!SETTINGS.ai) { setVocal({ name: file.name, buffer, data }); return; }
+      const cached = aiCacheGet(file.name, buffer.duration);
+      if (cached && cached.length) { setVocal({ name: file.name, buffer, data: { ...data, notes: cached, ai: true }, ai: "done" }); return; }
+      setVocal({ name: file.name, buffer, data, ai: 0 });
+      try {
+        const notes = await aiNotes(buffer, data, (p) => { if (vocalJob.current === job) setVocal((v) => (v && v.name === file.name && typeof v.ai === "number" ? { ...v, ai: p } : v)); });
+        if (vocalJob.current !== job) return;
+        if (notes.length >= data.notes.length) {
+          aiCachePut(file.name, buffer.duration, notes);
+          setVocal((v) => (v && v.name === file.name ? { ...v, data: { ...v.data, notes, ai: true }, ai: "done" } : v));
+        } else setVocal((v) => (v && v.name === file.name ? { ...v, ai: "skip" } : v));
+      } catch (e) {
+        if (vocalJob.current === job) setVocal((v) => (v && v.name === file.name ? { ...v, ai: "failed" } : v));
+      }
     }, []);
     const vocalName = vocal && vocal.data ? vocal.name : null;
     const [vocalLyrics, setVocalLyrics] = useState(null);
@@ -5691,6 +6027,12 @@ select.btn { appearance: auto; }
       setVocalLyrics(saved && Array.isArray(saved.lines) ? saved : null);
     }, [vocalName]);
     const updateVocalLyrics = useCallback((next) => { setVocalLyrics(next); if (vocalName) saveLyricsFor(vocalName, next); }, [vocalName]);
+    // an UltraStar chart brings exact notes for every syllable: use them instead of the detected ones
+    const vocalEff = useMemo(() => {
+      if (!vocal || !vocal.data || !vocalLyrics || !vocalLyrics.us) return vocal;
+      const ns = usNotesFor(vocalLyrics, vocal.data);
+      return ns && ns.length ? { ...vocal, data: { ...vocal.data, notes: ns, chart: true } } : vocal;
+    }, [vocal, vocalLyrics]);
     // the instrumental is shared by Karaoke and the Singing Analyst, with its timing saved per song
     const [music, setMusic] = useState(null);
     const musicJob = useRef(0);
@@ -6076,7 +6418,7 @@ select.btn { appearance: auto; }
         <span class="song-ico"><${Icon} name="music" /></span>
         <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
           <span class="display font-bold text-lg" style=${{ overflowWrap: "anywhere", lineHeight: 1.2 }}>${songTitle(sampleName, vocal)}</span>
-          <span class="text-xs muted">Vocal${music && music.buffer ? " · Music" : ""}${lyricsReady ? " · Lyrics" : ""}${music && music.busy ? " · loading music…" : ""}</span>
+          <span class="text-xs muted">Vocal${music && music.buffer ? " · Music" : ""}${lyricsReady ? " · Lyrics" : ""}${music && music.busy ? " · loading music…" : ""}${vocal && typeof vocal.ai === "number" ? " · improving notes with AI " + Math.round(vocal.ai * 100) + "%" : vocal && vocal.ai === "done" ? " · AI notes ✓" : ""}</span>
         </span>
         <button class="btn" style=${{ padding: "7px 14px", fontSize: 13 }} onClick=${() => setSetupOpen(true)}>Change</button>
       </div>`}
@@ -6087,21 +6429,21 @@ select.btn { appearance: auto; }
           <p class="muted text-sm">Practice, Karaoke and the Analyst all use the song you pick here.</p>
           ${vocal && vocal.busy && html`<p class="text-sm" style=${{ color: "var(--accent)" }}>Analyzing ${vocal.name}… ${Math.round((vocal.progress || 0) * 100)}%</p>`}
         </div>
-        <${SongSetup} vocal=${vocal} music=${music} lyricsEntry=${vocalLyrics} updateLyrics=${updateVocalLyrics} onPickVocal=${(f) => { setPickStay(true); setSampleName(null); pickVocal(f); }} onPickMusic=${pickMusic}
+        <${SongSetup} vocal=${vocalEff} music=${music} lyricsEntry=${vocalLyrics} updateLyrics=${updateVocalLyrics} onPickVocal=${(f) => { setPickStay(true); setSampleName(null); pickVocal(f); }} onPickMusic=${pickMusic}
           onLoadSample=${loadSample} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn}
           onDone=${() => setPickStay(false)} onContinue=${() => setPickStay(false)} />
       </section>`}
 
       <${Sheet} open=${setupOpen} title="Song" onClose=${() => setSetupOpen(false)}>
-        <${SongSetup} vocal=${vocal} music=${music} lyricsEntry=${vocalLyrics} updateLyrics=${updateVocalLyrics} onPickVocal=${(f) => { setSampleName(null); pickVocal(f); }} onPickMusic=${pickMusic}
+        <${SongSetup} vocal=${vocalEff} music=${music} lyricsEntry=${vocalLyrics} updateLyrics=${updateVocalLyrics} onPickVocal=${(f) => { setSampleName(null); pickVocal(f); }} onPickMusic=${pickMusic}
           onLoadSample=${loadSample} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn} onDone=${() => setSetupOpen(false)} />
       <//>
 
       ${tab === "lessons" && html`<${Lessons} active=${tab === "lessons"} onGo=${goTab} onFocus=${setLessonFocus} />`}
       ${tab === "live" && html`<${MatchTrainer} hookRef=${matchHook} listening=${mode === "mic"} onStartMic=${startMic} onStopMic=${stop} onTarget=${setMatchTarget} onStatus=${setMatchStatus} sung=${live ? live.midi : null} live=${live} level=${level} error=${error} />`}
-      <div hidden=${tab !== "learn" || showPick}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} focus=${focus} onGo=${goTab} inst=${music} sync=${msync.sync} />`}</div>
-      <div hidden=${tab !== "karaoke" || showPick}>${visited.karaoke && html`<${Karaoke} themeKey=${tab === "karaoke" ? "kara" : isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} onTakeReady=${setLastTake} onPractice=${practiceRange} ...${musicProps} />`}</div>
-      <div hidden=${tab !== "analyst" || showPick}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} incomingTake=${handoff} lastTake=${lastTake} onUseTake=${(t) => setHandoff({ ...t, id: Date.now() })} onPractice=${practiceRange} onGo=${goTab} ...${musicProps} />`}</div>
+      <div hidden=${tab !== "learn" || showPick}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocalEff} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} focus=${focus} onGo=${goTab} inst=${music} sync=${msync.sync} />`}</div>
+      <div hidden=${tab !== "karaoke" || showPick}>${visited.karaoke && html`<${Karaoke} themeKey=${tab === "karaoke" ? "kara" : isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocalEff} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} onTakeReady=${setLastTake} onPractice=${practiceRange} ...${musicProps} />`}</div>
+      <div hidden=${tab !== "analyst" || showPick}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocalEff} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} incomingTake=${handoff} lastTake=${lastTake} onUseTake=${(t) => setHandoff({ ...t, id: Date.now() })} onPractice=${practiceRange} onGo=${goTab} ...${musicProps} />`}</div>
     </div>`;
   }
 
