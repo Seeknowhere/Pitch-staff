@@ -3470,10 +3470,10 @@ select.btn { appearance: auto; }
           else R.combo = 0;
         });
         setCombo(R.combo);
-        if (last && R.combo > 0) {
-          const milestone = R.combo >= 10 && R.combo % 10 === 0;
-          setPop({ id: Date.now() + Math.random(), kind: milestone || last.q >= 0.85 ? "perfect" : "great", text: milestone ? "×" + R.combo + " combo!" : last.q >= 0.85 ? "Perfect!" : "Great!" });
-        }
+        // combo pop-ups only at big milestones (25, 50, 75…), crossed in this batch
+        const mile = Math.floor(R.combo / 25) * 25;
+        if (last && mile >= 25 && mile > (R.lastMile || 0)) { R.lastMile = mile; R.milePop = true; setPop({ id: Date.now() + Math.random(), kind: "perfect", text: "×" + mile + " combo!" }); }
+        if (R.combo < 25) R.lastMile = 0;
       }
       if (newMarks.length) setMarks((m) => [...m.filter((x) => !newMarks.some((y) => y.i === x.i)), ...newMarks]);
       const upd = {};
@@ -3485,6 +3485,13 @@ select.btn { appearance: auto; }
         for (let k = Math.round(l.start / GRID); k < Math.round(l.end / GRID); k++) { if (data.grid[k] !== data.grid[k]) continue; v++; if (matchAt(k)) ok++; }
         if (v >= 10) { R.tally[i] = { v, ok }; upd[i] = Math.round((100 * ok) / v); }
       });
+      // at most one reaction per lyric line, when it ends, and only for a strong line
+      const ended = Object.keys(upd).map(Number);
+      if (ended.length && !R.milePop) {
+        const sc = upd[ended[ended.length - 1]];
+        if (sc >= 75) setPop({ id: Date.now() + Math.random(), kind: sc >= 90 ? "perfect" : "great", text: sc >= 90 ? "Perfect!" : "Great!" });
+      }
+      R.milePop = false;
       if (Object.keys(upd).length) setLineScores((s) => ({ ...s, ...upd }));
     };
     const buildTake = () => {
