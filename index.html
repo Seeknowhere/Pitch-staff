@@ -249,7 +249,7 @@ select.btn { appearance: auto; }
 [hidden] { display: none !important; }
 </style>
 
-</head><body><div id="root"></div>
+<div id="root"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -1981,8 +1981,10 @@ select.btn { appearance: auto; }
       // note bars with names
       const bh = Math.max(7, Math.min(18, rowH * 0.85));
       g.font = "600 10px " + cssVar("--font-mono"); g.textBaseline = "middle";
-      notes.forEach((n) => {
-        const x = n.pos * pps, w = Math.max(3, (n.end - n.pos) * pps - 1.5), y = yOf(n.midi + tr);
+      notes.forEach((n, i) => {
+        // a note running straight into another on the same pitch gets a clear gap, so the two read as two notes
+        const nx = notes[i + 1], joined = nx && nx.midi === n.midi && nx.pos - n.end < 0.06;
+        const x = n.pos * pps, w = Math.max(3, (n.end - n.pos) * pps - (joined ? 5 : 1.5)), y = yOf(n.midi + tr);
         g.fillStyle = col.fg; g.globalAlpha = 0.78;
         const r = Math.min(4, bh / 2, w / 2);
         g.beginPath();
@@ -6450,4 +6452,5 @@ select.btn { appearance: auto; }
   ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
 })();
 </script>
+
 </body></html>
