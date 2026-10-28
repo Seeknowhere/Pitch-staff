@@ -451,7 +451,7 @@ select.btn { appearance: auto; }
         const med = median(recent);
         const { midi, cents } = freqToMidi(med);
         if (midi !== cand.midi) cand = { midi, since: t };
-        if (t - cand.since >= 0.15 && confirmed !== midi) {
+        if (t - cand.since >= 0.12 && confirmed !== midi) {
           if (notes.length && notes[notes.length - 1].end == null) notes[notes.length - 1].end = cand.since;
           notes.push({ midi, freq: med, cents, pos: cand.since, end: null, cut: confirmed === null ? "silence" : "pitch" });
           confirmed = midi;
