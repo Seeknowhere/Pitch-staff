@@ -3907,9 +3907,6 @@ select.btn { appearance: auto; }
           ${!spans.length && html`<p class="text-xs muted">No lyrics for this song yet. Add an .lrc file under Change.</p>`}
         </div>
 
-        ${scored.length > 0 && html`<div class="flex flex-wrap gap-2">
-          ${Object.entries(lineScores).sort((a, b) => a[0] - b[0]).slice(-6).map(([i, s]) => html`<span key=${i} class=${"tag tag-" + (s >= 80 ? "good" : s >= 50 ? "warn" : "bad")}>${lines[i].text ? (lines[i].text.length > 18 ? lines[i].text.slice(0, 18) + "…" : lines[i].text) : "Phrase " + (+i + 1)} · ${s}%</span>`)}
-        </div>`}
         <div class="kara-lane">
           ${pop && playing && html`<span key=${pop.id} class=${"kara-pop" + (pop.kind === "great" ? " great" : "")} aria-hidden="true">${pop.text}</span>`}
           <${MelodyMap} data=${data} notes=${notes} tr=${0} nameOf=${nameOf} phrases=${phrases} lyrics=${[]} loop=${loop} cursor=${cursor} curIdx=${curIdx}
