@@ -151,11 +151,11 @@ select.btn { appearance: auto; }
 .kw { background: linear-gradient(90deg, var(--accent) var(--p, 0%), var(--fg) var(--p, 0%)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .kline.dim .kw { background: none; color: var(--muted); }
 .app-wrap { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important; }
-.bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border-top: 1px solid var(--line); padding: 6px max(8px, env(safe-area-inset-left, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-right, 0px)); }
+.bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); background: var(--surface); border-top: 1px solid var(--line); padding: 6px max(8px, env(safe-area-inset-left, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-right, 0px)); }
 .bottom-nav button { display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 52px; justify-content: center; border: 0; background: none; color: var(--muted); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; border-radius: 10px; }
 .bottom-nav button[aria-current="page"] { color: var(--accent); }
 .bottom-nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-@media (min-width: 900px) { .bottom-nav { left: 50%; right: auto; transform: translateX(-50%); width: 520px; bottom: 12px; border: 1px solid var(--line); border-radius: 18px; padding-bottom: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.25); } }
+@media (min-width: 900px) { .bottom-nav { left: 50%; right: auto; transform: translateX(-50%); width: 600px; bottom: 12px; border: 1px solid var(--line); border-radius: 18px; padding-bottom: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.25); } }
 .song-bar { display: flex; align-items: center; gap: 12px; }
 .song-ico { width: 40px; height: 40px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); color: var(--accent); display: grid; place-items: center; flex-shrink: 0; }
 .playbar { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 20; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.18); }
@@ -246,6 +246,7 @@ select.btn { appearance: auto; }
 @keyframes kfall { 0% { opacity: 1; transform: translateY(0) rotate(0); } 85% { opacity: 1; } 100% { opacity: 0; transform: translateY(300px) rotate(540deg); } }
 .part-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
 @media (prefers-reduced-motion: reduce) { .kara-pop, .count-num { animation-duration: .01s; } .kara-pop { animation: none; opacity: 1; transform: translateX(-50%) rotate(-4deg); } .confetti { display: none; } .mic-ring::before { transition: none; } }
+[hidden] { display: none !important; }
 </style>
 
 </head><body><div id="root"></div>
@@ -4100,6 +4101,8 @@ select.btn { appearance: auto; }
     x: '<path d="M18 6L6 18"></path><path d="M6 6l12 12"></path>',
     sun: '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>',
     moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>',
+    cap: '<path d="M2 7l10-4 10 4-10 4z"></path><path d="M6 9v5c0 1.7 2.7 3 6 3s6-1.3 6-3V9"></path>',
+    lock: '<rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path>',
     headphones: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3zM3 19a2 2 0 0 0 2 2h1v-6H3z"></path>',
   };
   function Icon({ name, size = 20 }) {
@@ -4175,8 +4178,848 @@ select.btn { appearance: auto; }
   }
 
   /* ---------- app ---------- */
+  /* ---------- Lessons ---------- */
+  const LESSON_KEY = "pitchstaff.lessons.v1";
+  const loadLessons = () => { const v = loadJSON(LESSON_KEY, {}); return { done: {}, streak: { last: "", count: 0 }, warm: null, ...(v && typeof v === "object" ? v : {}) }; };
+  const dayKey = (d = new Date()) => d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+  function bumpStreak(st) {
+    const today = dayKey();
+    if (st.streak && st.streak.last === today) return st;
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    const count = st.streak && st.streak.last === dayKey(y) ? st.streak.count + 1 : 1;
+    return { ...st, streak: { last: today, count } };
+  }
+  const streakNow = (st) => {
+    if (!st.streak || !st.streak.last) return 0;
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    return st.streak.last === dayKey() || st.streak.last === dayKey(y) ? st.streak.count : 0;
+  };
+  // the notes lessons use: your comfortable range if you've tested it, otherwise a middle range most voices reach (any octave counts)
+  function lessonRange() {
+    const r = loadRanges()[0];
+    if (r) { const [a, b] = comfyOf(r); return { lo: a, hi: Math.max(a + 4, b), center: Math.round((a + b) / 2), saved: true, full: r }; }
+    return { lo: 53, hi: 62, center: 57, saved: false, full: { lo: 50, hi: 66 } };
+  }
+
+  const COURSES = [
+    { id: "found", title: "Foundations", sub: "Breathing, posture, warm-ups", about: "The basics every singer builds on: how to stand, breathe and warm up so singing feels easy.", lessons: [
+      { id: "f1", title: "Stand like a singer", meta: "Posture check · 2 min", type: "check",
+        learn: "Good posture gives your breath room to work. You don't need to stand stiff, just tall and loose.",
+        steps: ["Feet hip-width apart, knees soft, not locked.", "Shoulders down and relaxed, not raised.", "Chin level, as if a string pulls the top of your head up.", "Jaw loose, tongue resting behind your bottom teeth."],
+        tip: "Check your posture in a mirror the first few times." },
+      { id: "f2", title: "Belly breathing", meta: "Guided breathing · 2 min", type: "breath", rounds: 4, inhale: 4, exhale: 6,
+        learn: "Singers breathe low, so the belly and sides expand instead of the shoulders. Low breaths give you steady air for long notes.",
+        steps: ["Put one hand on your belly.", "Breathe in through your nose for 4 counts and feel your hand move out.", "Breathe out slowly on a soft “sss” for 6 counts."],
+        tip: "If you feel dizzy, stop and breathe normally for a bit." },
+      { id: "f3", title: "Long, even hiss", meta: "Breath control · 3 min", type: "hiss", target: 15, tries: 3,
+        learn: "A long, even hiss trains you to let air out slowly. That control is what keeps long notes steady.",
+        steps: ["Take a low belly breath.", "Hiss “sss” quietly and evenly, like a slow tyre leak.", "Keep going until you run out, without squeezing at the end."],
+        tip: "Hold the phone about an arm's length away so the hiss isn't too loud for the mic." },
+      { id: "f4", title: "Gentle hum", meta: "Wake up your voice · 3 min", type: "hold", hold: 3, tol: 50, tries: 3, notes: "center", verb: "Hum",
+        learn: "Humming is the gentlest way to wake your voice up. Lips closed, teeth apart, and feel a little buzz around your lips and nose.",
+        steps: ["Listen to the piano note.", "Hum it softly on “mmm”.", "Keep the hum easy and steady until the ring fills."],
+        tip: "Quiet is fine. You never need to push for these." },
+      { id: "f5", title: "Lip trills", meta: "Air and sound together · 4 min", type: "pattern", pattern: [0, 2, 4, 2, 0], rounds: 3, rise: 1, tol: 0.6, verb: "Trill",
+        learn: "Blow air through loose lips so they buzz like “brrr”, and add your voice. Singers use lip trills every day because they balance air and sound.",
+        steps: ["Listen to the five-note pattern.", "Trill it back on “brrr”, following the notes up and down.", "Each round starts one note higher."],
+        tip: "If your lips won't buzz, press a finger lightly into each cheek. Humming the pattern works too." },
+      { id: "f6", title: "Sirens", meta: "Stretch your voice · 3 min", type: "siren", tries: 3,
+        learn: "Slide smoothly from low to high like a siren, on “oo” or a lip trill. It stretches your voice gently and smooths the jump between your low and high notes.",
+        steps: ["Start on a low, comfy note.", "Glide up slowly and smoothly, as high as feels easy.", "Let it get light and soft at the top. Don't push."],
+        tip: "Stop if anything scratches or hurts." },
+    ] },
+    { id: "pitch", title: "Pitch", sub: "Match notes, jumps, scales", about: "Sing the note you mean to sing. Learn to match a note, hold it in tune, and move between notes cleanly.", lessons: [
+      { id: "p1", title: "Match a note", meta: "Hear it, sing it, hold it · 4 min", type: "hold", hold: 1, tol: 35, tries: 5, notes: "random",
+        learn: "Everything in singing starts here: hearing a note and singing the same one back.",
+        steps: ["Listen to the piano note.", "Sing it on “ah”.", "Hold it until the ring fills."],
+        tip: "Any octave counts, so sing wherever it feels natural." },
+      { id: "p2", title: "Slide into the note", meta: "Find the pitch from below · 4 min", type: "hold", hold: 1, tol: 30, tries: 5, notes: "random", verb: "Slide up to",
+        learn: "If you can't find a note straight away, start a little below it and glide up until it locks in. Your ear learns what “in tune” feels like.",
+        steps: ["Listen to the piano note.", "Start lower on “ah” and slide up slowly.", "Stop when the ring turns green, and hold."],
+        tip: "Keep it gentle. If your throat feels tight, take a breath and try lower." },
+      { id: "p3", title: "Hold it in tune", meta: "Stay steady for 4 seconds · 4 min", type: "hold", hold: 4, tol: 25, tries: 3, notes: "center", verb: "Hold",
+        learn: "Finding the note is half the job. Now keep it there, with steady air and the same vowel the whole time.",
+        steps: ["Listen to the note.", "Sing it on “ah” and keep your breath flowing.", "Hold it steady for 4 seconds."],
+        tip: "If it wobbles, take a fuller breath first and sing a little softer." },
+      { id: "p4", title: "Steps: do re mi", meta: "One note at a time · 5 min", type: "pattern", pattern: [0, 2, 4, 2, 0], rounds: 3, rise: 2, tol: 0.5,
+        learn: "Melodies mostly move in small steps. Here you'll move up and down one note at a time: do, re, mi, re, do.",
+        steps: ["Listen to the pattern.", "Sing it back on “la” or do-re-mi.", "Give each note its own moment."],
+        tip: "Sing each note a little longer than feels natural so Tono can catch it." },
+      { id: "p5", title: "Small jumps", meta: "Thirds and fourths · 5 min", type: "pattern", pattern: [0, 4, 0, 5, 0], rounds: 3, rise: 2, tol: 0.5,
+        learn: "Now skip a note or two. Hear the jump in your head before you sing it.",
+        steps: ["Listen to the pattern.", "Imagine the next note before you sing it.", "Sing it back cleanly, without sliding."],
+        tip: "If a jump keeps missing, slide into it slowly a few times, then try it clean." },
+      { id: "p6", title: "Big jumps", meta: "Fifths and octaves · 5 min", type: "pattern", pattern: [0, 7, 0, 12, 0], rounds: 2, rise: 2, tol: 0.5, bigFallback: [0, 7, 0, 5, 0],
+        learn: "Big leaps take confidence. Keep the low note relaxed and let the high note float rather than reaching for it.",
+        steps: ["Listen to the pattern.", "Breathe before the big jump.", "Let the top note be lighter than the bottom one."],
+        tip: "The octave is the same note, higher. Think of it as the same note, just lighter." },
+      { id: "p7", title: "Your first scale", meta: "Five notes up and down · 5 min", type: "pattern", pattern: [0, 2, 4, 5, 7, 5, 4, 2, 0], rounds: 2, rise: 2, tol: 0.5,
+        learn: "Do re mi fa sol fa mi re do. Scales train your ear and voice to move evenly through a range of notes.",
+        steps: ["Listen to the scale.", "Sing it back on “la” or do-re-mi.", "Keep every note the same loudness."],
+        tip: "Take a breath before you start so you don't run out at the top." },
+      { id: "p8", title: "Checkpoint", meta: "Sing a short melody · 3 min", type: "pattern", pattern: [0, 2, 4, 0, 4, 5, 7], rounds: 2, rise: 2, tol: 0.5,
+        learn: "Put it together: steps, small jumps and a held top note in one short tune.",
+        steps: ["Listen to the melody.", "Sing it back on “la”.", "Use everything you've practised."],
+        tip: "Pass this one and you're ready for real songs in Practice." },
+    ] },
+  ];
+  const SOON = ["Control", "Range", "Agility", "Ear training"];
+  const WARMUP = [
+    { title: "Breath hold", short: "Hiss on one breath", type: "hiss", target: 15, tries: 1, how: "Take a low breath, then hiss “sss” quietly and evenly for as long as you comfortably can." },
+    { title: "Gentle hum", short: "Hum on a comfy note", type: "hold", hold: 3, tol: 50, tries: 2, notes: "center", verb: "Hum", how: "Lips closed, teeth apart. Hum the piano note softly until the ring fills." },
+    { title: "Lip trills", short: "5-note pattern, rising", type: "pattern", pattern: [0, 2, 4, 2, 0], rounds: 3, rise: 1, tol: 0.6, verb: "Trill", how: "Buzz your lips (“brrr”) and follow the piano. Each round starts a note higher." },
+    { title: "Sirens", short: "Slide low to high on “oo”", type: "siren", tries: 1, how: "Glide from a low comfy note up as high as feels easy, then let it go." },
+    { title: "First scale", short: "Do re mi fa sol, in your range", type: "pattern", pattern: [0, 2, 4, 5, 7, 5, 4, 2, 0], rounds: 1, rise: 0, tol: 0.5, how: "Sing the scale back on “la”, every note the same loudness." },
+  ];
+
+  function useLessonMic(active) {
+    const st = useRef({ ctx: null, stream: null, src: null, an: null, raf: 0, feed: null });
+    const [on, setOn] = useState(false);
+    const [err, setErr] = useState("");
+    const ctx = () => {
+      const s = st.current;
+      if (!s.ctx) { const C = window.AudioContext || window.webkitAudioContext; s.ctx = new C(); }
+      if (s.ctx.state === "suspended") s.ctx.resume().catch(() => {});
+      return s.ctx;
+    };
+    const stop = useCallback(() => {
+      const s = st.current;
+      cancelAnimationFrame(s.raf);
+      if (s.stream) s.stream.getTracks().forEach((t) => t.stop());
+      [s.src, s.an].forEach((n) => { if (n) { try { n.disconnect(); } catch (e) {} } });
+      s.stream = s.src = s.an = null;
+      setOn(false);
+    }, []);
+    const start = async () => {
+      const s = st.current;
+      if (s.an) return true;
+      setErr("");
+      try {
+        const c = ctx();
+        const stream = await getMicStream();
+        const src = c.createMediaStreamSource(stream), an = c.createAnalyser();
+        an.fftSize = 2048; src.connect(an);
+        Object.assign(s, { stream, src, an });
+        const buf = new Float32Array(an.fftSize);
+        const tick = () => {
+          if (!s.an) return;
+          s.an.getFloatTimeDomainData(buf);
+          const d = detectPitch(buf, c.sampleRate, micGate());
+          if (s.feed) s.feed(d.freq > 0 ? 69 + 12 * Math.log2(d.freq / SETTINGS.a4) : null, d.rms || 0, performance.now());
+          s.raf = requestAnimationFrame(tick);
+        };
+        tick(); setOn(true); return true;
+      } catch (e) {
+        stop();
+        setErr("The microphone isn't available here. Allow mic access, or open Tono from your GitHub Pages site.");
+        return false;
+      }
+    };
+    useEffect(() => { if (!active) stop(); }, [active, stop]);
+    useEffect(() => () => { stop(); if (st.current.ctx) st.current.ctx.close().catch(() => {}); }, []);
+    return { on, err, start, stop, ctx, setFeed: (fn) => { st.current.feed = fn; } };
+  }
+
+  // shared bits for exercises
+  const useTimers = () => {
+    const ids = useRef([]);
+    useEffect(() => () => ids.current.forEach(clearTimeout), []);
+    return { later: (fn, ms) => { const id = setTimeout(fn, ms); ids.current.push(id); return id; }, clear: () => { ids.current.forEach(clearTimeout); ids.current = []; } };
+  };
+  const nm = (m) => pretty(midiInfo(Math.round(m)).label);
+  function Ring({ p, label, value, tone = "good", size = 104 }) {
+    const rr = size / 2 - 6, C = 2 * Math.PI * rr;
+    return html`<span style=${{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg width=${size} height=${size} viewBox=${"0 0 " + size + " " + size} role="img" aria-label=${label + " " + Math.round(p * 100) + " percent"}>
+        <circle cx=${size / 2} cy=${size / 2} r=${rr} fill="none" stroke="var(--line)" strokeWidth="6"></circle>
+        <circle cx=${size / 2} cy=${size / 2} r=${rr} fill="none" stroke=${"var(--" + tone + ")"} strokeWidth="6" strokeLinecap="round" strokeDasharray=${(C * Math.max(0, Math.min(1, p))).toFixed(1) + " " + C.toFixed(1)} transform=${"rotate(-90 " + size / 2 + " " + size / 2 + ")"}></circle>
+      </svg>
+      <span style=${{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <span class="label" style=${{ fontSize: 10 }}>${label}</span>
+        <span class="display font-bold" style=${{ fontSize: 28, lineHeight: 1, color: "var(--" + tone + ")" }}>${value}</span>
+      </span>
+    </span>`;
+  }
+  const TryDots = ({ n, results, cur }) => html`<span class="flex gap-1" role="img" aria-label=${"Try " + Math.min(n, cur + 1) + " of " + n}>
+    ${Array.from({ length: n }, (_, k) => html`<span key=${k} style=${{ width: 10, height: 10, borderRadius: "50%", background: k < results.length ? (results[k] ? "var(--good)" : "var(--bad)") : k === cur ? "var(--accent)" : "var(--line)" }}></span>`)}
+  </span>`;
+  const MicNote = ({ mic }) => mic.err ? html`<div class="notice" role="alert">${mic.err}</div>` : null;
+
+  // ---- hold a note (match, slide, hum, sustain) ----
+  function HoldEx({ spec, range, mic, onDone }) {
+    const [k, setK] = useState(0);
+    const [phase, setPhase] = useState("ready");
+    const [target, setTarget] = useState(null);
+    const [cur, setCur] = useState(null);
+    const [prog, setProg] = useState(0);
+    const [res, setRes] = useState([]);
+    const r = useRef({ trail: [] }), phaseRef = useRef("ready"), resRef = useRef([]);
+    const T = useTimers();
+    const QUIET = 1700;
+    const go = (p) => { phaseRef.current = p; setPhase(p); };
+    const pick = (i) => {
+      if (spec.notes === "center") return Math.max(range.lo, Math.min(range.hi, range.center + [0, 2, -2, 1, -1][i % 5]));
+      let m;
+      do { m = range.lo + Math.floor(Math.random() * (range.hi - range.lo + 1)); } while (m === r.current.last && range.hi > range.lo);
+      return m;
+    };
+    const begin = async (i) => {
+      if (!(await mic.start())) return;
+      const t = pick(i);
+      r.current = { last: t, target: t, quietUntil: performance.now() + QUIET, singAt: performance.now() + QUIET, holdStart: 0, lastIn: 0, lastOn: 0, cents: [], all: [], over: 0, prevSide: 0, best: 0, lock: null, doneTry: false, trail: [] };
+      setTarget(t); setK(i); setProg(0); setCur(null); go("listen");
+      playPiano(mic.ctx(), t, 1.6);
+      T.later(() => { if (phaseRef.current === "listen") go("sing"); }, QUIET);
+    };
+    const replay = () => {
+      const s = r.current;
+      if (s.target == null || phaseRef.current === "hit" || phaseRef.current === "miss") return;
+      s.quietUntil = performance.now() + QUIET; s.singAt = s.quietUntil; s.holdStart = 0; setProg(0); go("listen");
+      playPiano(mic.ctx(), s.target, 1.6);
+      T.later(() => { if (phaseRef.current === "listen") go("sing"); }, QUIET);
+    };
+    const finish = (list) => {
+      const n = list.length, hits = list.filter((x) => x.ok);
+      const score = Math.round(list.reduce((a, x) => a + (x.ok ? 100 : Math.round(x.best * 70)), 0) / n);
+      const locks = hits.map((x) => x.lock).filter((x) => x != null);
+      const lock = locks.length ? locks.reduce((a, b) => a + b, 0) / locks.length : null;
+      const sds = hits.map((x) => x.sd).filter((x) => x != null);
+      const sd = sds.length ? sds.reduce((a, b) => a + b, 0) / sds.length : null;
+      const leans = list.map((x) => x.lean).filter((x) => x != null);
+      const lean = leans.length ? median(leans) : 0;
+      const over = list.reduce((a, x) => a + x.over, 0);
+      const stats = [{ label: "Found the note", value: hits.length + " of " + n, pct: (100 * hits.length) / n }];
+      if (lock != null) stats.push({ label: "Time to lock in", value: lock.toFixed(1) + " s avg", pct: Math.max(10, Math.min(100, 110 - lock * 25)) });
+      if (sd != null) stats.push({ label: "Steady once there", value: sd < 8 ? "Very steady" : sd < 14 ? "Good" : "A bit wobbly", pct: Math.max(15, Math.min(100, 110 - sd * 4)) });
+      let tip;
+      if (hits.length < n / 2 && Math.abs(lean) >= 25) tip = "You tended to sit a little " + (lean < 0 ? "low (flat). Aim slightly higher and keep your breath flowing." : "high (sharp). Relax your throat and aim slightly lower.");
+      else if (over >= 3) tip = "You slid past the note a few times and came back. Slow down right before you get there.";
+      else if (lock != null && lock > 3) tip = "Take a breath and hear the note in your head before you start singing. It gets faster with practice.";
+      else if (sd != null && sd >= 14) tip = "The note wobbled a bit once you found it. Take a fuller breath and keep the same vowel the whole time.";
+      else tip = score >= 85 ? "Clean and steady. Nice work!" : "Good effort. Try it again to make it feel automatic.";
+      onDone({ score, pass: score >= 70, stats, tip });
+    };
+    const endTry = (ok) => {
+      const s = r.current;
+      if (s.doneTry) return;
+      s.doneTry = true;
+      const cs = s.cents.slice(-Math.round(spec.hold * 50));
+      const mean = cs.length ? cs.reduce((a, b) => a + b, 0) / cs.length : 0;
+      const sd = cs.length > 8 ? Math.sqrt(cs.reduce((a, b) => a + (b - mean) * (b - mean), 0) / cs.length) : null;
+      const item = { ok, lock: s.lock, sd, lean: s.all.length ? median(s.all.slice(-90)) : null, over: s.over, best: ok ? 1 : s.best };
+      go(ok ? "hit" : "miss");
+      if (ok) playChime(mic.ctx());
+      const next = [...resRef.current, item];
+      resRef.current = next; setRes(next);
+      T.later(() => { if (next.length >= spec.tries) finish(next); else begin(next.length); }, ok ? 1100 : 1500);
+    };
+    mic.setFeed((m, rms, now) => {
+      const s = r.current;
+      if (phaseRef.current !== "sing" || now < s.quietUntil) return;
+      if (now - s.singAt > (spec.hold + 9) * 1000) { endTry(false); return; }
+      if (m == null) {
+        if (s.holdStart && now - s.lastOn > 220) { s.holdStart = 0; setProg(0); }
+        if (now - s.lastOn > 220) setCur(null);
+        return;
+      }
+      let d = m - s.target; d -= 12 * Math.round(d / 12);
+      const c = Math.round(d * 100);
+      s.lastOn = now; s.all.push(c);
+      s.trail.push({ t: now, c }); while (s.trail.length && now - s.trail[0].t > 3000) s.trail.shift();
+      setCur({ m, c });
+      const side = c < -spec.tol ? -1 : c > spec.tol ? 1 : 0;
+      if (side && s.prevSide && side !== s.prevSide) s.over++;
+      if (side) s.prevSide = side;
+      if (!side) {
+        if (!s.holdStart) { s.holdStart = now; if (s.lock == null) s.lock = (now - s.singAt) / 1000; }
+        s.lastIn = now; s.cents.push(c);
+        const p = Math.min(1, (now - s.holdStart) / (spec.hold * 1000));
+        setProg(p); s.best = Math.max(s.best, p);
+        if (p >= 1) endTry(true);
+      } else if (s.holdStart && now - s.lastIn > 180) { s.holdStart = 0; setProg(0); }
+    });
+
+    const tol = spec.tol;
+    const inZone = cur && Math.abs(cur.c) <= tol;
+    let hint, tone = "muted";
+    if (phase === "ready") hint = "Tap Start, listen, then sing.";
+    else if (phase === "listen") hint = "Listen…";
+    else if (phase === "hit") { hint = "Got it!"; tone = "good"; }
+    else if (phase === "miss") { hint = "Let's try the next one."; tone = "warn"; }
+    else if (!cur) hint = "Your turn. " + (spec.verb || "Sing") + " the note.";
+    else if (inZone) { hint = spec.hold > 1.5 ? "Locked in, hold it!" : "That's it, hold…"; tone = "good"; }
+    else if (cur.c < 0) { hint = cur.c < -100 ? "Go up ↑" : "A little higher ↑"; tone = "warn"; }
+    else { hint = cur.c > 100 ? "Go down ↓" : "A little lower ↓"; tone = "warn"; }
+    // trail chart: the last 3 seconds of your voice against the target band
+    const W = 320, H = 150, mid = H / 2, sc = (c) => mid - Math.max(-300, Math.min(300, c)) * (mid - 10) / 300;
+    const now = performance.now(), tr = r.current.trail || [];
+    const pts = tr.map((p) => (W - 12 - ((now - p.t) / 3000) * (W - 24)).toFixed(1) + "," + sc(p.c).toFixed(1)).join(" ");
+    const band = (tol * (mid - 10)) / 300;
+    return html`<div class="flex flex-col gap-3">
+      <section class="tuner-card" style=${{ alignItems: "stretch", gap: 12 }}>
+        <div class="flex items-center justify-between gap-2">
+          <span class="display font-bold" style=${{ fontSize: 20 }}>${spec.verb || "Sing"} ${target != null ? nm(target) : "the note"}</span>
+          <${TryDots} n=${spec.tries} results=${res.map((x) => x.ok)} cur=${k} />
+        </div>
+        <svg viewBox=${"0 0 " + W + " " + H} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label=${cur ? "You are " + Math.abs(cur.c) + " cents " + (cur.c < 0 ? "below" : "above") + " the target" : "Waiting for your voice"}>
+          <rect x="0" y=${(mid - band).toFixed(1)} width=${W} height=${(2 * band).toFixed(1)} rx="6" fill="color-mix(in srgb, var(--good) 14%, transparent)"></rect>
+          <line x1="0" y1=${mid} x2=${W} y2=${mid} stroke="var(--good)" strokeWidth="2" strokeDasharray="6 6"></line>
+          <text x="6" y=${(mid - band - 6).toFixed(1)} fill="var(--good)" fontSize="12" fontFamily="JetBrains Mono, monospace">${target != null ? nm(target) + " target" : "target"}</text>
+          ${pts && html`<polyline points=${pts} fill="none" stroke="var(--you)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"></polyline>`}
+          ${cur && phase === "sing" && html`<circle cx=${W - 12} cy=${sc(cur.c).toFixed(1)} r="6" fill="var(--fg)"></circle>`}
+        </svg>
+        <div class="flex items-center justify-center gap-5">
+          <${Ring} p=${phase === "hit" ? 1 : prog} label="Hold" value=${(spec.hold * (phase === "hit" ? 1 : prog)).toFixed(1) + "s"} tone=${phase === "hit" || inZone ? "good" : "warn"} />
+          <span class="flex flex-col gap-1 min-w-0">
+            ${phase === "sing" && cur && html`<span class="text-xs muted">You're on</span><span class="display font-bold" style=${{ fontSize: 24, color: "var(--you)" }}>${nm(cur.m)}</span>`}
+            <span class="display font-bold" style=${{ fontSize: 19, lineHeight: 1.2, color: "var(--" + tone + ")" }} aria-live="polite">${hint}</span>
+          </span>
+        </div>
+      </section>
+      <${MicNote} mic=${mic} />
+      ${phase === "ready"
+        ? html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${() => begin(0)}><span class="flex items-center gap-2"><${Icon} name="mic" size=${18} />Start</span></button>`
+        : html`<div class="grid grid-cols-2 gap-2">
+            <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${replay} disabled=${phase === "hit" || phase === "miss"}>▶ Hear note</button>
+            <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => endTry(false)} disabled=${phase !== "sing"}>Skip this one</button>
+          </div>`}
+    </div>`;
+  }
+
+  // ---- long hiss: how long you can let air out evenly ----
+  function HissEx({ spec, mic, onDone }) {
+    const [phase, setPhase] = useState("ready");
+    const [secs, setSecs] = useState(0);
+    const [list, setList] = useState([]);
+    const r = useRef({}), phaseRef = useRef("ready"), listRef = useRef([]);
+    const go = (p) => { phaseRef.current = p; setPhase(p); };
+    const finish = (l) => {
+      const best = Math.max(...l), avg = l.reduce((a, b) => a + b, 0) / l.length;
+      const score = Math.min(100, Math.round((best / spec.target) * 100));
+      const stats = [{ label: "Longest hiss", value: best.toFixed(1) + " s", pct: Math.min(100, (best / spec.target) * 100) }];
+      if (l.length > 1) stats.push({ label: "Average", value: avg.toFixed(1) + " s", pct: Math.min(100, (avg / spec.target) * 100) });
+      const tip = best < spec.target * 0.5 ? "Breathe low into your belly before you start, then let the air out slowly, like a tiny leak." : best < spec.target ? "Good control. Next time try a quieter hiss. Less air per second means a longer hiss." : "Great breath control. This is what keeps long notes steady.";
+      onDone({ score, pass: best >= spec.target * 0.66, stats, tip, detail: best.toFixed(1) + " s" });
+    };
+    const start = async () => {
+      if (!(await mic.start())) return;
+      r.current = { base: [], until: performance.now() + 700, thr: 0, t0: 0, lastOn: 0, shown: 0 };
+      setSecs(0); go("calib");
+    };
+    mic.setFeed((m, rms, now) => {
+      const s = r.current, p = phaseRef.current;
+      if (p === "calib") {
+        s.base.push(rms);
+        if (now > s.until) { s.thr = Math.max(median(s.base) * 3, 0.004); go("go"); }
+      } else if (p === "go") {
+        if (rms > s.thr) { s.t0 = now; s.lastOn = now; go("blow"); }
+      } else if (p === "blow") {
+        if (rms > s.thr) {
+          s.lastOn = now;
+          const t = (now - s.t0) / 1000;
+          if (t - s.shown >= 0.1) { s.shown = t; setSecs(t); }
+        } else if (now - s.lastOn > 450) {
+          const dur = (s.lastOn - s.t0) / 1000;
+          if (dur < 1.5) { s.shown = 0; setSecs(0); go("go"); return; }
+          setSecs(dur);
+          const l = [...listRef.current, dur];
+          listRef.current = l; setList(l);
+          if (l.length >= spec.tries) { go("done"); setTimeout(() => finish(l), 900); } else go("rest");
+        }
+      }
+    });
+    const best = list.length ? Math.max(...list) : 0;
+    const msg = { ready: "Tap Start, take a low breath, then hiss.", calib: "Stay quiet for a moment…", go: "Go! Hiss “sss” now.", blow: "Keep it even…", rest: "Nice. Breathe, then go again.", done: "Done!" }[phase];
+    return html`<div class="flex flex-col gap-3">
+      <section class="tuner-card" style=${{ gap: 14 }}>
+        <div class="flex items-center justify-between gap-2" style=${{ alignSelf: "stretch" }}>
+          <span class="display font-bold" style=${{ fontSize: 20 }}>Long, even hiss</span>
+          ${spec.tries > 1 && html`<span class="text-xs muted">Try ${Math.min(spec.tries, list.length + 1)} of ${spec.tries}</span>`}
+        </div>
+        <${Ring} p=${secs / spec.target} label=${"Goal " + spec.target + "s"} value=${secs.toFixed(1) + "s"} tone=${secs >= spec.target ? "good" : "accent"} size=${150} />
+        <span class="display font-bold" style=${{ fontSize: 19 }} aria-live="polite">${msg}</span>
+        ${list.length > 0 && html`<span class="text-sm muted">Best so far: <b style=${{ color: "var(--fg)" }}>${best.toFixed(1)} s</b></span>`}
+      </section>
+      <${MicNote} mic=${mic} />
+      ${phase === "ready" && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${start}>Start</button>`}
+      ${phase === "rest" && html`<div class="grid grid-cols-2 gap-2">
+        <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => finish(listRef.current)}>Finish</button>
+        <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => { r.current.shown = 0; setSecs(0); go("go"); }}>Go again</button>
+      </div>`}
+    </div>`;
+  }
+
+  // ---- siren: how far you can glide in one smooth slide ----
+  function SirenEx({ spec, range, mic, onDone }) {
+    const [phase, setPhase] = useState("ready");
+    const [live, setLive] = useState(null);
+    const [list, setList] = useState([]);
+    const r = useRef({}), phaseRef = useRef("ready"), listRef = useRef([]);
+    const go = (p) => { phaseRef.current = p; setPhase(p); };
+    const target = Math.max(7, Math.min(14, range.full.hi - range.full.lo - 2));
+    const finish = (l) => {
+      const b = l.reduce((a, x) => (x.hi - x.lo > a.hi - a.lo ? x : a), l[0]);
+      const span = b.hi - b.lo;
+      const score = Math.min(100, Math.round((span / target) * 100));
+      const stats = [{ label: "Widest slide", value: nm(b.lo) + " → " + nm(b.hi), pct: Math.min(100, (span / target) * 100) }, { label: "Notes covered", value: Math.round(span) + " notes", pct: Math.min(100, (span / target) * 100) }];
+      const tip = span < target * 0.6 ? "Start lower and keep the air flowing as you go up. Let it get light and soft at the top instead of pushing." : span < target ? "Smooth slide! Over time you'll gently stretch a little further." : "Lovely wide siren. Keep it easy and it'll keep growing.";
+      onDone({ score, pass: span >= target * 0.6, stats, tip });
+    };
+    const start = async () => { if (!(await mic.start())) return; r.current = { buf: [], lo: null, hi: null, lastOn: 0 }; setLive(null); go("go"); };
+    mic.setFeed((m, rms, now) => {
+      const s = r.current, p = phaseRef.current;
+      if (p !== "go" && p !== "slide") return;
+      if (m != null) {
+        s.buf.push(m); if (s.buf.length > 5) s.buf.shift();
+        if (s.buf.length < 3) return;
+        const v = median(s.buf);
+        if (p === "go") { s.lo = s.hi = v; go("slide"); }
+        s.lo = Math.min(s.lo, v); s.hi = Math.max(s.hi, v); s.lastOn = now;
+        setLive({ v, lo: s.lo, hi: s.hi });
+      } else if (p === "slide" && now - s.lastOn > 600) {
+        s.buf = [];
+        if (s.hi - s.lo < 2) { go("go"); setLive(null); return; }
+        const l = [...listRef.current, { lo: s.lo, hi: s.hi }];
+        listRef.current = l; setList(l);
+        if (l.length >= spec.tries) { go("done"); setTimeout(() => finish(l), 700); } else go("rest");
+      }
+    });
+    const lo = range.full.lo - 5, hi = range.full.hi + 5, H = 220;
+    const y = (v) => H - 10 - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * (H - 20);
+    const msg = { ready: "Tap Start, then slide from low to high.", go: "Start low and glide up…", slide: "Keep going, nice and smooth…", rest: "Good one! Breathe, then go again.", done: "Done!" }[phase];
+    const best = list.length ? Math.max(...list.map((x) => x.hi - x.lo)) : 0;
+    return html`<div class="flex flex-col gap-3">
+      <section class="tuner-card" style=${{ alignItems: "stretch", gap: 12 }}>
+        <div class="flex items-center justify-between gap-2">
+          <span class="display font-bold" style=${{ fontSize: 20 }}>Siren slide</span>
+          ${spec.tries > 1 && html`<span class="text-xs muted">Try ${Math.min(spec.tries, list.length + 1)} of ${spec.tries}</span>`}
+        </div>
+        <div class="flex items-center gap-4">
+          <svg width="90" height=${H} viewBox=${"0 0 90 " + H} role="img" aria-label=${live ? "Sliding from " + nm(live.lo) + " to " + nm(live.hi) : "Waiting for your voice"} style=${{ flexShrink: 0 }}>
+            <rect x="30" y="10" width="30" height=${H - 20} rx="15" fill="var(--surface-2)" stroke="var(--line)"></rect>
+            ${live && html`<rect x="30" y=${y(live.hi).toFixed(1)} width="30" height=${Math.max(6, y(live.lo) - y(live.hi)).toFixed(1)} rx="15" fill="color-mix(in srgb, var(--accent) 60%, transparent)"></rect>`}
+            ${live && html`<circle cx="45" cy=${y(live.v).toFixed(1)} r="9" fill="var(--you)"></circle>`}
+          </svg>
+          <div class="flex flex-col gap-2 min-w-0">
+            <span class="display font-bold" style=${{ fontSize: 19, lineHeight: 1.25 }} aria-live="polite">${msg}</span>
+            ${live && html`<span class="text-sm muted">${nm(live.lo)} → <b style=${{ color: "var(--fg)" }}>${nm(live.hi)}</b> · ${Math.round(live.hi - live.lo)} notes</span>`}
+            ${list.length > 0 && html`<span class="text-sm muted">Widest so far: ${Math.round(best)} notes (goal ${target})</span>`}
+          </div>
+        </div>
+      </section>
+      <${MicNote} mic=${mic} />
+      ${phase === "ready" && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${start}>Start</button>`}
+      ${phase === "rest" && html`<div class="grid grid-cols-2 gap-2">
+        <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => finish(listRef.current)}>Finish</button>
+        <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => { r.current = { buf: [], lo: null, hi: null, lastOn: 0 }; setLive(null); go("go"); }}>Go again</button>
+      </div>`}
+    </div>`;
+  }
+
+  // ---- sing back a pattern (steps, jumps, scales, trills) ----
+  function patternFor(spec, range) {
+    let pat = spec.pattern;
+    const span = range.full.hi - range.full.lo;
+    if (spec.bigFallback && Math.max(...pat) > span - 1) pat = spec.bigFallback;
+    return pat;
+  }
+  function matchSeq(targets, sung, tol) {
+    // best order-keeping match (any octave for the whole try)
+    let best = { hits: -1, marks: [], shift: 0 };
+    [-12, 0, 12].forEach((shift) => {
+      const n = targets.length, m = sung.length;
+      const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+      for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+        const ok = Math.abs(sung[j - 1] - (targets[i - 1] + shift)) <= tol;
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1], ok ? dp[i - 1][j - 1] + 1 : 0);
+      }
+      if (dp[n][m] > best.hits) {
+        const marks = new Array(n).fill(false);
+        let i = n, j = m;
+        while (i > 0 && j > 0) {
+          const ok = Math.abs(sung[j - 1] - (targets[i - 1] + shift)) <= tol;
+          if (ok && dp[i][j] === dp[i - 1][j - 1] + 1) { marks[i - 1] = true; i--; j--; }
+          else if (dp[i - 1][j] >= dp[i][j - 1]) i--; else j--;
+        }
+        best = { hits: dp[n][m], marks, shift };
+      }
+    });
+    return best;
+  }
+  function PatternEx({ spec, range, mic, onDone }) {
+    const pat = useMemo(() => patternFor(spec, range), [spec, range]);
+    const top = Math.max(...pat);
+    const baseFor = (i) => {
+      const startLo = Math.max(range.full.lo, Math.min(range.lo, range.center - Math.round(top / 2)));
+      let b = startLo + i * (spec.rise || 0);
+      if (b + top > range.full.hi + 1) b = Math.max(range.full.lo, range.full.hi + 1 - top);
+      return b;
+    };
+    const [round, setRound] = useState(0);
+    const [phase, setPhase] = useState("ready");
+    const [heard, setHeard] = useState([]);
+    const [judged, setJudged] = useState(null);
+    const [playIdx, setPlayIdx] = useState(-1);
+    const [rounds, setRounds] = useState([]);
+    const r = useRef({}), phaseRef = useRef("ready"), roundsRef = useRef([]);
+    const T = useTimers();
+    const go = (p) => { phaseRef.current = p; setPhase(p); };
+    const STEP = spec.verb === "Trill" ? 520 : 600;
+    const targets = pat.map((x) => baseFor(round) + x);
+    const play = async (i) => {
+      if (!(await mic.start())) return;
+      T.clear();
+      const tg = pat.map((x) => baseFor(i) + x);
+      r.current = { tg, buf: [], curN: null, curStart: 0, curVals: [], notes: [], lastOn: 0, singAt: 0, quietUntil: Infinity };
+      setRound(i); setHeard([]); setJudged(null); go("play");
+      tg.forEach((m, j) => T.later(() => { playPiano(mic.ctx(), m, 0.9); setPlayIdx(j); }, j * STEP));
+      const end = tg.length * STEP + 650;
+      T.later(() => { setPlayIdx(-1); r.current.quietUntil = performance.now(); r.current.singAt = performance.now(); go("sing"); }, end);
+    };
+    const closeNote = (s, now) => {
+      if (s.curN != null && now - s.curStart >= 150 && s.curVals.length) {
+        const v = s.curVals.reduce((a, b) => a + b, 0) / s.curVals.length;
+        const last = s.notes[s.notes.length - 1];
+        if (last && Math.abs(last.v - v) < 0.5 && s.curStart - last.end < 120) { last.end = now; }
+        else s.notes.push({ v, end: now });
+        setHeard(s.notes.map((x) => x.v));
+      }
+      s.curN = null; s.curVals = [];
+    };
+    const judge = () => {
+      const s = r.current;
+      closeNote(s, performance.now());
+      const sung = s.notes.map((x) => x.v);
+      const mt = matchSeq(s.tg, sung, spec.tol);
+      const item = { hits: mt.hits, n: s.tg.length, marks: mt.marks, sung, tg: s.tg, shift: mt.shift };
+      setJudged(item); go("judged");
+      const next = [...roundsRef.current, item];
+      roundsRef.current = next; setRounds(next);
+      if (mt.hits === s.tg.length) playChime(mic.ctx());
+    };
+    mic.setFeed((m, rms, now) => {
+      const s = r.current;
+      if (phaseRef.current !== "sing" || now < s.quietUntil) return;
+      const limit = s.tg.length * 0.9 + 3.5;
+      if ((now - s.singAt) / 1000 > limit) { judge(); return; }
+      if (m == null) {
+        s.buf = [];
+        if (s.curN != null && now - s.lastOn > 100) closeNote(s, now);
+        if (s.notes.length >= s.tg.length && now - s.lastOn > 1200) judge();
+        else if (s.notes.length > 0 && now - s.lastOn > 2600) judge();
+        return;
+      }
+      s.lastOn = now;
+      s.buf.push(m); if (s.buf.length > 5) s.buf.shift();
+      const v = median(s.buf), n = Math.round(v);
+      if (s.curN === n) s.curVals.push(v);
+      else { closeNote(s, now); s.curN = n; s.curStart = now; s.curVals = [v]; }
+    });
+    const finish = () => {
+      const l = roundsRef.current, tot = l.reduce((a, x) => a + x.n, 0), hits = l.reduce((a, x) => a + x.hits, 0);
+      const score = Math.round((100 * hits) / Math.max(1, tot));
+      const bestR = Math.max(...l.map((x) => Math.round((100 * x.hits) / x.n)));
+      const stats = [{ label: "Notes right", value: hits + " of " + tot, pct: (100 * hits) / Math.max(1, tot) }, { label: "Best round", value: bestR + "%", pct: bestR }];
+      // which way did the missed notes go?
+      let flat = 0, sharp = 0, unheard = 0, highMiss = 0, missed = 0;
+      l.forEach((x) => x.tg.forEach((t, i) => {
+        if (x.marks[i]) return;
+        missed++;
+        if (pat[i] >= top - 1 && top >= 4) highMiss++;
+        if (!x.sung.length) { unheard++; return; }
+        const d = x.sung.map((v) => v - (t + x.shift)).reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a));
+        if (Math.abs(d) > 3) unheard++; else if (d < 0) flat++; else sharp++;
+      }));
+      let tip;
+      if (!missed) tip = "Every note clean. Brilliant!";
+      else if (unheard > missed / 2) tip = "Some notes were too short for Tono to catch. Give each note its own moment and sing a little longer on each.";
+      else if (highMiss > missed / 2) tip = "The top notes were the trickiest. Sing them lighter and softer instead of reaching for them.";
+      else if (flat > sharp * 1.5) tip = "On the notes you missed you were a bit low. Aim slightly higher and keep your breath going through the pattern.";
+      else if (sharp > flat * 1.5) tip = "On the notes you missed you were a bit high. Relax and aim slightly lower.";
+      else tip = "Close! Listen once more and picture each note before you sing it.";
+      onDone({ score, pass: score >= 70, stats, tip });
+    };
+    const lastRound = round + 1 >= spec.rounds;
+    const hint = { ready: "Tap Start to hear the pattern.", play: "Listen…", sing: "Your turn. " + (spec.verb === "Trill" ? "Trill" : "Sing") + " it back.", judged: judged ? (judged.hits === judged.n ? "Perfect round!" : judged.hits + " of " + judged.n + " notes right") : "" }[phase];
+    return html`<div class="flex flex-col gap-3">
+      <section class="tuner-card" style=${{ alignItems: "stretch", gap: 14 }}>
+        <div class="flex items-center justify-between gap-2">
+          <span class="display font-bold" style=${{ fontSize: 20 }}>${spec.verb === "Trill" ? "Trill it back" : "Sing it back"}</span>
+          <span class="text-xs muted">Round ${round + 1} of ${spec.rounds}</span>
+        </div>
+        <div class="flex flex-wrap justify-center gap-2" role="list" aria-label="Pattern notes">
+          ${targets.map((t, i) => {
+            const st = judged ? (judged.marks[i] ? "ok" : "bad") : playIdx === i ? "now" : "";
+            return html`<span key=${i} role="listitem" class="mono" style=${{ minWidth: 44, padding: "10px 8px", textAlign: "center", borderRadius: 12, fontSize: 14, fontWeight: 600, border: "1px solid " + (st === "ok" ? "var(--good)" : st === "bad" ? "var(--bad)" : st === "now" ? "var(--accent)" : "var(--line)"), background: st === "ok" ? "color-mix(in srgb, var(--good) 14%, transparent)" : st === "bad" ? "color-mix(in srgb, var(--bad) 12%, transparent)" : st === "now" ? "color-mix(in srgb, var(--accent) 22%, transparent)" : "var(--surface-2)", transform: "translateY(" + -pat[i] * 1.5 + "px)" }}>${nm(t)}${st === "ok" ? " ✓" : st === "bad" ? " ✗" : ""}</span>`;
+          })}
+        </div>
+        <div class="flex items-center justify-between gap-3" style=${{ minHeight: 28 }}>
+          <span class="display font-bold" style=${{ fontSize: 19, color: phase === "judged" ? (judged && judged.hits === judged.n ? "var(--good)" : "var(--warn)") : "var(--fg)" }} aria-live="polite">${hint}</span>
+          ${phase === "sing" && html`<span class="text-sm muted mono">${heard.length ? heard.slice(-4).map((v) => nm(v)).join(" ") : "…"}</span>`}
+        </div>
+      </section>
+      <${MicNote} mic=${mic} />
+      ${phase === "ready" && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${() => play(0)}>Start</button>`}
+      ${(phase === "sing" || phase === "play") && html`<div class="grid grid-cols-2 gap-2">
+        <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => play(round)} disabled=${phase === "play"}>▶ Hear again</button>
+        <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${judge} disabled=${phase !== "sing"}>I'm done</button>
+      </div>`}
+      ${phase === "judged" && html`<div class="grid grid-cols-2 gap-2">
+        <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => { roundsRef.current = roundsRef.current.slice(0, -1); setRounds(roundsRef.current); play(round); }}>↻ Redo round</button>
+        <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => (lastRound ? finish() : play(round + 1))}>${lastRound ? "See result" : "Next round →"}</button>
+      </div>`}
+    </div>`;
+  }
+
+  // ---- posture checklist ----
+  function CheckEx({ spec, onDone }) {
+    const [on, setOn] = useState(spec.steps.map(() => false));
+    const all = on.every(Boolean);
+    return html`<div class="flex flex-col gap-3">
+      <section class="tuner-card" style=${{ alignItems: "stretch", gap: 10 }}>
+        <span class="display font-bold" style=${{ fontSize: 20 }}>Check each one</span>
+        ${spec.steps.map((t, i) => html`<button key=${i} class="flex items-center gap-3" style=${{ textAlign: "left", padding: "10px 12px", borderRadius: 12, border: "1px solid " + (on[i] ? "var(--good)" : "var(--line)"), background: on[i] ? "color-mix(in srgb, var(--good) 10%, transparent)" : "var(--surface-2)", color: "var(--fg)", font: "inherit", cursor: "pointer" }} role="checkbox" aria-checked=${on[i] ? "true" : "false"} onClick=${() => setOn(on.map((v, j) => (j === i ? !v : v)))}>
+          <span style=${{ width: 24, height: 24, borderRadius: 7, flexShrink: 0, display: "grid", placeItems: "center", background: on[i] ? "var(--good)" : "transparent", border: on[i] ? "0" : "2px solid var(--line)", color: "var(--bg)", fontWeight: 700 }}>${on[i] ? "✓" : ""}</span>
+          <span class="text-sm">${t}</span>
+        </button>`)}
+      </section>
+      <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} disabled=${!all} onClick=${() => onDone({ score: 100, pass: true, stats: [], tip: spec.tip, simple: true })}>${all ? "Done" : "Tick all four to finish"}</button>
+    </div>`;
+  }
+
+  // ---- guided belly breathing ----
+  function BreathEx({ spec, onDone }) {
+    const [state, setState] = useState({ phase: "ready", round: 0, left: 0 });
+    const T = useTimers();
+    const run = (round, phase) => {
+      const len = phase === "in" ? spec.inhale : spec.exhale;
+      for (let s = 0; s < len; s++) T.later(() => setState({ phase, round, left: len - s }), s * 1000);
+      T.later(() => {
+        if (phase === "in") run(round, "out");
+        else if (round + 1 < spec.rounds) run(round + 1, "in");
+        else setState({ phase: "done", round, left: 0 });
+      }, len * 1000);
+    };
+    const big = state.phase === "in";
+    return html`<div class="flex flex-col gap-3">
+      <section class="tuner-card" style=${{ gap: 16, minHeight: 320 }}>
+        <span class="text-xs muted">${state.phase === "ready" ? spec.rounds + " slow breaths" : state.phase === "done" ? "All done" : "Breath " + (state.round + 1) + " of " + spec.rounds}</span>
+        <span style=${{ width: 180, height: 180, display: "grid", placeItems: "center" }}>
+          <span style=${{ width: 180, height: 180, borderRadius: "50%", display: "grid", placeItems: "center", background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 45%, transparent), color-mix(in srgb, var(--accent) 10%, transparent))", transform: "scale(" + (big ? 1 : state.phase === "out" ? 0.55 : 0.7) + ")", transition: "transform " + (big ? spec.inhale : spec.exhale) + "s ease-in-out" }}>
+            <span class="display font-bold" style=${{ fontSize: 40 }}>${state.left || ""}</span>
+          </span>
+        </span>
+        <span class="display font-bold" style=${{ fontSize: 22 }} aria-live="polite">${{ ready: "Hand on your belly", in: "Breathe in…", out: "Out on “sss”…", done: "Nice and low!" }[state.phase]}</span>
+      </section>
+      ${state.phase === "ready" && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${() => run(0, "in")}>Start</button>`}
+      ${state.phase === "done" && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${() => onDone({ score: 100, pass: true, stats: [], tip: spec.tip, simple: true })}>Done</button>`}
+    </div>`;
+  }
+
+  function Exercise({ spec, range, mic, onDone }) {
+    const P = { spec, range, mic, onDone };
+    if (spec.type === "hold") return html`<${HoldEx} ...${P} />`;
+    if (spec.type === "hiss") return html`<${HissEx} ...${P} />`;
+    if (spec.type === "siren") return html`<${SirenEx} ...${P} />`;
+    if (spec.type === "pattern") return html`<${PatternEx} ...${P} />`;
+    if (spec.type === "check") return html`<${CheckEx} ...${P} />`;
+    if (spec.type === "breath") return html`<${BreathEx} ...${P} />`;
+    return null;
+  }
+
+  const Bar = ({ p, tone = "accent", h = 6 }) => html`<span style=${{ display: "block", height: h, borderRadius: 999, background: "var(--line)", overflow: "hidden" }}><span style=${{ display: "block", width: Math.max(0, Math.min(100, p)) + "%", height: "100%", background: "var(--" + tone + ")", transition: "width .3s" }}></span></span>`;
+  const FlowHead = ({ p, label, onClose, title }) => html`<div class="flex items-center gap-3">
+    <button class="icon-btn" onClick=${onClose} aria-label="Leave lesson"><${Icon} name="x" size=${18} /></button>
+    ${title ? html`<span class="display font-bold" style=${{ flex: 1, fontSize: 18 }}>${title}</span>` : html`<span style=${{ flex: 1 }}><${Bar} p=${p} /></span>`}
+    <span class="mono text-xs muted">${label}</span>
+  </div>`;
+
+  function Lessons({ active, onGo, onFocus }) {
+    const [st, setSt] = useState(loadLessons);
+    const [view, setView] = useState({ v: "home" });
+    const [runKey, setRunKey] = useState(0);
+    const flow = view.v === "lesson" || view.v === "warm";
+    const mic = useLessonMic(active && flow && (view.v === "warm" || view.step === "do"));
+    const range = useMemo(lessonRange, [active, view.v]);
+    useEffect(() => { onFocus && onFocus(active && flow); }, [active, flow]);
+    useEffect(() => () => onFocus && onFocus(false), []);
+    useEffect(() => { try { window.scrollTo(0, 0); } catch (e) {} }, [view.v, view.step, view.k]);
+    const save = (next) => { setSt(next); saveJSON(LESSON_KEY, next); };
+    const course = view.c != null ? COURSES.find((c) => c.id === view.c) : null;
+    const unlocked = (c, i) => i === 0 || st.done[c.lessons[i - 1].id] != null;
+    const doneCount = (c) => c.lessons.filter((l) => st.done[l.id] != null).length;
+    const today = dayKey();
+    const warmStep = st.warm && st.warm.date === today ? st.warm.step : 0;
+    const streak = streakNow(st);
+    const findRange = () => { saveJSON(MATCH_KEY + ".mode", "range"); onGo && onGo("live"); };
+
+    // ---- lesson flow ----
+    if (view.v === "lesson" && course) {
+      const li = view.l, L = course.lessons[li];
+      const close = () => setView({ v: "course", c: course.id });
+      const steps = ["learn", "do", "result"], si = steps.indexOf(view.step);
+      const head = html`<${FlowHead} p=${((si + 1) / 3) * 100} label=${si + 1 + "/3"} onClose=${close} />`;
+      if (view.step === "learn") {
+        const preview = () => {
+          const ctx = mic.ctx();
+          if (L.type === "hold") playPiano(ctx, range.center, 1.6);
+          if (L.type === "pattern") { const p = patternFor(L, range), b = Math.max(range.full.lo, Math.min(range.lo, range.center - Math.round(Math.max(...p) / 2))); p.forEach((x, j) => setTimeout(() => playPiano(ctx, b + x, 0.9), j * 600)); }
+        };
+        return html`<div class="flex flex-col gap-4">
+          ${head}
+          <span class="label" style=${{ color: "var(--accent)" }}>${course.title} · Lesson ${li + 1}</span>
+          <h2 class="display font-bold" style=${{ fontSize: 28, lineHeight: 1.15, margin: 0 }}>${L.title}</h2>
+          <p style=${{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>${L.learn}</p>
+          <section class="panel p-4 flex flex-col gap-2">
+            <span class="label">How to do it</span>
+            <ol class="text-sm flex flex-col gap-1" style=${{ margin: 0, paddingLeft: 20 }}>${L.steps.map((s, i) => html`<li key=${i}>${s}</li>`)}</ol>
+          </section>
+          ${(L.type === "hold" || L.type === "pattern") && html`<button class="panel p-3 flex items-center gap-3" style=${{ textAlign: "left", color: "var(--fg)", font: "inherit", cursor: "pointer" }} onClick=${preview}>
+            <span class="round-btn primary" style=${{ width: 44, height: 44 }}><${Icon} name="play" size=${18} /></span>
+            <span class="flex flex-col"><b class="text-sm">Hear the exercise</b><span class="text-xs muted">${L.type === "hold" ? "The kind of note you'll sing" : "The pattern you'll sing back"}</span></span>
+          </button>`}
+          <div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--good) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--good) 30%, transparent)" }}><span aria-hidden="true">💡</span><span>${L.tip}</span></div>
+          ${!range.saved && (L.type === "hold" || L.type === "pattern" || L.type === "siren") && html`<p class="text-xs muted" style=${{ margin: 0 }}>Notes are set to a middle range that suits most voices, and any octave counts. <button class="link-btn" onClick=${findRange}>Find my range</button> to fit them to you.</p>`}
+          <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${() => { setRunKey((n) => n + 1); setView({ ...view, step: "do" }); }}>I'm ready</button>
+        </div>`;
+      }
+      if (view.step === "do") return html`<div class="flex flex-col gap-4">
+        ${head}
+        <${Exercise} key=${runKey} spec=${L} range=${range} mic=${mic} onDone=${(res) => {
+          let next = { ...st, done: { ...st.done } };
+          if (res.pass) next.done[L.id] = Math.max(next.done[L.id] || 0, res.score);
+          save(bumpStreak(next));
+          setView({ ...view, step: "result", res });
+        }} />
+      </div>`;
+      const res = view.res, nextL = li + 1 < course.lessons.length ? li + 1 : null;
+      return html`<div class="flex flex-col gap-4">
+        ${head}
+        <div class="flex flex-col items-center gap-1 text-center" style=${{ paddingTop: 10 }}>
+          <span style=${{ width: 64, height: 64, borderRadius: "50%", display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--" + (res.pass ? "good" : "warn") + ") 15%, transparent)", color: "var(--" + (res.pass ? "good" : "warn") + ")", fontSize: 30, fontWeight: 700 }}>${res.pass ? "✓" : "↻"}</span>
+          <span class="display font-bold" style=${{ fontSize: 28 }}>${res.simple ? "Lesson done" : res.pass ? "Lesson passed" : "Almost there"}</span>
+          ${!res.simple && html`<span class="display font-bold" style=${{ fontSize: 56, lineHeight: 1, color: "var(--accent)" }}>${res.score}%</span>
+          <span class="text-sm muted">${res.pass ? "Pass mark 70%" : "Get 70% to pass and unlock the next lesson"}</span>`}
+        </div>
+        ${res.stats.length > 0 && html`<section class="panel p-4 flex flex-col gap-3">
+          <span class="label">What Tono heard</span>
+          ${res.stats.map((s) => html`<div key=${s.label} class="flex flex-col gap-1">
+            <span class="flex justify-between text-sm"><span>${s.label}</span><span class="mono text-xs" style=${{ color: s.pct >= 70 ? "var(--good)" : "var(--warn)" }}>${s.value}</span></span>
+            <${Bar} p=${s.pct} tone=${s.pct >= 70 ? "good" : "warn"} h=${5} />
+          </div>`)}
+        </section>`}
+        ${res.tip && html`<div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" }}><span aria-hidden="true">🎯</span><span><b>Tip:</b> ${res.tip}</span></div>`}
+        <div class="grid grid-cols-2 gap-2">
+          <button class="btn" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => { setRunKey((n) => n + 1); setView({ ...view, step: "do", res: null }); }}>Try again</button>
+          ${res.pass && nextL != null
+            ? html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => setView({ v: "lesson", c: course.id, l: nextL, step: "learn" })}>Next lesson →</button>`
+            : html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${close}>${res.pass ? "Back to course" : "Back"}</button>`}
+        </div>
+        ${res.pass && nextL == null && course.id === "pitch" && html`<button class="btn btn-ghost" style=${{ alignSelf: "center" }} onClick=${() => onGo && onGo("learn")}>Try a real song in Practice →</button>`}
+      </div>`;
+    }
+
+    // ---- daily warm-up ----
+    if (view.v === "warm") {
+      const k = view.k, W = WARMUP[k];
+      const close = () => setView({ v: "home" });
+      const advance = () => {
+        const nk = k + 1;
+        let next = { ...st, warm: { date: today, step: nk } };
+        if (nk >= WARMUP.length) next = bumpStreak(next);
+        save(next);
+        setRunKey((n) => n + 1);
+        setView(nk >= WARMUP.length ? { v: "warm", k: WARMUP.length, finished: true } : { v: "warm", k: nk });
+      };
+      if (view.finished || k >= WARMUP.length) return html`<div class="flex flex-col items-center gap-4 text-center" style=${{ paddingTop: 30 }}>
+        <span style=${{ fontSize: 54 }} aria-hidden="true">🎉</span>
+        <span class="display font-bold" style=${{ fontSize: 28 }}>Warm-up done!</span>
+        <span class="muted">Your voice is ready. ${streakNow(st) > 1 ? "That's " + streakNow(st) + " days in a row." : "Come back tomorrow to start a streak."}</span>
+        <button class="btn btn-primary" style=${{ minHeight: 48, padding: "0 24px", fontSize: 16 }} onClick=${close}>Back to lessons</button>
+      </div>`;
+      return html`<div class="flex flex-col gap-4">
+        <${FlowHead} title="Daily warm-up" label=${"Step " + (k + 1) + " of " + WARMUP.length} onClose=${close} />
+        <div class="flex gap-1">${WARMUP.map((w, i) => html`<span key=${i} style=${{ flex: 1, height: 6, borderRadius: 3, background: i < k ? "var(--good)" : i === k ? "var(--accent)" : "var(--line)" }}></span>`)}</div>
+        <div class="flex flex-col gap-1">
+          <span class="display font-bold" style=${{ fontSize: 26 }}>${W.title}</span>
+          <span class="text-sm muted">${W.how}</span>
+        </div>
+        ${view.res
+          ? html`<section class="tuner-card" style=${{ gap: 8 }}>
+              <span style=${{ fontSize: 34, color: "var(--good)" }} aria-hidden="true">✓</span>
+              <span class="display font-bold" style=${{ fontSize: 22 }}>${view.res.simple ? "Done" : view.res.score >= 70 ? "Nice!" : "Good effort"}</span>
+              ${!view.res.simple && html`<span class="text-sm muted">${view.res.stats[0] ? view.res.stats[0].label + ": " + view.res.stats[0].value : ""}</span>`}
+            </section>
+            <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${advance}>${k + 1 >= WARMUP.length ? "Finish" : "Next: " + WARMUP[k + 1].title + " →"}</button>`
+          : html`<${Exercise} key=${runKey + "-" + k} spec=${W} range=${range} mic=${mic} onDone=${(res) => setView({ ...view, res })} />
+            <button class="btn btn-ghost" style=${{ alignSelf: "center" }} onClick=${advance}>Skip this step</button>`}
+      </div>`;
+    }
+
+    // ---- course page ----
+    if (view.v === "course" && course) {
+      const dc = doneCount(course);
+      return html`<div class="flex flex-col gap-4">
+        <div class="flex items-center gap-3">
+          <button class="icon-btn" onClick=${() => setView({ v: "home" })} aria-label="Back to lessons"><${Icon} name="back" size=${18} /></button>
+          <span class="label">Course ${COURSES.indexOf(course) + 1}</span>
+        </div>
+        <h2 class="display font-bold" style=${{ fontSize: 30, margin: 0 }}>${course.title}</h2>
+        <p class="muted text-sm" style=${{ margin: 0 }}>${course.about}</p>
+        <div class="flex items-center gap-3"><span style=${{ flex: 1 }}><${Bar} p=${(100 * dc) / course.lessons.length} /></span><span class="mono text-xs muted">${dc} / ${course.lessons.length}</span></div>
+        <div class="flex flex-col gap-1">
+          ${course.lessons.map((L, i) => {
+            const done = st.done[L.id] != null, open = unlocked(course, i), now = open && !done;
+            return html`<button key=${L.id} disabled=${!open} onClick=${() => setView({ v: "lesson", c: course.id, l: i, step: "learn" })} class="flex items-center gap-3" style=${{ textAlign: "left", padding: "10px 12px", borderRadius: 14, font: "inherit", color: "var(--fg)", cursor: open ? "pointer" : "default", background: now ? "var(--surface-2)" : "transparent", border: "1px solid " + (now ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "transparent"), opacity: open ? 1 : 0.55 }}>
+              <span style=${{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13, background: done ? "var(--good)" : now ? "var(--accent)" : "transparent", color: done || now ? "var(--bg)" : "var(--muted)", border: done || now ? "0" : "2px solid var(--line)" }}>${done ? "✓" : i + 1}</span>
+              <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><b class="text-sm">${L.title}</b><span class="text-xs muted">${L.meta}${done && st.done[L.id] < 100 ? " · best " + st.done[L.id] + "%" : ""}</span></span>
+              ${now && html`<span class="text-sm font-semibold" style=${{ color: "var(--accent)" }}>Start</span>`}
+              ${!open && html`<${Icon} name="lock" size=${16} />`}
+            </button>`;
+          })}
+        </div>
+      </div>`;
+    }
+
+    // ---- home ----
+    const curCourse = COURSES.find((c) => doneCount(c) < c.lessons.length) || COURSES[COURSES.length - 1];
+    return html`<div class="flex flex-col gap-4">
+      ${streak > 0 && html`<div class="flex gap-2"><span class="chip"><span aria-hidden="true">🔥</span><b class="mono">${streak}</b><span class="muted text-xs">day streak</span></span></div>`}
+      <section class="flex flex-col gap-3" style=${{ padding: 16, borderRadius: 20, background: "radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), var(--surface)", border: "1px solid var(--line)" }}>
+        <span class="label" style=${{ color: "var(--accent)" }}>Today</span>
+        <span class="display font-bold" style=${{ fontSize: 24, lineHeight: 1.15 }}>Daily warm-up</span>
+        <span class="text-sm muted">5 min · 5 exercises${range.saved ? ", set to your range (" + nm(range.full.lo) + "–" + nm(range.full.hi) + ")" : ""}</span>
+        <div class="flex gap-1">${WARMUP.map((w, i) => html`<span key=${i} title=${w.title} style=${{ flex: 1, height: 6, borderRadius: 3, background: i < warmStep ? "var(--good)" : "var(--line)" }}></span>`)}</div>
+        <button class="btn btn-primary" style=${{ alignSelf: "flex-start", minHeight: 44, padding: "0 22px" }} onClick=${() => { setRunKey((n) => n + 1); setView({ v: "warm", k: warmStep >= WARMUP.length ? 0 : warmStep }); }}>${warmStep >= WARMUP.length ? "Done today ✓ · Go again" : warmStep > 0 ? "Continue warm-up" : "Start warm-up"}</button>
+      </section>
+      ${!range.saved && html`<div class="panel p-3 flex items-center gap-3" style=${{ borderStyle: "dashed" }}>
+        <span class="text-sm muted" style=${{ flex: 1 }}>Take the 1-minute range test so lessons fit your voice.</span>
+        <button class="link-btn text-sm" style=${{ whiteSpace: "nowrap" }} onClick=${findRange}>Find my range</button>
+      </div>`}
+      <span class="label">Courses</span>
+      <div class="flex flex-col gap-2">
+        ${COURSES.map((c, ci) => {
+          const dc = doneCount(c), cur = c === curCourse && dc < c.lessons.length;
+          return html`<button key=${c.id} onClick=${() => setView({ v: "course", c: c.id })} class="flex flex-col gap-3" style=${{ textAlign: "left", padding: 14, borderRadius: 16, font: "inherit", color: "var(--fg)", cursor: "pointer", background: cur ? "linear-gradient(135deg, var(--surface-2), var(--surface))" : "var(--surface)", border: "1px solid " + (cur ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "var(--line)") }}>
+            <span class="flex items-center gap-3">
+              <span class="display font-bold" style=${{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>${ci + 1}</span>
+              <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><b>${c.title}</b><span class="text-xs muted">${c.sub} · ${dc} of ${c.lessons.length}</span></span>
+              <span class="text-sm font-semibold" style=${{ color: cur ? "var(--accent)" : "var(--muted)" }}>${dc === c.lessons.length ? "Review" : dc > 0 ? "Continue" : "Start"}</span>
+            </span>
+            <${Bar} p=${(100 * dc) / c.lessons.length} tone=${dc === c.lessons.length ? "good" : "accent"} />
+          </button>`;
+        })}
+        ${SOON.map((t, i) => html`<div key=${t} class="flex items-center gap-3" style=${{ padding: "12px 14px", borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)", opacity: 0.6 }}>
+          <span style=${{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", color: "var(--muted)" }}><${Icon} name="lock" size=${16} /></span>
+          <span class="flex flex-col"><b class="text-sm">${COURSES.length + i + 1} · ${t}</b><span class="text-xs muted">Coming soon</span></span>
+        </div>`)}
+      </div>
+    </div>`;
+  }
+
   function App() {
-    const [tab, setTab] = useState("live");
+    const [tab, setTab] = useState("lessons");
+    const [lessonFocus, setLessonFocus] = useState(false);
     const matchHook = useRef(null);
     const [matchTarget, setMatchTarget] = useState(null);
     const [matchStatus, setMatchStatus] = useState(null);
@@ -4189,7 +5032,7 @@ select.btn { appearance: auto; }
 
     const sendTake = useCallback((t) => { setHandoff(t); setTab("analyst"); setVisited((v) => ({ ...v, analyst: true })); try { window.scrollTo(0, 0); } catch (e) {} }, []);
     const [, bumpSettings] = useState(0);
-    const [visited, setVisited] = useState({ live: true });
+    const [visited, setVisited] = useState({ lessons: true });
     // the acapella is shared by Practice, Karaoke and the Singing Analyst
     const [vocal, setVocal] = useState(null);
     const vocalJob = useRef(0);
@@ -4569,14 +5412,14 @@ select.btn { appearance: auto; }
     const tm = matchTarget && matchStatus && matchStatus.midi === matchTarget.midi ? matchStatus : null;
 
     const songReady = !!(vocal && vocal.data);
-    const songNeeded = tab !== "live";
+    const songNeeded = tab !== "live" && tab !== "lessons";
     const showPick = songNeeded && (!songReady || pickStay);
     const lyricsReady = !!(vocalLyrics && vocalLyrics.lines && vocalLyrics.lines.length);
     return html`<div class="wrap app-wrap flex flex-col gap-5">
-      <header class="flex items-center justify-between gap-3">
+      <header class="flex items-center justify-between gap-3" hidden=${lessonFocus}>
         <div class="min-w-0">
           <h1 class="display text-3xl font-bold flex items-center gap-2"><img src="data:image/png;base64,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" alt="" width="34" height="34" style=${{width:"34px",height:"34px",flex:"none"}} />Tono</h1>
-          <p class="muted text-sm" hidden=${tab === "live" || (songNeeded && songReady)}>${tab === "live" ? "Sing, whistle or play one clean note and see exactly which note it is." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : tab === "karaoke" ? "Sing along to the music with scrolling lyrics and a live score." : "Compare your singing with the original vocal, phrase by phrase."}</p>
+          <p class="muted text-sm" hidden=${tab === "live" || tab === "lessons" || (songNeeded && songReady)}>${tab === "live" ? "Sing, whistle or play one clean note and see exactly which note it is." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : tab === "karaoke" ? "Sing along to the music with scrolling lyrics and a live score." : "Compare your singing with the original vocal, phrase by phrase."}</p>
         </div>
         <div class="flex gap-2">
           <button class="icon-btn" onClick=${() => setShowSettings((v) => !v)} aria-expanded=${showSettings ? "true" : "false"} aria-label="Settings"><${Icon} name="gear" /></button>
@@ -4587,8 +5430,8 @@ select.btn { appearance: auto; }
       ${showSettings && html`<${SettingsPanel} listening=${mode === "mic"} level=${level} onClose=${() => setShowSettings(false)}
         onChange=${() => bumpSettings((n) => n + 1)} onMicChange=${() => { if (mode === "mic") startMic(); }} />`}
 
-      <nav class="bottom-nav" aria-label="Main">
-        ${[["live", "Tuner", "gauge"], ["learn", "Practice", "music"], ["karaoke", "Karaoke", "mic"], ["analyst", "Analyze", "chart"]].map(([k, l, ic]) => html`<button key=${k} aria-current=${tab === k ? "page" : undefined}
+      <nav class="bottom-nav" aria-label="Main" hidden=${lessonFocus}>
+        ${[["lessons", "Lessons", "cap"], ["live", "Tuner", "gauge"], ["learn", "Practice", "music"], ["karaoke", "Karaoke", "mic"], ["analyst", "Analyze", "chart"]].map(([k, l, ic]) => html`<button key=${k} aria-current=${tab === k ? "page" : undefined}
           onClick=${() => goTab(k)}><span class="nav-ico"><${Icon} name=${ic} size=${22} /></span>${l}</button>`)}
       </nav>
 
@@ -4617,6 +5460,7 @@ select.btn { appearance: auto; }
           onLoadSample=${loadSample} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn} onDone=${() => setSetupOpen(false)} />
       <//>
 
+      ${tab === "lessons" && html`<${Lessons} active=${tab === "lessons"} onGo=${goTab} onFocus=${setLessonFocus} />`}
       ${tab === "live" && html`<${MatchTrainer} hookRef=${matchHook} listening=${mode === "mic"} onStartMic=${startMic} onStopMic=${stop} onTarget=${setMatchTarget} onStatus=${setMatchStatus} sung=${live ? live.midi : null} live=${live} level=${level} error=${error} />`}
       <div hidden=${tab !== "learn" || showPick}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} focus=${focus} onGo=${goTab} inst=${music} sync=${msync.sync} />`}</div>
       <div hidden=${tab !== "karaoke" || showPick}>${visited.karaoke && html`<${Karaoke} themeKey=${tab === "karaoke" ? "kara" : isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocal} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} onTakeReady=${setLastTake} onPractice=${practiceRange} ...${musicProps} />`}</div>
