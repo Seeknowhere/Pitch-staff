@@ -453,7 +453,8 @@ select.btn { appearance: auto; }
         if (midi !== cand.midi) cand = { midi, since: t };
         if (t - cand.since >= 0.15 && confirmed !== midi) {
           if (notes.length && notes[notes.length - 1].end == null) notes[notes.length - 1].end = cand.since;
-          confirmed = midi; notes.push({ midi, freq: med, cents, pos: cand.since, end: null });
+          notes.push({ midi, freq: med, cents, pos: cand.since, end: null, cut: confirmed === null ? "silence" : "pitch" });
+          confirmed = midi;
         }
       } else {
         if (silentSince < 0) silentSince = t;
@@ -478,7 +479,37 @@ select.btn { appearance: auto; }
       if (f < total) { grid[k] = smooth[f]; loud[k] = rawL[f]; }
     }
     onProgress(1);
-    return { duration: audio.duration, grid, loud, notes };
+    return { duration: audio.duration, grid, loud, notes: splitOnConsonants(notes, raw, rawL, hop, sr) };
+  }
+  // Two syllables sung on the same pitch would merge into one long note. Split notes where a
+  // consonant shows: a short unvoiced gap (s, t, k…) or a clear dip in loudness (m, n, l…).
+  function splitOnConsonants(notes, raw, rawL, hop, sr) {
+    const fr = (t) => Math.round((t * sr) / hop), tm = (f) => (f * hop) / sr;
+    const W = Math.max(3, Math.round((0.12 * sr) / hop)), out = [];
+    notes.forEach((n) => {
+      if (n.end - n.pos < 0.28) { out.push(n); return; }
+      const f0 = fr(n.pos), f1 = Math.min(raw.length - 1, fr(n.end)), cuts = [];
+      let last = f0;
+      for (let f = f0 + 3; f < f1 - 3; f++) {
+        let gap = 0;
+        while (f + gap < f1 && raw[f + gap] !== raw[f + gap]) gap++;
+        let cut = -1;
+        if (gap >= 2) cut = f + (gap >> 1);
+        else {
+          let a = -200, b = -200;
+          for (let q = Math.max(f0, f - W); q < f; q++) a = Math.max(a, rawL[q]);
+          for (let q = f + 1; q <= Math.min(f1 - 1, f + W); q++) b = Math.max(b, rawL[q]);
+          if (rawL[f] <= rawL[f - 1] && rawL[f] <= rawL[f + 1] && rawL[f] <= Math.min(a, b) - 7) cut = f;
+        }
+        if (cut >= 0 && tm(cut) - tm(last) >= 0.12 && tm(f1) - tm(cut) >= 0.12) { cuts.push(cut); last = cut; f = cut + 3; }
+        else if (gap >= 2) f += gap;
+      }
+      if (!cuts.length) { out.push(n); return; }
+      let st = n.pos;
+      cuts.forEach((c, i) => { out.push({ ...n, pos: st, end: tm(c), cut: i === 0 ? n.cut : "dip" }); st = tm(c); });
+      out.push({ ...n, pos: st, end: n.end, cut: "dip" });
+    });
+    return out;
   }
 
   // simple piano-like guide tones for the original's notes, shifted into the singer's key
@@ -1115,7 +1146,7 @@ select.btn { appearance: auto; }
     for (let i = 0; i < L.length; i++) {
       if (!L[i].text) continue;
       const start = L[i].t + lyr.offset, end = (i + 1 < L.length ? L[i + 1].t + lyr.offset : dur);
-      if (end > 0 && start < dur) out.push({ start, end: Math.max(start + 0.2, end), text: L[i].text, words: L[i].words ? L[i].words.map((w) => ({ t: w.t + lyr.offset, w: w.w })) : null });
+      if (end > 0 && start < dur) out.push({ src: i, start, end: Math.max(start + 0.2, end), text: L[i].text, words: L[i].words ? L[i].words.map((w) => ({ t: w.t + lyr.offset, w: w.w })) : null });
     }
     return out;
   }
@@ -2080,6 +2111,48 @@ select.btn { appearance: auto; }
     <//>`;
   }
 
+  // ---- matching lyrics to notes: one syllable per note ----
+  const TL_WORDS = new Set(["ang", "ng", "sa", "mga", "ko", "mo", "na", "ay", "at", "ka", "ako", "ikaw", "hindi", "lang", "pa", "ba", "ito", "kung", "siya", "tayo", "natin", "kita", "di", "nga", "yo"]);
+  function looksTagalog(lines) {
+    let n = 0, t = 0;
+    lines.forEach((l) => (l.text || "").toLowerCase().split(/[^a-zñ']+/).forEach((w) => { w = w.replace(/'/g, ""); if (!w) return; n++; if (TL_WORDS.has(w)) t++; }));
+    return n > 0 && t / n > 0.12;
+  }
+  function syllableCount(word, tl) {
+    const w = word.toLowerCase().replace(/[^a-zñ]/g, "");
+    if (!w) return 0;
+    if (tl) { if (w === "mga") return 2; const m = w.match(/[aeiou]/g); return Math.max(1, m ? m.length : 1); } // Tagalog: every vowel is a syllable
+    const m = w.replace(/(^|[aeiou])y(?=[aeiou])/g, "$1c").match(/[aeiouy]+/g);
+    let c = m ? m.length : 1;
+    if (c > 1 && /[^aeiou]e$/.test(w) && !/[^aeiou]le$/.test(w)) c--; // silent e
+    if (c > 1 && /[^aeioudt]ed$/.test(w)) c--;
+    if (c > 1 && /[^aeiou]es$/.test(w) && !/(s|x|z|ch|sh|ce|ge)es$/.test(w)) c--; // times, eyes
+    if (/[aeiouy]ing$/.test(w) && !/[aeiou]ying$/.test(w)) c++; // ly-ing, be-ing
+    return Math.max(1, c);
+  }
+  // split a line's notes among its words: strongest note boundaries (a consonant or a breath) become syllable starts,
+  // and notes joined by a plain pitch change stay with the same syllable (a run on one vowel)
+  function wordsToNotes(text, ln, tl) {
+    const words = text.split(/\s+/).filter((w) => /[a-zA-Zñ0-9]/.test(w));
+    if (!words.length || !ln.length) return null;
+    const owner = [];
+    words.forEach((w, wi) => { const c = syllableCount(w, tl) || 1; for (let k = 0; k < c; k++) owner.push(wi); });
+    const N = ln.length, S = owner.length;
+    let groups;
+    if (N >= S) {
+      const bounds = [];
+      for (let i = 1; i < N; i++) {
+        const a = ln[i - 1], b = ln[i], gap = Math.max(0, b.pos - a.end);
+        bounds.push({ i, s: (b.cut === "silence" ? 3 : b.cut === "dip" ? 2 : 0) + Math.min(1, gap / 0.15) + (a.midi === b.midi ? 0.5 : 0) });
+      }
+      const keep = new Set([...bounds].sort((x, y) => y.s - x.s || x.i - y.i).slice(0, S - 1).map((b) => b.i));
+      groups = []; let cur = [0];
+      for (let i = 1; i < N; i++) { if (keep.has(i)) { groups.push(cur); cur = [i]; } else cur.push(i); }
+      groups.push(cur);
+    } else groups = Array.from({ length: S }, (_, k) => [Math.min(N - 1, Math.floor((k * N) / S))]);
+    return words.map((w, wi) => { const idx = []; owner.forEach((o, k) => { if (o === wi) groups[k].forEach((i) => { if (!idx.includes(i)) idx.push(i); }); }); return { w, idx }; });
+  }
+
   // ---- Practice: song sheet, the notes for every lyric line ----
   function lineTags(ln, songLo, songHi) {
     const g = ln.notes, tags = [];
@@ -2096,17 +2169,25 @@ select.btn { appearance: auto; }
     if (g.some((n) => n.end - n.pos >= 1.5)) tags.push("Long hold");
     return tags;
   }
-  function SongSheet({ notes, spans, phrases, tr, nameOf, names, onNames, cursor, curIdx, playing, onPlayLine, onLoop, loop, lineInfo, onMe, you, onAnalyze }) {
+  function SongSheet({ notes, spans, phrases, tr, nameOf, names, onNames, cursor, curIdx, playing, onPlayLine, onLoop, loop, lineInfo, onMe, you, onAnalyze, onPlayRange, onSaveWords }) {
     const [open, setOpen] = useState(-1);
+    const [tap, setTap] = useState(null); // { k, words, times }
+    const timeRef = useRef(0);
+    timeRef.current = cursor || 0;
     const refs = useRef({});
     const short = (m) => nameOf(m).replace(/-?\d+$/, "");
+    const tl = useMemo(() => looksTagalog(spans), [spans]);
     const lines = useMemo(() => {
       const src = spans.length ? spans : phrases.map((p) => ({ start: p.start, end: p.end, text: "", words: null }));
       return src.map((l, li) => {
         const idx = [];
         notes.forEach((n, i) => { if (n.pos >= l.start - 0.08 && n.pos < l.end - 0.02) idx.push(i); });
         const ln = { ...l, li, idx, notes: idx.map((i) => notes[i]) };
-        // pin notes to words only when the lyrics file has real word timing
+        if (!(l.words && l.words.length) && l.text && idx.length) {
+          const m = wordsToNotes(l.text, idx.map((i) => notes[i]), tl);
+          if (m) { ln.wordNotes = m.map((x) => ({ w: x.w, idx: x.idx.map((j) => idx[j]) })); ln.guessed = true; }
+        }
+        // real word timing from the lyrics file (or your taps) wins
         if (l.words && l.words.length && idx.length) {
           ln.wordNotes = l.words.map((w, k) => {
             const end = k + 1 < l.words.length ? l.words[k + 1].t : l.end;
@@ -2116,7 +2197,7 @@ select.btn { appearance: auto; }
         }
         return ln;
       });
-    }, [notes, spans, phrases]);
+    }, [notes, spans, phrases, tl]);
     let songLo = 999, songHi = 0;
     notes.forEach((n) => { songLo = Math.min(songLo, n.midi); songHi = Math.max(songHi, n.midi); });
     const cur = cursor != null ? lines.findIndex((l) => cursor >= l.start - 0.05 && cursor < l.end) : -1;
@@ -2191,6 +2272,28 @@ select.btn { appearance: auto; }
               <span>Range ${pretty(midiInfo(lo + tr).label)}–${pretty(midiInfo(hi + tr).label)}</span>
               <span>Biggest jump ${jump} key${jump === 1 ? "" : "s"}</span>
             </div>
+            ${l.text && onSaveWords && l.src != null && (tap && tap.k === k
+              ? html`<div class="flex flex-col gap-2" style=${{ padding: 12, borderRadius: 12, background: "var(--surface-2)", border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)" }}>
+                  <span class="text-sm"><b>Tap as each word starts.</b> <span class="muted">${tap.times.length} of ${tap.words.length}</span></span>
+                  <div class="flex flex-wrap gap-1">${tap.words.map((w, j) => html`<span key=${j} class="text-sm" style=${{ padding: "2px 6px", borderRadius: 6, fontWeight: 600, background: j === tap.times.length ? "var(--accent)" : j < tap.times.length ? "color-mix(in srgb, var(--good) 18%, transparent)" : "transparent", color: j === tap.times.length ? "var(--accent-ink)" : "var(--fg)" }}>${w}</span>`)}</div>
+                  <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 56, fontSize: 18 }} onPointerDown=${(e) => {
+                    e.preventDefault();
+                    const times = [...tap.times, timeRef.current];
+                    if (times.length >= tap.words.length) { onSaveWords(l.src, tap.words.map((w, j) => ({ t: times[j], w }))); setTap(null); }
+                    else setTap({ ...tap, times });
+                  }}>Tap</button>
+                  <div class="flex gap-2">
+                    <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { setTap({ ...tap, times: [] }); onPlayRange(l); }}>↻ Start over</button>
+                    <button class="btn btn-ghost" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => setTap(null)}>Cancel</button>
+                  </div>
+                </div>`
+              : html`<div class="flex flex-wrap items-center justify-between gap-2 text-xs muted">
+                  <span>${l.words && l.words.length ? "Words are timed exactly." : "Words placed automatically, one syllable per note."}</span>
+                  <span class="flex gap-3">
+                    <button class="link-btn text-xs" style=${{ textDecoration: "none" }} onClick=${() => { setTap({ k, words: l.text.split(/\s+/).filter(Boolean), times: [] }); onPlayRange(l); }}>${l.words && l.words.length ? "Re-tap timing" : "Fix word timing"}</button>
+                    ${l.words && l.words.length && html`<button class="link-btn text-xs" style=${{ textDecoration: "none", color: "var(--muted)" }} onClick=${() => onSaveWords(l.src, null)}>Clear</button>`}
+                  </span>
+                </div>`)}
           <//>`}
         </section>`;
       })}
@@ -2573,6 +2676,13 @@ select.btn { appearance: auto; }
       Object.values(tries).forEach((t) => t.last.rows.forEach((r) => { const i = byPos[Math.round(r.p * 1000)]; if (i != null) m[i] = r; }));
       return m;
     })();
+    // your taps (or Clear) become word timing in this song's lyrics
+    const saveWords = (src, words) => {
+      if (!lyrics || !lyrics.lines || !updateLyrics) return;
+      const off = lyrics.offset || 0;
+      updateLyrics({ ...lyrics, lines: lyrics.lines.map((ln, i) => (i === src ? { ...ln, words: words ? words.map((w) => ({ t: Math.max(0, Math.round((w.t - off) * 100) / 100), w: w.w })) : null } : ln)) });
+      flash(words ? "Word timing saved for this line." : "Word timing cleared.");
+    };
     const drillLine = (l, pi, rec, info) => {
       const ms = rec.rows.map((r) => r.m), wi = info.worst ? info.worst.i : 0;
       const a = Math.max(0, Math.min(ms.length - 5, wi - 2)), fixed = ms.slice(a, a + 5);
@@ -2602,14 +2712,14 @@ select.btn { appearance: auto; }
         </div>
       </div>
 
-      ${mode === "play" && view === "sheet" && toast && html`<div class="notice" role="status">${toast}</div>`}
+      ${view === "sheet" && toast && html`<div class="notice" role="status">${toast}</div>`}
       ${mode === "play" && plan && !plan.hidden && html`<${PlanCard} plan=${plan} onStart=${(k) => { stopAll(); setPlanRun(k); }} onHide=${() => setPlan({ ...plan, hidden: true })} onClear=${() => setPlan(null)} />`}
       ${mode === "play" && plan && plan.hidden && html`<button class="link-btn text-sm" style=${{ alignSelf: "flex-start" }} onClick=${() => setPlan({ ...plan, hidden: false })}>Show your plan (${plan.drills.filter((d) => plan.done[d.id] != null).length} of ${plan.drills.length} done)</button>`}
       ${mode === "play" && !plan && weakRepeat && html`<div class="panel p-3 flex items-center gap-3" style=${{ borderStyle: "dashed" }}>
         <span class="text-sm muted" style=${{ flex: 1 }}>Make a practice plan from your Repeat after me tries.</span>
         <button class="btn btn-primary" style=${{ padding: "6px 12px", fontSize: 13, whiteSpace: "nowrap" }} onClick=${() => { const rows = Object.values(attemptsRef.current).flat(); const p = makePlan(rows, notes, spans, phrases, "repeat"); if (p) { p.fresh = false; setPlan(p); } else flash("Nothing big to fix yet. Nice!"); }}>Make plan</button>
       </div>`}
-      ${view === "sheet" && mode === "play" ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })}
+      ${view === "sheet" && mode === "play" ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords}
         onPlayLine=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.2), l.end + 0.15, () => stopAll()); }}
         onLoop=${(l) => { if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) { clearLoop(); stopAll(); } else startLoop(l.start, l.end + 0.3); }} />` : html`<${React.Fragment}>
       <section class="panel p-4 flex flex-col gap-3 min-w-0 coach" ref=${coachRef} style=${view === "sheet" ? { position: "sticky", top: 8, zIndex: 15, boxShadow: "0 8px 24px rgba(0,0,0,.25)" } : undefined}>
@@ -2702,7 +2812,7 @@ select.btn { appearance: auto; }
       ${toast && html`<div class="notice" role="status" style=${{ borderColor: "var(--good)", background: "color-mix(in srgb, var(--good) 10%, var(--surface))" }}>${toast}</div>`}
 
         ${view === "sheet"
-          ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })}
+          ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords}
               onPlayLine=${(l) => { clearLoop(); runRepeat(phraseFor(l)); }}
               onLoop=${(l) => { if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) { clearLoop(); stopAll(); } else startLoop(l.start, l.end + 0.3); }} />`
           : html`<${MelodyMap} data=${data} notes=${notes} tr=${tr} nameOf=${nameOf} phrases=${phrases} lyrics=${spans} loop=${loop} cursor=${cursor} curIdx=${curIdx} onTapNote=${tapNote} onSeek=${seek} themeKey=${themeKey} overlay=${liveLine} />`}
