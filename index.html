@@ -295,7 +295,7 @@ select.btn { appearance: auto; }
   const fmt = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
 
   /* ---------- autocorrelation pitch detection ---------- */
-  function detectPitch(buf, sr, gate = 0.01) {
+  function detectPitch(buf, sr, gate = 0.01, minClarity = 0.8) {
     const n = buf.length;
     let rms = 0;
     for (let i = 0; i < n; i++) rms += buf[i] * buf[i];
@@ -323,7 +323,7 @@ select.btn { appearance: auto; }
       if (c[i] >= 0.9 * max && c[i] >= c[i - 1] && c[i] >= c[i + 1]) { pos = i; break; }
     }
     const clarity = (c[pos] * n) / ((n - pos) * c0);
-    if (clarity < 0.8) return { freq: -1, rms };
+    if (clarity < minClarity) return { freq: -1, rms };
     // parabolic interpolation for sub-sample accuracy
     let T = pos;
     const x1 = c[pos - 1], x2 = c[pos], x3 = c[pos + 1];
@@ -442,7 +442,8 @@ select.btn { appearance: auto; }
     for (let f = 0; f < total; f++) {
       if (isCancelled()) return null;
       const t = (f * hop) / sr;
-      const r = detectPitch(data.subarray(f * hop, f * hop + N), sr);
+      // songs are a little less strict than the live mic: breathy, echoey singing still counts
+      const r = detectPitch(data.subarray(f * hop, f * hop + N), sr, 0.01, 0.75);
       rawL[f] = 20 * Math.log10(r.rms + 1e-5);
       if (r.freq > 0) {
         raw[f] = 69 + 12 * Math.log2(r.freq / SETTINGS.a4);
@@ -479,7 +480,31 @@ select.btn { appearance: auto; }
       if (f < total) { grid[k] = smooth[f]; loud[k] = rawL[f]; }
     }
     onProgress(1);
-    return { duration: audio.duration, grid, loud, notes: splitOnConsonants(notes, raw, rawL, hop, sr) };
+    return { duration: audio.duration, grid, loud, notes: fixOctaves(splitOnConsonants(notes, raw, rawL, hop, sr), grid) };
+  }
+  // The pitch finder sometimes lands a whole octave too low or high. Pull a note back when it sits
+  // 9+ semitones away from the notes around it (within 4 s) and moving it an octave brings it closer.
+  function fixOctaves(notes, grid) {
+    if (notes.length < 5) return notes;
+    const out = notes.map((n) => ({ ...n }));
+    for (let pass = 0; pass < 2; pass++) {
+      out.forEach((n, i) => {
+        const mid = (n.pos + n.end) / 2, w = [];
+        out.forEach((m, j) => { if (j !== i && Math.abs((m.pos + m.end) / 2 - mid) < 4) w.push([m.midi, m.end - m.pos]); });
+        if (w.length < 4) return;
+        w.sort((a, b) => a[0] - b[0]);
+        const tot = w.reduce((a, x) => a + x[1], 0);
+        let acc = 0, med = w[0][0];
+        for (const [mm, d] of w) { acc += d; if (acc >= tot / 2) { med = mm; break; } }
+        const off = n.midi - med;
+        if (Math.abs(off) < 9) return;
+        const sh = off > 0 ? -12 : 12;
+        if (Math.abs(off + sh) >= Math.abs(off)) return;
+        n.midi += sh; n.freq *= Math.pow(2, sh / 12);
+        for (let k = Math.round(n.pos / GRID); k < Math.round(n.end / GRID) && k < grid.length; k++) if (grid[k] === grid[k]) grid[k] += sh;
+      });
+    }
+    return out;
   }
   // Two syllables sung on the same pitch would merge into one long note. Split notes where a
   // consonant shows: a short unvoiced gap (s, t, k…) or a clear dip in loudness (m, n, l…).
@@ -3532,7 +3557,7 @@ select.btn { appearance: auto; }
   }
 
   /* ---------- AI note detection (Spotify Basic Pitch, runs on this device) ---------- */
-  const AI_KEY = "pitchstaff.ainotes.v3";
+  const AI_KEY = "pitchstaff.ainotes.v4";
   const AI_FPS = 22050 / 256;
   let bpModule = null;
   const loadBasicPitch = () => (bpModule = bpModule || import(new URL("tono-basic-pitch.js", document.baseURI).href));
