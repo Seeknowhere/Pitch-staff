@@ -2075,7 +2075,9 @@ select.btn { appearance: auto; }
     const [speed, setSpeed] = useState(1);
     const [tr, setTr] = useState(0);
     const [names, setNames] = useState(() => loadJSON("pitchstaff.names.v1", "letters"));
-    const [mode, setModeState] = useState("sheet");
+    const [mode, setModeState] = useState("play");
+    const [view, setViewState] = useState(() => loadJSON("pitchstaff.pview.v1", "sheet"));
+    const chooseView = (v) => { setViewState(v); saveJSON("pitchstaff.pview.v1", v); };
     const [loop, setLoop] = useState(null);
     const [turn, setTurn] = useState(null);
     const [learned, setLearned] = useState([]);
@@ -2110,10 +2112,10 @@ select.btn { appearance: auto; }
     useEffect(() => setShowDetails(false), [attempt]);
     useEffect(() => {
       const p = loadPlan(orig && orig.data ? orig.name : null);
-      if (p && p.fresh && active) { p.fresh = false; p.hidden = false; savePlan(orig.name, p); modeRef.current = "sheet"; setModeState("sheet"); }
+      if (p && p.fresh && active) { p.fresh = false; p.hidden = false; savePlan(orig.name, p); modeRef.current = "play"; setModeState("play"); chooseView("sheet"); }
       setPlanState(p);
     }, [orig, active]);
-    const mixRef = useRef(mix), speedRef = useRef(1), trRef = useRef(0), modeRef = useRef("sheet"), loopRef = useRef(null);
+    const mixRef = useRef(mix), speedRef = useRef(1), trRef = useRef(0), modeRef = useRef("play"), loopRef = useRef(null);
     const play = useRef({ ctx: null, origSrc: null, guide: [], gO: null, gG: null, raf: 0 });
     const fileRef = useRef(null);
 
@@ -2422,8 +2424,7 @@ select.btn { appearance: auto; }
     const lo2 = notes.length ? notes.reduce((m, n) => Math.min(m, n.midi), 999) : 0, hi2 = notes.length ? notes.reduce((m, n) => Math.max(m, n.midi), 0) : 0;
     return html`<div class="flex flex-col gap-4">
       <div class="flex gap-2">
-        <div class="mode-seg" role="group" aria-label="Practice mode" style=${{ flex: 1, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
-          <button aria-pressed=${mode === "sheet" ? "true" : "false"} onClick=${() => chooseMode("sheet")}>Song sheet</button>
+        <div class="mode-seg" role="group" aria-label="Practice mode" style=${{ flex: 1 }}>
           <button aria-pressed=${mode === "play" ? "true" : "false"} onClick=${() => chooseMode("play")}>Listen</button>
           <button aria-pressed=${mode === "repeat" ? "true" : "false"} onClick=${() => chooseMode("repeat")}>Repeat after me</button>
         </div>
@@ -2431,15 +2432,22 @@ select.btn { appearance: auto; }
       </div>
       ${mode === "repeat" && html`<p class="text-xs muted">${listen ? "Mic on: each try gets scored. Tap the mic to practice without scoring." : "Plays a phrase, then gives you time to sing it back. Tap the mic to get scored."}</p>`}
       ${micMsg && mode === "repeat" && html`<div class="notice" role="alert">${micMsg}</div>`}
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-xs muted">${key ? keyName(key, tr) : ""}${notes.length ? " · " + pretty(midiInfo(lo2 + tr).label) + "–" + pretty(midiInfo(hi2 + tr).label) : ""}</span>
+        <div class="seg" role="group" aria-label="View">
+          <button aria-pressed=${view === "sheet" ? "true" : "false"} onClick=${() => chooseView("sheet")} aria-label="Song sheet view" title="Song sheet"><${Icon} name="list" size=${18} /></button>
+          <button aria-pressed=${view === "chart" ? "true" : "false"} onClick=${() => chooseView("chart")} aria-label="Chart view" title="Chart"><${Icon} name="bars" size=${18} /></button>
+        </div>
+      </div>
 
-      ${mode === "sheet" && toast && html`<div class="notice" role="status">${toast}</div>`}
-      ${mode === "sheet" && plan && !plan.hidden && html`<${PlanCard} plan=${plan} onStart=${(k) => { stopAll(); setPlanRun(k); }} onHide=${() => setPlan({ ...plan, hidden: true })} onClear=${() => setPlan(null)} />`}
-      ${mode === "sheet" && plan && plan.hidden && html`<button class="link-btn text-sm" style=${{ alignSelf: "flex-start" }} onClick=${() => setPlan({ ...plan, hidden: false })}>Show your plan (${plan.drills.filter((d) => plan.done[d.id] != null).length} of ${plan.drills.length} done)</button>`}
-      ${mode === "sheet" && !plan && weakRepeat && html`<div class="panel p-3 flex items-center gap-3" style=${{ borderStyle: "dashed" }}>
+      ${mode === "play" && view === "sheet" && toast && html`<div class="notice" role="status">${toast}</div>`}
+      ${mode === "play" && plan && !plan.hidden && html`<${PlanCard} plan=${plan} onStart=${(k) => { stopAll(); setPlanRun(k); }} onHide=${() => setPlan({ ...plan, hidden: true })} onClear=${() => setPlan(null)} />`}
+      ${mode === "play" && plan && plan.hidden && html`<button class="link-btn text-sm" style=${{ alignSelf: "flex-start" }} onClick=${() => setPlan({ ...plan, hidden: false })}>Show your plan (${plan.drills.filter((d) => plan.done[d.id] != null).length} of ${plan.drills.length} done)</button>`}
+      ${mode === "play" && !plan && weakRepeat && html`<div class="panel p-3 flex items-center gap-3" style=${{ borderStyle: "dashed" }}>
         <span class="text-sm muted" style=${{ flex: 1 }}>Make a practice plan from your Repeat after me tries.</span>
         <button class="btn btn-primary" style=${{ padding: "6px 12px", fontSize: 13, whiteSpace: "nowrap" }} onClick=${() => { const rows = Object.values(attemptsRef.current).flat(); const p = makePlan(rows, notes, spans, phrases, "repeat"); if (p) { p.fresh = false; setPlan(p); } else flash("Nothing big to fix yet. Nice!"); }}>Make plan</button>
       </div>`}
-      ${mode === "sheet" ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop}
+      ${view === "sheet" && mode === "play" ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop}
         onPlayLine=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.2), l.end + 0.15, () => stopAll()); }}
         onLoop=${(l) => startLoop(l.start, l.end + 0.3)} />` : html`<${React.Fragment}>
       <section class="panel p-4 flex flex-col gap-3 min-w-0 coach" ref=${coachRef}>
@@ -2532,13 +2540,17 @@ select.btn { appearance: auto; }
       </section>
       ${toast && html`<div class="notice" role="status" style=${{ borderColor: "var(--good)", background: "color-mix(in srgb, var(--good) 10%, var(--surface))" }}>${toast}</div>`}
 
-        <${MelodyMap} data=${data} notes=${notes} tr=${tr} nameOf=${nameOf} phrases=${phrases} lyrics=${spans} loop=${loop} cursor=${cursor} curIdx=${curIdx} onTapNote=${tapNote} onSeek=${seek} themeKey=${themeKey} overlay=${liveLine} />
+        ${view === "sheet"
+          ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop}
+              onPlayLine=${(l) => { clearLoop(); let bi = 0, bo = -1; phrases.forEach((p, i) => { const o = Math.min(p.end, l.end) - Math.max(p.start, l.start); if (o > bo) { bo = o; bi = i; } }); runRepeat(bi); }}
+              onLoop=${(l) => startLoop(l.start, l.end + 0.3)} />`
+          : html`<${MelodyMap} data=${data} notes=${notes} tr=${tr} nameOf=${nameOf} phrases=${phrases} lyrics=${spans} loop=${loop} cursor=${cursor} curIdx=${curIdx} onTapNote=${tapNote} onSeek=${seek} themeKey=${themeKey} overlay=${liveLine} />`}
 
-      <${SongFit} notes=${notes} tr=${tr} phrases=${phrases} linesIn=${linesIn} nameOf=${nameOf} active=${active}
+      ${view === "chart" && html`<${SongFit} notes=${notes} tr=${tr} phrases=${phrases} linesIn=${linesIn} nameOf=${nameOf} active=${active}
         onPractice=${(ph) => { clearLoop(); if (modeRef.current === "repeat") runRepeat(ph.i); else startPlay(Math.max(0, ph.start - 0.2)); try { coachRef.current && coachRef.current.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (e) {} }}
-        onFind=${() => { saveJSON(MATCH_KEY + ".mode", "range"); onGo && onGo("live"); }} />
+        onFind=${() => { saveJSON(MATCH_KEY + ".mode", "range"); onGo && onGo("live"); }} />`}
 
-      <section class="panel p-4 sm:p-5 flex flex-col gap-3">
+      ${mode === "repeat" && view === "chart" && html`<section class="panel p-4 sm:p-5 flex flex-col gap-3">
         <div class="flex flex-wrap items-end justify-between gap-2">
           <h3 class="display text-lg font-bold">Phrases</h3>
           <span class="text-xs muted">Tick a phrase once you can sing it without the guide.</span>
@@ -2565,7 +2577,7 @@ select.btn { appearance: auto; }
             </span>
           </div>`;
         })}
-      </section>
+      </section>`}
 
       <div class="flex justify-center">
         <button class="btn" onClick=${() => onGo && onGo("karaoke")}>Ready? Try it in Karaoke →</button>
@@ -4229,6 +4241,8 @@ select.btn { appearance: auto; }
     x: '<path d="M18 6L6 18"></path><path d="M6 6l12 12"></path>',
     sun: '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>',
     moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>',
+    list: '<path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h10"></path>',
+    bars: '<path d="M3 17h5"></path><path d="M9 11h5"></path><path d="M15 7h6"></path>',
     cap: '<path d="M2 7l10-4 10 4-10 4z"></path><path d="M6 9v5c0 1.7 2.7 3 6 3s6-1.3 6-3V9"></path>',
     lock: '<rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path>',
     headphones: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3zM3 19a2 2 0 0 0 2 2h1v-6H3z"></path>',
