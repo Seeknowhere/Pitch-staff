@@ -1598,7 +1598,7 @@ select.btn { appearance: auto; }
     const curLine = cursor != null ? spans.findIndex((l) => cursor >= l.start && cursor < l.end) : -1;
     const nextLine = cursor != null ? spans.find((l) => l.start > (cursor || 0)) : spans[0];
     const linesIn = (a, b) => spans.filter((l) => l.start < b && l.end > a).map((l) => l.text);
-    const planDraft = useMemo(() => (result && orig && orig.data ? makePlan(result.rows, orig.data.notes, spans, buildPhrases(orig.data.notes), "take") : null), [result, spans]);
+    const planDraft = useMemo(() => (result && orig && orig.data ? makePlan(result.rows, orig.data.notes, spans, buildPhrases(orig.data.notes, spans, orig.data.grid), "take") : null), [result, spans]);
 
     const offSec = off * GRID;
     const past = orig ? sessions.filter((s) => s.song === orig.name) : sessions;
@@ -1988,8 +1988,28 @@ select.btn { appearance: auto; }
   }
   const keyName = (k, tr) => { const pc = (((k.tonic + tr) % 12) + 12) % 12; return (k.minor ? KEY_MIN[pc] : KEY_MAJ[pc]) + (k.minor ? " minor" : " major"); };
 
-  function buildPhrases(notes) {
+  // With timed lyrics, each lyric line is one phrase, its edges moved to where the singing really
+  // starts and stops. Without lyrics, phrases are cut where the melody pauses.
+  function lyricGroups(notes, spans, grid) {
+    const lines = spans.filter((l) => l.text);
+    if (!lines.length) return null;
+    const voiced = (t) => { if (!grid) return false; const k = Math.round(t / GRID); return k >= 0 && k < grid.length && grid[k] === grid[k]; };
+    const out = [];
+    lines.forEach((l, i) => {
+      const g = notes.filter((n) => n.pos >= l.start - 0.08 && n.pos < l.end - 0.02);
+      if (!g.length) return;
+      const next = lines[i + 1] ? lines[i + 1].start : Infinity, prevEnd = out.length ? out[out.length - 1].end : 0;
+      let a = g[0].pos, b = g[g.length - 1].end;
+      while (a - GRID > Math.max(prevEnd, l.start - 0.3) && voiced(a - GRID)) a -= GRID;
+      while (b + GRID < next - 0.05 && voiced(b)) b += GRID;
+      out.push({ g, start: a, end: b });
+    });
+    return out.length ? out : null;
+  }
+  function buildPhrases(notes, spans, grid) {
     if (!notes.length) return [];
+    const lg = spans && spans.length ? lyricGroups(notes, spans, grid) : null;
+    if (lg) return phraseTags(notes, lg);
     const groups = [[notes[0]]];
     for (let i = 1; i < notes.length; i++) {
       if (notes[i].pos - notes[i - 1].end > 0.35) groups.push([notes[i]]);
@@ -2011,10 +2031,13 @@ select.btn { appearance: auto; }
       split(g.slice(0, bi)); split(g.slice(bi));
     };
     merged.forEach(split);
+    return phraseTags(notes, out.map((g) => ({ g, start: g[0].pos, end: g[g.length - 1].end })));
+  }
+  function phraseTags(notes, groups) {
     let hi = -Infinity, lo = Infinity;
     notes.forEach((n) => { hi = Math.max(hi, n.midi); lo = Math.min(lo, n.midi); });
     const wide = hi - lo >= 7;
-    return out.map((g, i) => {
+    return groups.map(({ g, start, end }, i) => {
       const tags = [];
       let jump = 0;
       for (let j = 1; j < g.length; j++) if (g[j].pos - g[j - 1].end < 0.35) jump = Math.max(jump, Math.abs(g[j].midi - g[j - 1].midi));
@@ -2025,7 +2048,7 @@ select.btn { appearance: auto; }
       if (wide && g.some((n) => n.midi >= hi - 1)) tags.push("High note");
       if (wide && g.some((n) => n.midi <= lo + 1)) tags.push("Low note");
       if (g.some((n) => n.end - n.pos >= 1.5)) tags.push("Long hold");
-      return { i, start: g[0].pos, end: g[g.length - 1].end, notes: g, tags };
+      return { i, start, end, notes: g, tags };
     });
   }
 
@@ -2152,7 +2175,7 @@ select.btn { appearance: auto; }
   }
 
   // ---- your tries per phrase (Repeat after me), saved per song ----
-  const TRIES_KEY = "pitchstaff.tries.v1";
+  const TRIES_KEY = "pitchstaff.tries.v2"; // v2: phrases follow lyric lines
   const loadTries = (song) => (song ? loadJSON(TRIES_KEY, {})[song] || {} : {});
   const saveTries = (song, t) => { if (!song) return; const all = loadJSON(TRIES_KEY, {}); all[song] = t; saveJSON(TRIES_KEY, all); };
   function tryStats(rec) {
@@ -2467,8 +2490,8 @@ select.btn { appearance: auto; }
     const fileRef = useRef(null);
 
     const key = useMemo(() => (notes.length ? estimateKey(notes) : null), [notes]);
-    const phrases = useMemo(() => buildPhrases(notes), [notes]);
     const spans = useMemo(() => (data ? lyricSpans(lyrics, data.duration) : []), [lyrics, data]);
+    const phrases = useMemo(() => buildPhrases(notes, spans, data && data.grid), [notes, spans, data]);
     const songName = data ? orig.name : null;
 
     const nameOf = useCallback((m) => {
@@ -4042,7 +4065,7 @@ select.btn { appearance: auto; }
     syncRef.current = sync;
 
     const spans = useMemo(() => (data ? lyricSpans(lyrics, data.duration) : []), [lyrics, data]);
-    const phrases = useMemo(() => buildPhrases(notes), [notes]);
+    const phrases = useMemo(() => buildPhrases(notes, spans, data && data.grid), [notes, spans, data]);
     const lines = useMemo(() => (spans.length ? spans : phrases.map((p) => ({ start: p.start, end: p.end, text: "", phrase: p.i }))), [spans, phrases]);
     const songEnd = data ? Math.max(data.duration, inst && inst.buffer ? inst.buffer.duration - sync : 0) : 0;
     const listening = hp === "ok" || hp === "override";
