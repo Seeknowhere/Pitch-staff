@@ -435,7 +435,7 @@ select.btn { appearance: auto; }
       data = h; sr = sr / 2;
     }
     const N = 1024, hop = 512, total = Math.max(1, Math.floor((data.length - N) / hop));
-    const raw = new Float32Array(total).fill(NaN), rawL = new Float32Array(total).fill(-100);
+    const raw = new Float32Array(total).fill(NaN), rawL = new Float32Array(total).fill(-100), weak = new Float32Array(total).fill(NaN);
     const notes = [];
     let cand = { midi: null, since: 0 }, confirmed = null, silentSince = -1;
     const recent = [];
@@ -443,8 +443,10 @@ select.btn { appearance: auto; }
       if (isCancelled()) return null;
       const t = (f * hop) / sr;
       // songs are a little less strict than the live mic: breathy, echoey singing still counts
-      const r = detectPitch(data.subarray(f * hop, f * hop + N), sr, 0.01, 0.75);
+      const r = detectPitch(data.subarray(f * hop, f * hop + N), sr, 0.01, 0.55);
       rawL[f] = 20 * Math.log10(r.rms + 1e-5);
+      // weaker pitch (clarity 0.55–0.75) is kept aside: lyric lines that are short of notes can look here later
+      if (r.freq > 0 && r.clarity < 0.75) { weak[f] = 69 + 12 * Math.log2(r.freq / SETTINGS.a4); r.freq = -1; }
       if (r.freq > 0) {
         raw[f] = 69 + 12 * Math.log2(r.freq / SETTINGS.a4);
         silentSince = -1;
@@ -474,13 +476,13 @@ select.btn { appearance: auto; }
       if (w.length >= 2 && raw[f] === raw[f]) smooth[f] = median(w);
     }
     const len = Math.ceil(audio.duration / GRID);
-    const grid = new Float32Array(len).fill(NaN), loud = new Float32Array(len).fill(-100);
+    const grid = new Float32Array(len).fill(NaN), loud = new Float32Array(len).fill(-100), loose = new Float32Array(len).fill(NaN);
     for (let k = 0; k < len; k++) {
       const f = Math.round((k * GRID * sr) / hop);
-      if (f < total) { grid[k] = smooth[f]; loud[k] = rawL[f]; }
+      if (f < total) { grid[k] = smooth[f]; loud[k] = rawL[f]; loose[k] = weak[f]; }
     }
     onProgress(1);
-    return { duration: audio.duration, grid, loud, notes: fixOctaves(splitOnConsonants(notes, raw, rawL, hop, sr), grid) };
+    return { duration: audio.duration, grid, loud, loose, notes: fixOctaves(splitOnConsonants(notes, raw, rawL, hop, sr), grid) };
   }
   // The pitch finder sometimes lands a whole octave too low or high. Pull a note back when it sits
   // 9+ semitones away from the notes around it (within 4 s) and moving it an octave brings it closer.
@@ -505,6 +507,89 @@ select.btn { appearance: auto; }
       });
     }
     return out;
+  }
+  // With lyrics loaded, each line tells us roughly how many notes to expect (one per syllable).
+  // Lines short of notes look again with a looser ear and split notes at clear dips or pitch steps;
+  // lines with too many drop blips that look like breaths or echo. Real notes are never forced out.
+  function guideBySyllables(notes, data, spans, tl) {
+    if (!notes.length || !spans.length || !data.loud) return notes;
+    const G = GRID, grid = data.grid, loud = data.loud, loose = data.loose || new Float32Array(0);
+    const kOf = (t) => Math.max(0, Math.min(grid.length - 1, Math.round(t / G)));
+    const med = (a) => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+    const loudOf = (a, b) => { let m = -100; for (let k = kOf(a); k <= kOf(b); k++) m = Math.max(m, loud[k]); return m; };
+    let out = notes.map((n) => ({ ...n }));
+    spans.forEach((l) => {
+      if (!l.text) return;
+      const want = l.text.split(/\s+/).filter(Boolean).reduce((a, w) => a + syllableCount(w, tl), 0);
+      if (!want) return;
+      const a = l.start - 0.08, b = l.end - 0.02;
+      const inLine = () => out.filter((n) => n.pos >= a && n.pos < b);
+      let ln = inLine();
+      const lineLoud = med(ln.map((n) => loudOf(n.pos, n.end)).filter((v) => v > -90));
+      const centre = ln.length ? med(ln.map((n) => n.midi)) : NaN;
+      // 1. too many: drop blips (very short, or short and quiet, or short and glued to the same pitch)
+      if (ln.length > want) {
+        const cand = ln.filter((n) => n.end - n.pos < 0.15).map((n) => {
+          const i = out.indexOf(n), p = out[i - 1], q = out[i + 1];
+          const glued = (p && p.midi === n.midi && n.pos - p.end < 0.04) || (q && q.midi === n.midi && q.pos - n.end < 0.04);
+          const quiet = loudOf(n.pos, n.end) < lineLoud - 6;
+          return { n, p, q, glued, junk: n.end - n.pos < 0.1 || quiet || glued, sc: (n.end - n.pos) + (quiet ? -0.1 : 0) + (glued ? -0.05 : 0) };
+        }).filter((c) => c.junk).sort((x, y) => x.sc - y.sc);
+        for (const c of cand) {
+          if (inLine().length <= want) break;
+          const i = out.indexOf(c.n); if (i < 0) continue;
+          if (c.p && c.p.midi === c.n.midi && c.n.pos - c.p.end < 0.04) c.p.end = c.n.end;
+          else if (c.q && c.q.midi === c.n.midi && c.q.pos - c.n.end < 0.04) c.q.pos = c.n.pos;
+          out.splice(i, 1);
+        }
+      }
+      // 2. too few: pick up sung stretches that never became notes (weak or short pitch)
+      ln = inLine();
+      if (ln.length < want) {
+        const covered = (k) => out.some((n) => k * G >= n.pos - 0.01 && k * G < n.end + 0.01);
+        const runs = []; let cur = null;
+        for (let k = kOf(a); k <= kOf(b); k++) {
+          const v = grid[k] === grid[k] ? grid[k] : loose[k] === loose[k] ? loose[k] : NaN;
+          const ok = v === v && !covered(k) && (!cur || Math.abs(v - med(cur.v)) < 1);
+          if (ok) { if (!cur) cur = { k0: k, v: [] }; cur.v.push(v); cur.k1 = k; }
+          else { if (cur) runs.push(cur); cur = v === v && !covered(k) ? { k0: k, k1: k, v: [v] } : null; }
+        }
+        if (cur) runs.push(cur);
+        const adds = runs.filter((r) => r.k1 - r.k0 + 1 >= 5 && loudOf(r.k0 * G, r.k1 * G) > lineLoud - 10)
+          .sort((x, y) => (y.k1 - y.k0) - (x.k1 - x.k0)).slice(0, want - ln.length);
+        adds.forEach((r) => {
+          let m = Math.round(med(r.v));
+          if (centre === centre && Math.abs(m - centre) >= 9) m += m > centre ? -12 : 12;
+          out.push({ midi: m, freq: SETTINGS.a4 * Math.pow(2, (m - 69) / 12), cents: 0, pos: r.k0 * G, end: (r.k1 + 1) * G, cut: "guide" });
+        });
+        out.sort((x, y) => x.pos - y.pos);
+      }
+      // 3. still too few: split notes at the clearest loudness dip or pitch step
+      for (let guard = 0; guard < 20 && inLine().length < want; guard++) {
+        let best = null;
+        inLine().forEach((n) => {
+          if (n.end - n.pos < 0.24) return;
+          const k0 = kOf(n.pos) + 5, k1 = kOf(n.end) - 5;
+          for (let k = k0; k <= k1; k++) {
+            const dip = Math.min(loudOf((k - 5) * G, (k - 1) * G), loudOf((k + 1) * G, (k + 5) * G)) - loud[k];
+            const pa = [], pb = [];
+            for (let j = k - 5; j < k; j++) if (grid[j] === grid[j]) pa.push(grid[j]);
+            for (let j = k; j < k + 5; j++) if (grid[j] === grid[j]) pb.push(grid[j]);
+            const step = pa.length >= 3 && pb.length >= 3 ? Math.abs(med(pa) - med(pb)) : 0;
+            const sc = Math.max(dip / 3, step / 0.8);
+            if (sc >= 1 && (!best || sc > best.sc)) best = { n, k, sc, mb: pb.length >= 3 ? Math.round(med(pb)) : n.midi };
+          }
+        });
+        if (!best) break;
+        const n = best.n, t = best.k * G;
+        let m2 = best.mb; if (Math.abs(m2 - n.midi) >= 9) m2 = n.midi;
+        out.splice(out.indexOf(n) + 1, 0, { ...n, pos: t, midi: m2, freq: SETTINGS.a4 * Math.pow(2, (m2 - 69) / 12), cut: "guide" });
+        n.end = t;
+      }
+    });
+    out.sort((x, y) => x.pos - y.pos);
+    for (let i = 1; i < out.length; i++) if (out[i].pos < out[i - 1].end) out[i - 1].end = out[i].pos;
+    return out.filter((n) => n.end - n.pos > 0.04);
   }
   // Two syllables sung on the same pitch would merge into one long note. Split notes where a
   // consonant shows: a short unvoiced gap (s, t, k…) or a clear dip in loudness (m, n, l…).
@@ -2215,7 +2300,6 @@ select.btn { appearance: auto; }
   }
   function SongSheet({ notes, spans, phrases, tr, nameOf, names, onNames, cursor, curIdx, playing, onPlayLine, onLoop, loop, lineInfo, onMe, you, onAnalyze, onPlayRange, onSaveWords }) {
     const [open, setOpen] = useState(-1);
-    const [tap, setTap] = useState(null); // { k, words, times }
     const timeRef = useRef(0);
     timeRef.current = cursor || 0;
     const refs = useRef({});
@@ -2318,28 +2402,6 @@ select.btn { appearance: auto; }
               <span>Range ${pretty(midiInfo(lo + tr).label)}–${pretty(midiInfo(hi + tr).label)}</span>
               <span>Biggest jump ${jump} key${jump === 1 ? "" : "s"}</span>
             </div>
-            ${l.text && onSaveWords && l.src != null && (tap && tap.k === k
-              ? html`<div class="flex flex-col gap-2" style=${{ padding: 12, borderRadius: 12, background: "var(--surface-2)", border: "1px solid color-mix(in srgb, var(--accent) 40%, transparent)" }}>
-                  <span class="text-sm"><b>Tap as each word starts.</b> <span class="muted">${tap.times.length} of ${tap.words.length}</span></span>
-                  <div class="flex flex-wrap gap-1">${tap.words.map((w, j) => html`<span key=${j} class="text-sm" style=${{ padding: "2px 6px", borderRadius: 6, fontWeight: 600, background: j === tap.times.length ? "var(--accent)" : j < tap.times.length ? "color-mix(in srgb, var(--good) 18%, transparent)" : "transparent", color: j === tap.times.length ? "var(--accent-ink)" : "var(--fg)" }}>${w}</span>`)}</div>
-                  <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 56, fontSize: 18 }} onPointerDown=${(e) => {
-                    e.preventDefault();
-                    const times = [...tap.times, timeRef.current];
-                    if (times.length >= tap.words.length) { onSaveWords(l.src, tap.words.map((w, j) => ({ t: times[j], w }))); setTap(null); }
-                    else setTap({ ...tap, times });
-                  }}>Tap</button>
-                  <div class="flex gap-2">
-                    <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { setTap({ ...tap, times: [] }); onPlayRange(l); }}>↻ Start over</button>
-                    <button class="btn btn-ghost" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => setTap(null)}>Cancel</button>
-                  </div>
-                </div>`
-              : html`<div class="flex flex-wrap items-center justify-between gap-2 text-xs muted">
-                  <span>${l.words && l.words.length ? "Words are timed exactly." : "Words placed automatically, one syllable per note."}</span>
-                  <span class="flex gap-3">
-                    <button class="link-btn text-xs" style=${{ textDecoration: "none" }} onClick=${() => { setTap({ k, words: l.text.split(/\s+/).filter(Boolean), times: [] }); onPlayRange(l); }}>${l.words && l.words.length ? "Re-tap timing" : "Fix word timing"}</button>
-                    ${l.words && l.words.length && html`<button class="link-btn text-xs" style=${{ textDecoration: "none", color: "var(--muted)" }} onClick=${() => onSaveWords(l.src, null)}>Clear</button>`}
-                  </span>
-                </div>`)}
           <//>`}
         </section>`;
       })}
@@ -5962,7 +6024,13 @@ select.btn { appearance: auto; }
     const updateVocalLyrics = useCallback((next) => { setVocalLyrics(next); if (vocalName) saveLyricsFor(vocalName, next); }, [vocalName]);
     // an UltraStar chart brings exact notes for every syllable: use them instead of the detected ones
     const vocalEff = useMemo(() => {
-      if (!vocal || !vocal.data || !vocalLyrics || !vocalLyrics.us) return vocal;
+      if (!vocal || !vocal.data || !vocalLyrics) return vocal;
+      if (!vocalLyrics.us) {
+        // timed lyrics: use each line's syllable count to find missing notes and drop blips
+        const sp = lyricSpans(vocalLyrics, vocal.data.duration);
+        if (!sp.length) return vocal;
+        return { ...vocal, data: { ...vocal.data, notes: guideBySyllables(vocal.data.notes, vocal.data, sp, looksTagalog(sp)), guided: true } };
+      }
       const ns = usNotesFor(vocalLyrics, vocal.data);
       return ns && ns.length ? { ...vocal, data: { ...vocal.data, notes: ns, chart: true } } : vocal;
     }, [vocal, vocalLyrics]);
