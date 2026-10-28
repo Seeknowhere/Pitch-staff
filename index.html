@@ -1986,7 +1986,7 @@ select.btn { appearance: auto; }
     if (g.some((n) => n.end - n.pos >= 1.5)) tags.push("Long hold");
     return tags;
   }
-  function SongSheet({ notes, spans, phrases, tr, nameOf, names, onNames, cursor, curIdx, playing, onPlayLine, onLoop, loop }) {
+  function SongSheet({ notes, spans, phrases, tr, nameOf, names, onNames, cursor, curIdx, playing, onPlayLine, onLoop, loop, lineInfo, onMe }) {
     const [open, setOpen] = useState(-1);
     const refs = useRef({});
     const short = (m) => nameOf(m).replace(/-?\d+$/, "");
@@ -2027,16 +2027,18 @@ select.btn { appearance: auto; }
       ${!spans.length && html`<p class="text-xs muted" style=${{ margin: 0 }}>No lyrics for this song yet, so lines follow the melody's phrases. Add an .lrc file under Change to see the words.</p>`}
       ${lines.map((l, k) => {
         const isCur = k === cur, isOpen = k === open, tags = lineTags(l, songLo, songHi);
+        const info = lineInfo ? lineInfo(l) : {};
+        const scoreTag = (lbl, v) => (v == null ? null : html`<span class=${"tag tag-" + (v >= 80 ? "good" : v >= 50 ? "warn" : "bad")}>${lbl} ${v}%</span>`);
         const looping = loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05;
         let lo = 999, hi = 0, jump = 0;
         l.notes.forEach((n, j) => { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); if (j) jump = Math.max(jump, Math.abs(n.midi - l.notes[j - 1].midi)); });
         return html`<section key=${k} ref=${(el) => { refs.current[k] = el; }} class="panel" style=${{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10, borderColor: isCur ? "color-mix(in srgb, var(--accent) 55%, transparent)" : undefined, borderRadius: 16 }}>
           <div class="flex items-center gap-2">
             <button class="flex items-center gap-2 min-w-0" style=${{ flex: 1, background: "none", border: 0, padding: 0, color: "inherit", font: "inherit", cursor: "pointer", textAlign: "left" }} onClick=${() => setOpen(isOpen ? -1 : k)} aria-expanded=${isOpen ? "true" : "false"}>
+              ${info.learned && html`<span title="Learned: 85% or more twice in a row" aria-label="Learned" style=${{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center", background: "var(--good)", color: "var(--bg)", fontSize: 11, fontWeight: 800 }}>✓</span>`}
               <span class="mono text-xs muted">${String(k + 1).padStart(2, "0")} · ${fmt(Math.max(0, l.start))}</span>
-              <span class="flex flex-wrap gap-1">${tags.map((t) => html`<span key=${t} class="tag" style=${{ color: "var(--muted)", background: "var(--surface-2)" }}>${t}</span>`)}</span>
+              <span class="flex flex-wrap gap-1">${tags.map((t) => html`<span key=${t} class="tag" style=${{ color: "var(--muted)", background: "var(--surface-2)" }}>${t}</span>`)}${scoreTag("Last", info.last)}${scoreTag("Best", info.best)}</span>
             </button>
-            <button class="round-btn" style=${{ width: 34, height: 34 }} onClick=${() => onPlayLine(l)} aria-label=${"Play line " + (k + 1)}><${Icon} name="play" size=${14} /></button>
           </div>
           ${l.wordNotes
             ? html`<div class="flex flex-wrap" style=${{ gap: "10px 8px" }} onClick=${() => setOpen(isOpen ? -1 : k)}>
@@ -2049,6 +2051,11 @@ select.btn { appearance: auto; }
                 <div class="flex flex-wrap gap-1">${l.idx.map((i) => html`<span key=${i}>${chip(i, short(notes[i].midi))}</span>`)}</div>
                 ${l.text && html`<span style=${{ fontSize: 16, fontWeight: 600, lineHeight: 1.35 }}>${l.text}</span>`}
               </div>`}
+          <div class="flex flex-wrap gap-2">
+            <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => onPlayLine(l)} aria-label=${"Play line " + (k + 1)}>▶ Play</button>
+            ${info.me && html`<button class="btn" style=${{ padding: "5px 10px", fontSize: 12, color: "var(--you)" }} onClick=${() => onMe && onMe(l)} aria-label=${"Hear your last try at line " + (k + 1)}>▶ Me</button>`}
+            <button class="btn" style=${{ padding: "5px 10px", fontSize: 12, color: looping ? "var(--accent)" : undefined, borderColor: looping ? "var(--accent)" : undefined }} onClick=${() => onLoop(l)} aria-label=${"Loop line " + (k + 1)}>↻ ${looping ? "Looping" : "Loop"}</button>
+          </div>
           ${isOpen && l.notes.length > 0 && html`<${React.Fragment}>
             <svg viewBox="0 0 300 50" preserveAspectRatio="none" style=${{ width: "100%", height: 50, display: "block" }} aria-hidden="true">
               ${(() => { const a = l.notes[0].pos, b = Math.max(a + 0.5, l.notes[l.notes.length - 1].end), L = lo - 1, H = hi + 1; return l.notes.map((n, j) => html`<rect key=${j} x=${((300 * (n.pos - a)) / (b - a)).toFixed(1)} y=${(44 - ((n.midi - L) / (H - L)) * 38).toFixed(1)} width=${Math.max(4, (300 * (n.end - n.pos)) / (b - a) - 2).toFixed(1)} height="6" rx="3" fill=${l.idx[j] === curIdx ? "var(--fg)" : "var(--accent)"}></rect>`); })()}
@@ -2056,7 +2063,6 @@ select.btn { appearance: auto; }
             <div class="flex flex-wrap items-center justify-between gap-2 text-xs muted">
               <span>Range ${pretty(midiInfo(lo + tr).label)}–${pretty(midiInfo(hi + tr).label)}</span>
               <span>Biggest jump ${jump} key${jump === 1 ? "" : "s"}</span>
-              <button class="link-btn text-xs" style=${{ textDecoration: "none" }} onClick=${() => onLoop(l)}>${looping ? "Looping…" : "Practise line"}</button>
             </div>
           <//>`}
         </section>`;
@@ -2420,6 +2426,9 @@ select.btn { appearance: auto; }
     const setPlan = (p) => { setPlanState(p); savePlan(songName, p); };
     if (planRun != null && plan) return html`<${PlanFlow} plan=${plan} songTitle=${(songName || "").replace(/\.[^.]+$/, "")} buffer=${orig && orig.buffer} start=${planRun}
       onClose=${() => setPlanRun(null)} onUpdate=${setPlan} onKaraoke=${() => { setPlanRun(null); onGo && onGo("karaoke"); }} />`;
+    // each lyric line maps to the phrase it overlaps most (scores and takes are kept per phrase)
+    const phraseFor = (l) => { let bi = 0, bo = -1; phrases.forEach((p, i) => { const o = Math.min(p.end, l.end) - Math.max(p.start, l.start); if (o > bo) { bo = o; bi = i; } }); return bi; };
+    const lineInfo = (l) => { const pi = phraseFor(l); return { last: mode === "repeat" ? lastScores[pi] : null, best: best[pi], learned: learned.includes(pi), me: mode === "repeat" && !!takesRef.current[pi] }; };
     const weakRepeat = Object.values(lastScores).some((v) => v < 80) && Object.keys(attemptsRef.current).length > 0;
     const lo2 = notes.length ? notes.reduce((m, n) => Math.min(m, n.midi), 999) : 0, hi2 = notes.length ? notes.reduce((m, n) => Math.max(m, n.midi), 0) : 0;
     return html`<div class="flex flex-col gap-4">
@@ -2447,13 +2456,12 @@ select.btn { appearance: auto; }
         <span class="text-sm muted" style=${{ flex: 1 }}>Make a practice plan from your Repeat after me tries.</span>
         <button class="btn btn-primary" style=${{ padding: "6px 12px", fontSize: 13, whiteSpace: "nowrap" }} onClick=${() => { const rows = Object.values(attemptsRef.current).flat(); const p = makePlan(rows, notes, spans, phrases, "repeat"); if (p) { p.fresh = false; setPlan(p); } else flash("Nothing big to fix yet. Nice!"); }}>Make plan</button>
       </div>`}
-      ${view === "sheet" && mode === "play" ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop}
+      ${view === "sheet" && mode === "play" ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }}
         onPlayLine=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.2), l.end + 0.15, () => stopAll()); }}
-        onLoop=${(l) => startLoop(l.start, l.end + 0.3)} />` : html`<${React.Fragment}>
-      <section class="panel p-4 flex flex-col gap-3 min-w-0 coach" ref=${coachRef}>
+        onLoop=${(l) => { if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) { clearLoop(); stopAll(); } else startLoop(l.start, l.end + 0.3); }} />` : html`<${React.Fragment}>
+      <section class="panel p-4 flex flex-col gap-3 min-w-0 coach" ref=${coachRef} style=${view === "sheet" ? { position: "sticky", top: 8, zIndex: 15, boxShadow: "0 8px 24px rgba(0,0,0,.25)" } : undefined}>
         <div class="flex items-center justify-between gap-2 text-xs muted">
           <span>${key ? keyName(key, tr) : ""}${notes.length ? " · " + pretty(midiInfo(lo2 + tr).label) + "–" + pretty(midiInfo(hi2 + tr).label) : ""}</span>
-          <span>${learned.length} of ${phrases.length} learned</span>
         </div>
         ${(() => {
           const showResult = mode === "repeat" && !turn && (scoring || (!playing && attempt && pending && pending.scored && attempt.idx === pending.after));
@@ -2541,43 +2549,14 @@ select.btn { appearance: auto; }
       ${toast && html`<div class="notice" role="status" style=${{ borderColor: "var(--good)", background: "color-mix(in srgb, var(--good) 10%, var(--surface))" }}>${toast}</div>`}
 
         ${view === "sheet"
-          ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop}
-              onPlayLine=${(l) => { clearLoop(); let bi = 0, bo = -1; phrases.forEach((p, i) => { const o = Math.min(p.end, l.end) - Math.max(p.start, l.start); if (o > bo) { bo = o; bi = i; } }); runRepeat(bi); }}
-              onLoop=${(l) => startLoop(l.start, l.end + 0.3)} />`
+          ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }}
+              onPlayLine=${(l) => { clearLoop(); runRepeat(phraseFor(l)); }}
+              onLoop=${(l) => { if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) { clearLoop(); stopAll(); } else startLoop(l.start, l.end + 0.3); }} />`
           : html`<${MelodyMap} data=${data} notes=${notes} tr=${tr} nameOf=${nameOf} phrases=${phrases} lyrics=${spans} loop=${loop} cursor=${cursor} curIdx=${curIdx} onTapNote=${tapNote} onSeek=${seek} themeKey=${themeKey} overlay=${liveLine} />`}
 
       ${view === "chart" && html`<${SongFit} notes=${notes} tr=${tr} phrases=${phrases} linesIn=${linesIn} nameOf=${nameOf} active=${active}
         onPractice=${(ph) => { clearLoop(); if (modeRef.current === "repeat") runRepeat(ph.i); else startPlay(Math.max(0, ph.start - 0.2)); try { coachRef.current && coachRef.current.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (e) {} }}
         onFind=${() => { saveJSON(MATCH_KEY + ".mode", "range"); onGo && onGo("live"); }} />`}
-
-      ${mode === "repeat" && view === "chart" && html`<section class="panel p-4 sm:p-5 flex flex-col gap-3">
-        <div class="flex flex-wrap items-end justify-between gap-2">
-          <h3 class="display text-lg font-bold">Phrases</h3>
-          <span class="text-xs muted">Tick a phrase once you can sing it without the guide.</span>
-        </div>
-        ${phrases.map((ph) => {
-          const words = linesIn(ph.start, ph.end);
-          const done = learned.includes(ph.i);
-          return html`<div key=${ph.i} class=${"phrase" + (curPh === ph.i ? " now" : "") + (done ? " done" : "")}>
-            <span class="ph-num mono">${ph.i + 1}</span>
-            <div class="flex flex-col gap-1 min-w-0">
-              <span class="text-sm font-semibold" style=${{ overflowWrap: "anywhere" }}>${words.length ? words.join(" / ") : ph.notes.slice(0, 8).map((n) => nameOf(n.midi)).join(" ") + (ph.notes.length > 8 ? " …" : "")}</span>
-              <span class="flex flex-wrap items-center gap-1">
-                <span class="mono text-xs muted">${fmt(ph.start)}–${fmt(ph.end)} · ${ph.notes.length} notes</span>
-                ${lastScores[ph.i] != null && html`<span class=${"tag tag-" + (lastScores[ph.i] >= 80 ? "good" : lastScores[ph.i] >= 50 ? "warn" : "bad")}>Last ${lastScores[ph.i]}%</span>`}
-                ${best[ph.i] != null && html`<span class=${"tag tag-" + (best[ph.i] >= 80 ? "good" : best[ph.i] >= 50 ? "warn" : "bad")}>Best ${best[ph.i]}%</span>`}
-                ${ph.tags.map((t) => html`<span key=${t} class="tag" style=${{ color: "var(--muted)", background: "var(--line)" }}>${t}</span>`)}
-              </span>
-            </div>
-            <span class="flex gap-2 flex-wrap justify-end">
-              <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { clearLoop(); if (modeRef.current === "repeat") runRepeat(ph.i); else startPlay(Math.max(0, ph.start - 0.2)); }}>▶ Play</button>
-              ${takesRef.current[ph.i] && html`<button class="btn" style=${{ padding: "5px 10px", fontSize: 12, color: "var(--you)" }} onClick=${() => hearTake(ph.i)} aria-label=${"Hear your last try at phrase " + (ph.i + 1)}>▶ Me</button>`}
-              <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => startLoop(ph.start, ph.end + 0.3)}>↻ Loop</button>
-              <button class=${"btn" + (done ? " btn-primary" : " btn-ghost")} style=${{ padding: "5px 10px", fontSize: 12 }} aria-pressed=${done ? "true" : "false"} onClick=${() => toggleLearned(ph.i)}>${done ? "✓ Learned" : "Mark learned"}</button>
-            </span>
-          </div>`;
-        })}
-      </section>`}
 
       <div class="flex justify-center">
         <button class="btn" onClick=${() => onGo && onGo("karaoke")}>Ready? Try it in Karaoke →</button>
