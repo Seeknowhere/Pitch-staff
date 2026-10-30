@@ -1419,6 +1419,211 @@ select.btn { appearance: auto; }
     </div>`;
   }
 
+  /* ---------- Analyze: a whole-song run, scored line by line ---------- */
+  const RUNS_KEY = "pitchstaff.runs.v1", LASTRUN_KEY = "pitchstaff.lastrun.v1";
+  const loadRuns = (song) => (song ? loadJSON(RUNS_KEY, {})[song] || [] : []);
+  function addRun(song, run) {
+    if (!song) return [];
+    const all = loadJSON(RUNS_KEY, {}), list = [...(all[song] || []), run].slice(-40);
+    all[song] = list; saveJSON(RUNS_KEY, all);
+    return list;
+  }
+  const loadLastRun = (song) => (song ? loadJSON(LASTRUN_KEY, {})[song] || null : null);
+  function saveLastRun(song, run) {
+    if (!song) return;
+    const all = loadJSON(LASTRUN_KEY, {});
+    all[song] = run;
+    const keys = Object.keys(all);
+    if (keys.length > 8) keys.sort((a, b) => (all[a].at || 0) - (all[b].at || 0)).slice(0, keys.length - 8).forEach((k) => delete all[k]);
+    saveJSON(LASTRUN_KEY, all);
+  }
+  // Cut the take around each lyric line (using the whole-song alignment) and score it with the same
+  // scorer Repeat after me uses, so numbers and charts match Practice.
+  function analyzeRun(od, phrases, td, map) {
+    const lines = phrases.map((ph) => {
+      const k0 = Math.max(0, Math.round(ph.start / GRID)), k1 = Math.min(map.length - 1, Math.round(ph.end / GRID));
+      const j0 = map[k0], j1 = map[k1];
+      if (!(j0 >= 0) || !(j1 > j0) || j0 >= td.grid.length) return null;
+      let v = 0;
+      for (let j = j0; j < Math.min(j1, td.grid.length); j++) if (td.grid[j] === td.grid[j]) v++;
+      if (v < 0.15 * (j1 - j0)) return null; // this line wasn't sung
+      const a = Math.max(0, j0 - 30), b = Math.min(td.grid.length, j1 + 30);
+      const her = { grid: td.grid.slice(a, b), loud: td.loud ? td.loud.slice(a, b) : new Float32Array(b - a).fill(-20),
+        notes: td.notes.filter((n) => n.pos >= a * GRID && n.end <= b * GRID).map((n) => ({ ...n, pos: n.pos - a * GRID, end: n.end - a * GRID })), duration: (b - a) * GRID };
+      const res = scorePhrase(ph, her, 1, 0);
+      return { score: res.score, speed: 1, start: ph.start, trace: res.trace, clip: [Math.max(0, j0 * GRID - 0.3), j1 * GRID + 0.4],
+        rows: res.rows.map((r) => ({ p: Math.round(r.n.pos * 1000) / 1000, m: r.n.midi, c: r.missed ? null : r.cents, sc: !!r.sc, sd: r.sd == null ? null : r.sd })) };
+    });
+    const sung = lines.filter(Boolean), tot = sung.reduce((s, r) => s + r.rows.length, 0);
+    return { lines, score: tot ? Math.round(sung.reduce((s, r) => s + r.score * r.rows.length, 0) / tot) : 0 };
+  }
+  // every score a line has had: whole-song runs and Repeat-after-me tries, oldest first
+  function lineHistory(i, runs, tries) {
+    const pts = [];
+    runs.forEach((r) => { const s = r.lines && r.lines[i]; if (s != null) pts.push({ at: r.at, s, kind: "run" }); });
+    const t = tries && tries[i];
+    if (t) {
+      if (t.hist && t.hist.length) t.hist.forEach((h) => pts.push({ at: h.at, s: h.s, kind: "try" }));
+      else if (t.last) pts.push({ at: t.last.at || 0, s: t.last.score, kind: "try" });
+    }
+    return pts.sort((a, b) => a.at - b.at);
+  }
+  const scoreTone = (s) => (s >= 80 ? "good" : s >= 55 ? "warn" : "bad");
+  function Spark({ vals, w = 74, h = 22, tone }) {
+    if (!vals || vals.length < 2) return null;
+    const pts = vals.map((v, i) => [3 + (i * (w - 6)) / (vals.length - 1), h - 3 - (v / 100) * (h - 6)]);
+    const c = "var(--" + (tone || scoreTone(vals[vals.length - 1])) + ")";
+    return html`<svg width=${w} height=${h} viewBox=${"0 0 " + w + " " + h} aria-hidden="true" style=${{ flexShrink: 0 }}>
+      <polyline points=${pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ")} fill="none" stroke=${c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></polyline>
+      <circle cx=${pts[pts.length - 1][0].toFixed(1)} cy=${pts[pts.length - 1][1].toFixed(1)} r="2.6" fill=${c}></circle>
+    </svg>`;
+  }
+  const dayLabel = (at) => { const d = new Date(at), t = new Date(); return d.toDateString() === t.toDateString() ? "today" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); };
+  function HistChart({ pts }) {
+    if (!pts.length) return html`<p class="text-xs muted">No scores yet.</p>`;
+    const W = 300, H = 90, xs = pts.map((_, i) => (pts.length === 1 ? W / 2 : 18 + (i * (W - 36)) / (pts.length - 1))), y = (v) => H - 16 - (v / 100) * (H - 26);
+    let lastDay = "";
+    return html`<svg viewBox=${"0 0 " + W + " " + H} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="Scores for this line over time">
+      <line x1="0" x2=${W} y1=${y(80).toFixed(1)} y2=${y(80).toFixed(1)} stroke="var(--good)" strokeDasharray="3 4" opacity="0.5"></line>
+      <text x=${W - 2} y=${(y(80) - 4).toFixed(1)} fill="var(--good)" fontSize="9" textAnchor="end">good</text>
+      ${pts.length > 1 && html`<polyline points=${pts.map((p, i) => xs[i].toFixed(1) + "," + y(p.s).toFixed(1)).join(" ")} fill="none" stroke="var(--line)" strokeWidth="1.5"></polyline>`}
+      ${pts.map((p, i) => p.kind === "run"
+        ? html`<circle key=${"p" + i} cx=${xs[i].toFixed(1)} cy=${y(p.s).toFixed(1)} r="4.5" fill="var(--accent)"></circle>`
+        : html`<circle key=${"p" + i} cx=${xs[i].toFixed(1)} cy=${y(p.s).toFixed(1)} r="3.5" fill="var(--surface)" stroke="var(--you)" strokeWidth="2"></circle>`)}
+      ${pts.map((p, i) => { const d = dayLabel(p.at); if (d === lastDay) return null; lastDay = d; return html`<text key=${"d" + i} x=${xs[i].toFixed(1)} y=${H - 2} fill="var(--muted)" fontSize="9" textAnchor="middle">${d}</text>`; })}
+    </svg>`;
+  }
+  function SongTrend({ runs }) {
+    const vals = runs.slice(-8);
+    if (vals.length < 2) return html`<p class="text-sm muted">Sing the whole song a couple of times (Karaoke works) to see your trend here.</p>`;
+    const W = 300, H = 110, lo = Math.max(0, Math.min(...vals.map((r) => r.score)) - 15), xs = vals.map((_, i) => 14 + (i * (W - 28)) / (vals.length - 1)), y = (v) => H - 18 - ((v - lo) / (100 - lo)) * (H - 30);
+    const line = vals.map((r, i) => xs[i].toFixed(1) + "," + y(r.score).toFixed(1)).join(" ");
+    return html`<svg viewBox=${"0 0 " + W + " " + H} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="Whole-song score over time">
+      <polygon points=${xs[0].toFixed(1) + "," + (H - 18) + " " + line + " " + xs[xs.length - 1].toFixed(1) + "," + (H - 18)} fill="var(--accent)" opacity="0.12"></polygon>
+      <polyline points=${line} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"></polyline>
+      ${vals.map((r, i) => html`<g key=${i}><circle cx=${xs[i].toFixed(1)} cy=${y(r.score).toFixed(1)} r="3.5" fill="var(--accent)"></circle>
+        <text x=${xs[i].toFixed(1)} y=${(y(r.score) - 8).toFixed(1)} fill="var(--fg)" fontSize="10" textAnchor="middle" fontFamily="var(--font-mono)">${r.score}</text>
+        <text x=${xs[i].toFixed(1)} y=${H - 3} fill="var(--muted)" fontSize="9" textAnchor="middle">${dayLabel(r.at)}</text></g>`)}
+    </svg>`;
+  }
+  function AnalyzeView({ songName, notes, phrases, spans, run, runs, tries, canHear, onHearMe, onHearSong, onPractise, planDraft, onPlan }) {
+    const [view, setView] = useState("run");
+    const [order, setOrder] = useState("weak");
+    const [open, setOpen] = useState(null);
+    useEffect(() => setOpen(null), [run]);
+    const textOf = (ph) => { let best = null, bo = 0; spans.forEach((l) => { const o = Math.min(l.end, ph.end) - Math.max(l.start, ph.start); if (o > bo) { bo = o; best = l; } }); return best ? best.text : ""; };
+    const items = phrases.map((ph, i) => ({ i, ph, text: textOf(ph), rec: run && run.lines ? run.lines[i] : null, hist: lineHistory(i, runs, tries) }));
+    const sungItems = items.filter((x) => x.rec);
+    const shown = order === "weak" ? [...sungItems].sort((a, b) => a.rec.score - b.rec.score) : sungItems;
+    const good = sungItems.filter((x) => x.rec.score >= 80).length, weak = sungItems.filter((x) => x.rec.score < 55).length;
+    const prev = runs.length >= 2 ? runs[runs.length - 2] : null;
+    const diff = run && prev && run.at === runs[runs.length - 1].at ? run.score - prev.score : null;
+    const latest = (x) => (x.hist.length ? x.hist[x.hist.length - 1].s : null);
+    const improved = items.filter((x) => x.hist.length >= 2 && latest(x) - x.hist[0].s >= 10).sort((a, b) => (latest(b) - b.hist[0].s) - (latest(a) - a.hist[0].s)).slice(0, 3);
+    const tricky = items.filter((x) => x.hist.length && latest(x) < 60).sort((a, b) => latest(a) - latest(b)).slice(0, 3);
+    const lineTries = Object.values(tries || {}).reduce((s, t) => s + (t && t.hist ? t.hist.length : t && t.last ? 1 : 0), 0);
+    const linesGood = items.filter((x) => latest(x) != null && latest(x) >= 80).length;
+    const openItem = open != null ? items[open] : null;
+    const openInfo = openItem && openItem.rec ? tryStats(openItem.rec) : null;
+    const runPts = openItem ? openItem.hist.filter((p) => p.kind === "run") : [], tryPts = openItem ? openItem.hist.filter((p) => p.kind === "try") : [];
+    const avg = (a) => Math.round(a.reduce((s, p) => s + p.s, 0) / a.length);
+    const insight = openItem && runPts.length && tryPts.length >= 2 ? (avg(tryPts.slice(-3)) - runPts[runPts.length - 1].s >= 10
+      ? "Better when you practise it alone (" + avg(tryPts.slice(-3)) + "%) than in the full song (" + runPts[runPts.length - 1].s + "%). Try singing the line before it too, so you're ready when it comes."
+      : runPts[runPts.length - 1].s - avg(tryPts.slice(-3)) >= 10 ? "You sing it better in the full song than alone. The music around it helps you find the notes." : null) : null;
+    const prow = (x, a, b) => html`<button key=${x.i} onClick=${() => onPractise(x.ph)} class="flex items-center gap-3" style=${{ width: "100%", padding: "9px 0", borderTop: "1px solid var(--line)", background: "none", border: 0, borderTopStyle: "solid", borderTopWidth: 1, borderTopColor: "var(--line)", color: "var(--fg)", font: "inherit", textAlign: "left", cursor: "pointer" }}>
+      <span class="mono text-xs muted" style=${{ width: 20 }}>${String(x.i + 1).padStart(2, "0")}</span>
+      <span class="text-sm font-semibold" style=${{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>${x.text || "Phrase " + (x.i + 1)}</span>
+      <${Spark} vals=${x.hist.map((p) => p.s)} w=${56} h=${20} />
+      <span class="mono text-xs" style=${{ whiteSpace: "nowrap" }}><span class="muted">${a}</span> → <b style=${{ color: "var(--" + scoreTone(b) + ")" }}>${b}</b></span>
+    </button>`;
+    return html`<div class="flex flex-col gap-3">
+      <div class="seg" role="group" aria-label="Analyze view" style=${{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+        <button aria-pressed=${view === "run" ? "true" : "false"} onClick=${() => setView("run")}>This run</button>
+        <button aria-pressed=${view === "progress" ? "true" : "false"} onClick=${() => setView("progress")}>Progress</button>
+      </div>
+      ${view === "run" && (!run
+        ? html`<p class="text-sm muted">No whole-song run for this song yet. Sing it in Karaoke, or upload a recording above, and every line gets checked here.</p>`
+        : html`<${React.Fragment}>
+          <section class="panel p-4 flex items-center gap-3">
+            <span class="flex flex-col gap-1" style=${{ flex: 1, minWidth: 0 }}>
+              <span class="label">${(run.src || "Your run") + " · " + dayLabel(run.at)}</span>
+              <span class="display font-bold" style=${{ fontSize: 28, color: "var(--" + scoreTone(run.score) + ")" }}>${run.score}%${diff ? html` <span style=${{ fontSize: 14, color: diff > 0 ? "var(--good)" : "var(--muted)" }}>${diff > 0 ? "▲ " + diff : "▼ " + -diff}</span>` : ""}</span>
+              <span class="text-xs muted">${good} of ${sungItems.length} lines good${weak ? " · " + weak + " to work on" : ""}${sungItems.length < phrases.length ? " · " + (phrases.length - sungItems.length) + " not sung" : ""}</span>
+            </span>
+            <${Spark} vals=${runs.map((r) => r.score)} w=${96} h=${40} />
+          </section>
+          ${planDraft && html`<button class="link-btn text-sm" style=${{ alignSelf: "flex-start", textDecoration: "none" }} onClick=${onPlan}>${planDraft.drills.length} drill${planDraft.drills.length > 1 ? "s" : ""} made from this run →</button>`}
+          <div class="flex items-center justify-between">
+            <span class="label">${order === "weak" ? "Work on these first" : "Every line"}</span>
+            <button class="link-btn text-xs" style=${{ textDecoration: "none", color: "var(--muted)" }} onClick=${() => setOrder(order === "weak" ? "song" : "weak")}>${order === "weak" ? "Weakest first ▾" : "Song order ▾"}</button>
+          </div>
+          ${shown.map((x) => { const info = tryStats(x.rec); return html`<section key=${x.i} class="panel" style=${{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, borderColor: x.rec.score < 55 ? "color-mix(in srgb, var(--bad) 40%, var(--line))" : undefined }}>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="mono text-xs muted">${String(x.i + 1).padStart(2, "0")} · ${fmt(x.ph.start)}</span>
+              ${x.ph.tags.slice(0, 2).map((t) => html`<span key=${t} class="text-xs" style=${{ padding: "2px 8px", borderRadius: 999, background: "var(--surface-2)", color: "var(--muted)", fontWeight: 600 }}>${t}</span>`)}
+              <span class="display font-bold" style=${{ marginLeft: "auto", fontSize: 20, color: "var(--" + scoreTone(x.rec.score) + ")" }}>${x.rec.score}%</span>
+            </div>
+            ${x.text && html`<b style=${{ fontSize: 15, lineHeight: 1.3 }}>${x.text}</b>`}
+            <div style=${{ padding: "6px 8px", borderRadius: 10, background: "var(--surface-2)", border: "1px solid var(--line)" }}><${TryChart} rec=${x.rec} notes=${notes} /></div>
+            <div class="flex items-center gap-2"><span class="text-xs" style=${{ flex: 1 }}>${info.tip}</span><${Spark} vals=${x.hist.map((p) => p.s)} /></div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button class="btn" style=${{ padding: "5px 10px", fontSize: 12, color: "var(--you)" }} disabled=${!canHear} onClick=${() => onHearMe(x.rec)} title=${canHear ? "" : "The recording isn't kept after you leave"}>▶ Me</button>
+              <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => onHearSong(x.ph)}>▶ Song</button>
+              <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => setOpen(x.i)}>Details</button>
+              <button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 12, marginLeft: "auto" }} onClick=${() => onPractise(x.ph)}>Practise this line →</button>
+            </div>
+          </section>`; })}
+          ${!canHear && html`<p class="text-xs muted">This is your last saved run. Recordings aren't kept after you leave, but the scores are.</p>`}
+        <//>`)}
+      ${view === "progress" && html`<${React.Fragment}>
+        <section class="panel p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between"><span class="label">Whole song</span>${runs.length >= 2 && html`<span class="text-xs font-semibold" style=${{ color: runs[runs.length - 1].score >= runs[0].score ? "var(--good)" : "var(--muted)" }}>${runs[runs.length - 1].score >= runs[0].score ? "▲ " : "▼ "}${Math.abs(runs[runs.length - 1].score - runs[0].score)} since your first run</span>`}</div>
+          <${SongTrend} runs=${runs} />
+          <div class="grid grid-cols-3 gap-2" style=${{ marginTop: 4 }}>
+            ${[["Runs", runs.length, ""], ["Line tries", lineTries, ""], ["Lines good", linesGood + "/" + phrases.length, "good"]].map(([l, v, t]) => html`<div key=${l} style=${{ padding: "8px 10px", borderRadius: 12, background: "var(--surface-2)" }}><div class="label" style=${{ fontSize: 10 }}>${l}</div><b class="display" style=${{ fontSize: 18, color: t ? "var(--" + t + ")" : undefined }}>${v}</b></div>`)}
+          </div>
+        </section>
+        <section class="panel" style=${{ padding: "12px 14px 4px" }}>
+          <div class="flex justify-between" style=${{ paddingBottom: 6 }}><span class="label">Most improved</span><span class="text-xs muted">first → now</span></div>
+          ${improved.length ? improved.map((x) => prow(x, x.hist[0].s, latest(x))) : html`<p class="text-xs muted" style=${{ paddingBottom: 10 }}>Lines that get 10+ points better show up here.</p>`}
+        </section>
+        <section class="panel" style=${{ padding: "12px 14px 4px" }}>
+          <div class="flex justify-between" style=${{ paddingBottom: 6 }}><span class="label">Still tricky</span>${tricky.length > 0 && html`<button class="link-btn text-xs" style=${{ textDecoration: "none" }} onClick=${() => onPractise(tricky[0].ph)}>Practise ${tricky.length > 1 ? "the first one" : "it"} →</button>`}</div>
+          ${tricky.length ? tricky.map((x) => prow(x, x.hist[0].s, latest(x))) : html`<p class="text-xs muted" style=${{ paddingBottom: 10 }}>No lines under 60% right now. Nice.</p>`}
+        </section>
+      <//>`}
+      <${Sheet} open=${!!(openItem && openInfo)} title=${openItem ? (openItem.text ? "“" + openItem.text + "”" : "Phrase " + (openItem.i + 1)) : ""} onClose=${() => setOpen(null)}>
+        ${openItem && openInfo && html`<div class="flex flex-col gap-3">
+          <span class="text-sm muted">Line ${openItem.i + 1} · this run ${openItem.rec.score}%</span>
+          <div style=${{ padding: 10, borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+            <${TryChart} rec=${openItem.rec} notes=${notes} />
+            <div class="flex gap-4 text-xs muted" style=${{ padding: "4px 4px 0" }}>
+              <span class="flex items-center gap-1"><span style=${{ width: 14, height: 6, borderRadius: 3, background: "var(--accent)", opacity: 0.6 }}></span>Song</span>
+              <span class="flex items-center gap-1"><span style=${{ width: 14, height: 3, borderRadius: 2, background: "var(--you)" }}></span>You</span>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            ${openInfo.stats.map((st) => html`<div key=${st.label} style=${{ padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)" }}>
+              <div class="label" style=${{ fontSize: 10 }}>${st.label}</div>
+              <div class="display font-bold" style=${{ fontSize: 18, color: "var(--" + st.tone + ")" }}>${st.value}</div>
+              <div class="text-xs muted">${st.note}</div>
+            </div>`)}
+          </div>
+          <div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)" }}><span aria-hidden="true">🎯</span><span><b>Tip:</b> ${openInfo.tip}</span></div>
+          <div class="flex flex-col gap-2" style=${{ padding: "12px 14px", borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+            <div class="flex items-center justify-between flex-wrap gap-2"><span class="label">This line over time</span><span class="text-xs muted"><span style=${{ color: "var(--accent)" }}>●</span> whole-song runs  <span style=${{ color: "var(--you)" }}>○</span> practice tries</span></div>
+            <${HistChart} pts=${openItem.hist} />
+            ${insight && html`<span class="text-xs">${insight}</span>`}
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} disabled=${!canHear} onClick=${() => onHearMe(openItem.rec)}>▶ Hear me</button>
+            <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => { setOpen(null); onPractise(openItem.ph); }}>Practise this line →</button>
+          </div>
+        </div>`}
+      <//>
+    </div>`;
+  }
+
   function Analyst({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, incomingTake, lastTake, onUseTake, onPractice, onGo, inst, onPickInst, sync, keyWarn }) {
     const [sub, setSub] = useState("overview");
     const [optOpen, setOptOpen] = useState(false);
@@ -1599,6 +1804,40 @@ select.btn { appearance: auto; }
     const nextLine = cursor != null ? spans.find((l) => l.start > (cursor || 0)) : spans[0];
     const linesIn = (a, b) => spans.filter((l) => l.start < b && l.end > a).map((l) => l.text);
     const planDraft = useMemo(() => (result && orig && orig.data ? makePlan(result.rows, orig.data.notes, spans, buildPhrases(orig.data.notes, spans, orig.data.grid), "take") : null), [result, spans]);
+    // ---- line-by-line runs ----
+    const songName = orig && orig.data ? orig.name : null;
+    const phrasesA = useMemo(() => (orig && orig.data ? buildPhrases(orig.data.notes, spans, orig.data.grid) : []), [orig, spans]);
+    const liveRun = useMemo(() => (ready && alignment ? analyzeRun(orig.data, phrasesA, take.data, alignment.map) : null), [ready, alignment, phrasesA]);
+    const [runs, setRuns] = useState([]);
+    const [lastRun, setLastRun] = useState(null);
+    const [triesA, setTriesA] = useState({});
+    const [runMeta, setRunMeta] = useState(null);
+    useEffect(() => { setRuns(loadRuns(songName)); setLastRun(loadLastRun(songName)); setTriesA(loadTries(songName)); }, [songName, active]);
+    const savedRunFor = useRef(null);
+    useEffect(() => {
+      if (!liveRun || !songName || !take || !take.data) return;
+      const key = songName + "|" + take.name + "|" + take.data.duration;
+      if (savedRunFor.current === key) return;
+      savedRunFor.current = key;
+      const meta = { at: Date.now(), src: /^Karaoke take/.test(take.name) ? "Karaoke run" : "Your recording" };
+      const lines = {};
+      liveRun.lines.forEach((r, i) => { if (r) lines[i] = r.score; });
+      if (!Object.keys(lines).length) return;
+      setRuns(addRun(songName, { ...meta, score: liveRun.score, lines }));
+      const full = { ...meta, score: liveRun.score, lines: liveRun.lines };
+      saveLastRun(songName, full); setLastRun(full); setRunMeta(meta);
+    }, [liveRun, songName]);
+    const shownRun = liveRun && runMeta ? { ...runMeta, score: liveRun.score, lines: liveRun.lines } : lastRun;
+    const playClip = (buffer, a, b) => {
+      if (!buffer) return;
+      stopPlay();
+      const p = play.current;
+      if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
+      if (p.ctx.state === "suspended") p.ctx.resume().catch(() => {});
+      const src = p.ctx.createBufferSource(); src.buffer = buffer; src.connect(p.ctx.destination);
+      const st = Math.max(0, a); src.start(0, st, Math.max(0.2, Math.min(b, buffer.duration) - st));
+      p.origSrc = src; setPlaying(true); src.onended = () => { if (p.origSrc === src) { p.origSrc = null; setPlaying(false); } };
+    };
 
     const offSec = off * GRID;
     const past = orig ? sessions.filter((s) => s.song === orig.name) : sessions;
@@ -1612,8 +1851,8 @@ select.btn { appearance: auto; }
       ${!(take && (take.data || take.busy))
         ? html`<section class="flex flex-col gap-3">
             <div class="empty-hero">
-              <h2 class="display text-2xl font-bold">Check your singing</h2>
-              <p class="muted text-sm">Pick a recording of you singing this song.</p>
+              <h2 class="display text-2xl font-bold">Check a whole-song run</h2>
+              <p class="muted text-sm">Use your last Karaoke take or upload a recording of you singing this song. Every line gets checked, weakest first.</p>
             </div>
             ${lastTake && html`<button class="file-row" style=${{ cursor: "pointer", textAlign: "left", color: "var(--fg)", font: "inherit" }} onClick=${() => onUseTake && onUseTake(lastTake)}>
               <span class="song-ico"><${Icon} name="mic" /></span>
@@ -1634,210 +1873,9 @@ select.btn { appearance: auto; }
             <button class="btn" style=${{ padding: "7px 14px", fontSize: 13 }} onClick=${() => { stopPlay(); setTake(null); }}>Change take</button>
           </div>`}
 
-      ${ready && result && html`<${React.Fragment}>
-        <div class="subtabs" role="tablist" aria-label="Results">
-          ${subs.map(([k, l]) => html`<button key=${k} role="tab" aria-selected=${sub === k ? "true" : "false"} onClick=${() => setSub(k)}>${l}</button>`)}
-        </div>
-
-        ${sub === "overview" && html`<div class="flex flex-col gap-5">
-        <div class="flex flex-wrap items-end justify-between gap-4">
-          <div class="flex items-end gap-3">
-            <span class="display font-bold" style=${{ fontSize: 72, lineHeight: 1, color: "var(--accent)" }}>${result.score}</span>
-            <div class="flex flex-col pb-2">
-              <span class="label">Melody score</span>
-              <span class="text-xs muted">${plain ? "Out of 100: how much of the melody you sang on the right notes" : "Share of the melody you sang on the right note"}</span>
-              ${result.range && !result.range.whole && html`<span class="text-xs muted">Scored ${fmt(result.range.start)}–${fmt(result.range.end)}, the part you sang</span>`}
-            </div>
-          </div>
-          <div class="seg" role="group" aria-label="Wording" hidden>
-            <button aria-pressed=${plain ? "true" : "false"} onClick=${() => choosePlain(true)}>Simple words</button>
-            <button aria-pressed=${plain ? "false" : "true"} onClick=${() => choosePlain(false)}>Detailed</button>
-          </div>
-          <button class="btn" onClick=${saveAttempt} disabled=${saved}>${saved ? "Saved" : "Save score"}</button>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <${Stat} label="In tune" value=${result.inTune + "%"} note=${plain ? "How often you were right on the note" : "Within 25¢ when singing"} tone=${result.inTune >= 60 ? "good" : result.inTune >= 35 ? "warn" : "bad"} />
-          <${Stat} label=${plain ? "High or low?" : "Tendency"} value=${plain ? (Math.abs(result.tendency) < 10 ? "Right in the middle" : (howMuch(result.tendency) === "a tiny bit" ? "A tiny bit " : howMuch(result.tendency)[0].toUpperCase() + howMuch(result.tendency).slice(1) + " ") + (result.tendency > 0 ? "high" : "low")) : (Math.abs(result.tendency) < 8 ? "Centered" : Math.abs(result.tendency) + "¢ " + (result.tendency > 0 ? "sharp" : "flat"))} note=${plain ? "Do you usually sing a bit too high (sharp) or too low (flat)?" : "Average lean"} tone=${Math.abs(result.tendency) < 15 ? "good" : Math.abs(result.tendency) < 30 ? "warn" : "bad"} />
-          ${result.dev
-            ? html`<${Stat} label="Timing" value=${plain ? (result.drift < 80 ? "On time" : result.drift < 200 ? "A little off" : result.drift < 400 ? "Often off the beat" : "Way off the beat") : result.drift < 80 ? "On time" : "~" + result.drift + " ms off"} note=${plain ? "How closely you follow the original's rhythm" : "Typical drift from the original"} tone=${result.drift < 80 ? "good" : result.drift < 200 ? "warn" : "bad"} />`
-            : html`<${Stat} label="Timing" value=${result.timing == null ? "—" : Math.abs(result.timing) < 60 ? "On time" : (plain ? "Usually " + (result.timing > 0 ? "late" : "early") : Math.abs(result.timing) + " ms " + (result.timing > 0 ? "late" : "early"))} note=${plain ? "Do you come in on time?" : "Typical note entry"} tone=${result.timing == null ? null : Math.abs(result.timing) < 60 ? "good" : Math.abs(result.timing) < 150 ? "warn" : "bad"} />`}
-          <${Stat} label=${plain ? "Sung" : "Coverage"} value=${result.coverage + "%"} note=${result.range && !result.range.whole ? (plain ? "How much of that part you sang" : "Of the part you sang") : plain ? "How much of the melody you sang" : "Of the melody you sang"} tone=${result.coverage >= 80 ? "good" : result.coverage >= 50 ? "warn" : "bad"} />
-        </div>
-
-        ${result.coverage < 40 && html`<div class="notice">Your take doesn't line up well with the original. Check that it's the same song section, then try Auto-align or the nudge buttons.</div>`}
-
-        ${result.keyShift !== 0 && html`<div class="notice" style=${{ borderColor: "var(--line)", background: "var(--surface-2)" }}>
-          <b>${plain ? "You sang the whole song " + pianoKeys(Math.abs(result.keyShift)) + " " + (result.keyShift > 0 ? "higher" : "lower") + " than the original (a different key)." : "You sang it " + Math.abs(result.keyShift) + " half step" + (Math.abs(result.keyShift) > 1 ? "s" : "") + " " + (result.keyShift > 0 ? "higher" : "lower") + " than the original."}</b>
-          ${plain ? "That's completely fine. " : ""}You're being scored in your own key. The guide tones play in your key too. Turn off Match my key to score against the original key.
-        </div>`}
-        ${result.octShift !== 0 && html`<p class="text-xs muted">${plain
-          ? "You're singing the same tune " + (Math.abs(result.octShift) > 12 ? Math.abs(result.octShift / 12) + " octaves" : "an octave") + " " + (result.octShift > 0 ? "higher" : "lower") + " than the original, the way women and men often sing the same song. That counts as correct."
-          : "You're singing " + Math.abs(result.octShift / 12) + " octave" + (Math.abs(result.octShift) > 12 ? "s" : "") + " " + (result.octShift > 0 ? "above" : "below") + " the original. That's scored as correct while Ignore octave is on."}</p>`}
-
-        <div class="flex flex-col gap-2">
-          <h3 class="display text-lg font-bold">Work on these</h3>
-          ${result.spots.length === 0
-            ? html`<p class="text-sm muted">No weak phrases stood out. Nice.</p>`
-            : result.spots.map((s) => html`<div key=${s.start} class="spot">
-                <span class="mono text-sm font-semibold">${fmt(s.start)}–${fmt(s.end)}</span>
-                <span class="text-sm">${spotText(s, plain)}${linesIn(s.start, s.end).length > 0 && html`<br /><span class="text-xs muted">“${linesIn(s.start, s.end).slice(0, 2).join(" / ")}”</span>`}</span>
-                <span class="flex gap-2">
-                  <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { clearLoop(); setCursor(s.start); startPlay(s.start); }}>▶ Play</button>
-                  <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => startLoop(s.start, s.end)}>↻ Loop</button>
-                  <button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => { stopPlay(); onPractice && onPractice(s.start, s.end); }}>Practice</button>
-                </span>
-              </div>`)}
-        </div>
-
-        ${planDraft && html`<section class="flex items-center gap-3 flex-wrap" style=${{ padding: 16, borderRadius: 20, background: "radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 60%), var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)" }}>
-          <span class="flex flex-col gap-1" style=${{ flex: "1 1 180px" }}>
-            <b class="display" style=${{ fontSize: 18 }}>${planDraft.drills.length} drill${planDraft.drills.length > 1 ? "s" : ""} made for you</b>
-            <span class="text-sm muted">${planDraft.drills.map((d) => d.title).join(" · ")}. Built from this take, using the song's own notes.</span>
-          </span>
-          <button class="btn btn-primary" style=${{ whiteSpace: "nowrap" }} onClick=${() => { stopPlay(); savePlan(orig.name, planDraft); onGo && onGo("learn"); }}>Practise this →</button>
-        </section>`}
-
-        </div>`}
-
-        ${sub === "chart" && html`<div class="flex flex-col gap-3">
-          <div class="now-row">${curNote ? html`<span class="chip"><span class="muted text-xs">Now</span><b class="mono">${pretty(midiInfo(curNote.n.midi).label)}</b>${!curNote.missed && html`<span class="mono text-xs" style=${{ color: "var(--" + curNote.tone + ")" }}>${signed(curNote.cents)}¢</span>`}</span>` : html`<span class="chip" style=${{ opacity: 0.45 }}><span class="muted text-xs">Now</span><b class="mono">—</b></span>`}</div>
-          ${spans.length > 0 && html`<div class="karaoke chart-lyric" aria-live="polite">
-            <div class="flex items-start justify-between gap-3">
-              <p class="cur">${curLine >= 0 ? spans[curLine].text : "♪"}</p>
-              ${curLine >= 0 && html`<button class="btn btn-ghost" style=${{ padding: "4px 10px", fontSize: 12, flexShrink: 0 }} onClick=${() => startLoop(spans[curLine].start, spans[curLine].end)}>↻ Loop line</button>`}
-            </div>
-            <p class="nxt">${nextLine ? "Next: " + nextLine.text : ""}</p>
-          </div>`}
-          <${RollChart} orig=${orig.data} take=${take.data} result=${result} cursor=${cursor} onSeek=${seek} themeKey=${themeKey} lyrics=${spans} loop=${loop} />
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs muted">
-            <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 6, borderRadius: 3, background: "var(--fg)", opacity: 0.3 }}></span>Original</span>
-            <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--good)" }}></span>You, in tune</span>
-            <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--warn)" }}></span>Slightly off</span>
-            <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--bad)" }}></span>Wrong note</span>
-            ${result.dev && html`<span>Strip at the bottom: bars up mean you're behind the original, down means ahead.</span>`}
-            <span>Tap the chart to jump there.</span>
-          </div>
-        </div>`}
-
-        ${sub === "notes" && html`<div class="flex flex-col gap-3">
-        <div class="flex flex-col gap-2">
-          <h3 class="display text-lg font-bold">Note by note</h3>
-          <div class="note-table">
-            <div class=${"nt-row nt-head label" + (plain ? " nt-plain" : "")}><span>Time</span><span>Original</span><span>You</span>${!plain && html`<span>Off</span>`}<span>${plain ? "How close" : "Verdict"}</span></div>
-            ${result.rows.map((r, i) => html`<button key=${i} class=${"nt-row" + (plain ? " nt-plain" : "") + (curNote === r ? " nt-now" : "")} onClick=${() => seek(r.n.pos)}>
-              <span class="mono text-xs muted">${fmt(r.n.pos)}</span>
-              <span class="font-semibold">${pretty(midiInfo(r.n.midi).label)}</span>
-              <span>${r.missed ? "—" : pretty(midiInfo(r.yours).label)}</span>
-              ${!plain && html`<span class="mono text-xs">${r.missed ? "" : signed(r.cents) + "¢"}</span>`}
-              <span class="text-xs font-semibold" style=${{ color: r.missed ? "var(--muted)" : "var(--" + r.tone + ")" }}>${plain ? plainVerdict(r) : r.missed ? "Missed" : r.verdict}</span>
-            </button>`)}
-          </div>
-        </div>
-        </div>`}
-
-        ${sub === "technique" && html`<div class="flex flex-col gap-3">
-        ${tech.length > 0 && html`<div class="flex flex-col gap-2">
-          <h3 class="display text-lg font-bold">Vocal technique</h3>
-          <p class="text-xs muted">${plain ? "Compared with the original singer, so you're not marked down for copying their style." : "Measured on your take and compared with the original singer, so a style the original uses on purpose doesn't count against you."}</p>
-          <div class="grid gap-3 sm:grid-cols-2">
-            ${tech.map((f0) => { const f = plain ? { ...f0, ...f0.p } : f0; return html`<div key=${f.key} class="tech">
-              <div class="flex items-start justify-between gap-2">
-                <span class="label">${f.title}</span>
-                <span class=${"tag tag-" + f.tone}>${f.tone === "good" ? "Good" : f.tone === "warn" ? "Work on it" : "Focus here"}</span>
-              </div>
-              <span class=${(plain ? "display" : "mono") + " text-lg font-semibold"} style=${{ color: "var(--" + f.tone + ")" }}>${f.value}</span>
-              ${f.compare && html`<span class="text-xs muted">${f.compare}</span>`}
-              <p class="text-sm">${f.detail}</p>
-              ${f.tip && html`<p class="text-sm muted">${f.tip}</p>`}
-              ${f.examples.length > 0 && html`<div class="flex flex-wrap gap-2 items-center">
-                <span class="text-xs muted">Hear it:</span>
-                ${f.examples.map((x, i) => html`<button key=${i} class="btn" style=${{ padding: "4px 9px", fontSize: 12 }} onClick=${() => startLoop(Math.max(0, x - 0.4), x + 2.2)}>↻ ${fmt(x)}</button>`)}
-              </div>`}
-            </div>`; })}
-          </div>
-        </div>`}
-
-          ${tech.length === 0 && html`<p class="text-sm muted">Not enough long notes or phrase starts in this take to judge technique. Try a longer take.</p>`}
-        </div>`}
-
-        ${sub === "history" && html`<div class="flex flex-col gap-3">
-      <section class="flex flex-col gap-3">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 class="display text-lg font-bold">Past attempts</h3>
-            <p class="text-xs muted">${orig && orig.data ? "For " + orig.name : "All songs"} · saved on this device</p>
-          </div>
-          ${sessions.length > 0 && (confirmClear
-            ? html`<button class="btn" style=${{ padding: "6px 10px", fontSize: 13, borderColor: "var(--bad)", color: "var(--bad)" }} onClick=${() => { setSessions([]); setConfirmClear(false); }}>Confirm clear all</button>`
-            : html`<button class="btn btn-ghost" style=${{ padding: "6px 10px", fontSize: 13 }} onClick=${() => { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 4000); }}>Clear</button>`)}
-        </div>
-        ${past.length === 0
-          ? html`<p class="text-sm muted">No saved attempts yet. After a comparison, tap Save this attempt to track your progress on the song.</p>`
-          : html`<div class="flex flex-col">${past.map((s) => html`<div key=${s.id} class="row" style=${{ gridTemplateColumns: "56px 1fr auto" }}>
-              <span class="display font-bold text-xl" style=${{ color: s.score === bestScore ? "var(--accent)" : "var(--fg)" }}>${s.score}</span>
-              <span class="text-xs min-w-0" style=${{ overflowWrap: "anywhere" }}>
-                <span class="font-semibold">${s.take}</span><br />
-                <span class="muted">${orig && orig.data ? "" : s.song + " · "}${new Date(s.t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-              </span>
-              <span class="mono text-xs text-right">${s.inTune}% in tune<br /><span class="muted">${Math.abs(s.tendency) < 8 ? "centered" : Math.abs(s.tendency) + "¢ " + (s.tendency > 0 ? "sharp" : "flat")}</span></span>
-            </div>`)}</div>`}
-      </section>
-        </div>`}
-
-        <div class="playbar">
-          <button class="round-btn primary" onClick=${() => (playing ? stopPlay() : startPlay(cursor || 0))} aria-label=${playing ? "Pause" : "Play"}><${Icon} name=${playing ? "pause" : "play"} /></button>
-          <span class="flex flex-col gap-1 min-w-0" style=${{ flex: 1 }}>
-            <input id="an-seek" type="range" min="0" max=${orig.data.duration} step="0.1" value=${cursor || 0} onChange=${(e) => seek(parseFloat(e.target.value))} aria-label="Position in the song" />
-            <span class="flex justify-between gap-2 mono text-xs muted"><span>${fmt(cursor || 0)}</span><span>${loop ? "Looping " + fmt(loop.a) + "–" + fmt(loop.b) : [mix.t > 0 ? "Me" : null, mix.o > 0 ? "original" : null, (mix.m || 0) > 0 && inst && inst.buffer ? "music" : null, mix.g > 0 ? "guide" : null].filter(Boolean).join(" + ")}</span></span>
-          </span>
-          ${loop && html`<button class="icon-btn" onClick=${clearLoop} aria-label="Stop looping" style=${{ color: "var(--accent)", borderColor: "var(--accent)" }}><${Icon} name="loop" /></button>`}
-          <button class="icon-btn" onClick=${() => setOptOpen(true)} aria-label="Playback and scoring options"><${Icon} name="sliders" /></button>
-        </div>
-
-        <${Sheet} open=${optOpen} title="Analyst options" onClose=${() => setOptOpen(false)}>
-          <div class="opt-group">
-            <span class="label">Listen to</span>
-          <div class="mixer">
-            ${[["o", "Original"], ["g", "Guide notes"], ["t", "My take"], ...(inst && inst.buffer ? [["m", "Music"]] : [])].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"mix-" + k}>
-              <span class="text-xs font-semibold">${l}</span>
-              <input id=${"mix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
-              <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
-            </label>`)}
-          </div>
-          <p class="text-xs muted">Guide notes play the original melody as clean tones${result.shift !== 0 ? " in your key" : ""}. Turn ${inst && inst.buffer ? "Original, Guide and Music" : "Original and Guide"} off to hear only your take at your own pace.${inst && inst.buffer ? " Turn Original off and Music up to hear yourself with the instrumental." : ""}</p>
-          </div>
-          <div class="opt-group">
-            <span class="label">Wording</span>
-            <div class="seg" role="group" aria-label="Wording">
-              <button aria-pressed=${plain ? "true" : "false"} onClick=${() => choosePlain(true)}>Simple words</button>
-              <button aria-pressed=${plain ? "false" : "true"} onClick=${() => choosePlain(false)}>Detailed</button>
-            </div>
-          </div>
-          <div class="opt-group">
-        <div class="flex flex-wrap items-center gap-3 text-sm">
-          <span class="label">Alignment</span>
-          <button class="switch" role="switch" aria-checked=${warp ? "true" : "false"} onClick=${() => { stopPlay(); setWarp((v) => !v); }} style=${{ fontSize: 13 }}>
-            <span class="track"><span class="knob"></span></span>Follow my timing
-          </button>
-          ${warp
-            ? html`<span class="text-xs muted">${alignment.warped ? "Lined up phrase by phrase" : "Couldn't follow your timing on this take, so a fixed offset is used"}</span>`
-            : html`<${React.Fragment}>
-                <button class="btn" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => nudge(-5)}>−0.1 s</button>
-                <span class="mono text-xs">${offSec === 0 ? "Starts together" : "Your take " + (offSec > 0 ? "starts " + offSec.toFixed(2) + " s later" : "starts " + (-offSec).toFixed(2) + " s earlier")}</span>
-                <button class="btn" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => nudge(5)}>+0.1 s</button>
-              <//>`}
-          <button class="btn btn-ghost" style=${{ padding: "5px 10px", fontSize: 13 }} onClick=${() => { stopPlay(); realign(); }}>Auto-align</button>
-          <button class="switch" role="switch" aria-checked=${octaveFree ? "true" : "false"} onClick=${() => setOctaveFree((v) => !v)} style=${{ fontSize: 13 }}>
-            <span class="track"><span class="knob"></span></span>Ignore octave
-          </button>
-          <button class="switch" role="switch" aria-checked=${keyFree ? "true" : "false"} onClick=${() => { stopPlay(); setKeyFree((v) => !v); }} style=${{ fontSize: 13 }}>
-            <span class="track"><span class="knob"></span></span>Match my key
-          </button>
-        </div>
-          </div>
-        <//>
-      <//>`}
+      ${orig && orig.data && html`<${AnalyzeView} songName=${songName} notes=${orig.data.notes} phrases=${phrasesA} spans=${spans} run=${shownRun} runs=${runs} tries=${triesA}
+        canHear=${!!(liveRun && runMeta && take && take.buffer)} onHearMe=${(rec) => take && rec.clip && playClip(take.buffer, rec.clip[0], rec.clip[1])} onHearSong=${(ph) => playClip(orig.buffer, ph.start - 0.3, ph.end + 0.3)}
+        onPractise=${(ph) => { stopPlay(); onPractice && onPractice(ph.start, ph.end, true); }} planDraft=${liveRun ? planDraft : null} onPlan=${() => { stopPlay(); savePlan(orig.name, planDraft); onGo && onGo("learn"); }} />`}
     </div>`;
   }
 
@@ -2410,11 +2448,16 @@ select.btn { appearance: auto; }
     if (g.some((n) => n.end - n.pos >= 1.5)) tags.push("Long hold");
     return tags;
   }
-  function SongSheet({ notes, spans, phrases, tr, nameOf, names, onNames, cursor, curIdx, playing, onPlayLine, onLoop, loop, lineInfo, onMe, you, onAnalyze, onPlayRange, onSaveWords }) {
+  function SongSheet({ notes, spans, phrases, tr, nameOf, names, onNames, cursor, curIdx, playing, onPlayLine, onLoop, loop, lineInfo, onMe, you, onAnalyze, onPlayRange, onSaveWords, scrollLine }) {
     const [open, setOpen] = useState(-1);
     const timeRef = useRef(0);
     timeRef.current = cursor || 0;
     const refs = useRef({});
+    useEffect(() => {
+      if (!scrollLine || scrollLine.k < 0) return;
+      const el = refs.current[scrollLine.k];
+      if (el && el.scrollIntoView) setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
+    }, [scrollLine && scrollLine.id]);
     const short = (m) => nameOf(m).replace(/-?\d+$/, "");
     const tl = useMemo(() => looksTagalog(spans), [spans]);
     const lines = useMemo(() => {
@@ -2722,7 +2765,7 @@ select.btn { appearance: auto; }
       {
         const rec = { score: res.score, at: Date.now(), speed: speedRef.current, start: phrases[idx].start, trace: res.trace,
           rows: res.rows.map((r) => ({ p: Math.round(r.n.pos * 1000) / 1000, m: r.n.midi, c: r.missed ? null : r.cents, sc: !!r.sc, sd: r.sd == null ? null : r.sd })) };
-        setTries((t) => { const cur = t[idx] || {}; const next = { ...t, [idx]: { last: rec, best: !cur.best || rec.score >= cur.best.score ? rec : cur.best } }; saveTries(songName, next); return next; });
+        setTries((t) => { const cur = t[idx] || {}; const hist = [...(cur.hist || []), { at: rec.at, s: rec.score }].slice(-30); const next = { ...t, [idx]: { last: rec, best: !cur.best || rec.score >= cur.best.score ? rec : cur.best, hist } }; saveTries(songName, next); return next; });
       }
       setLastScores((x) => ({ ...x, [idx]: res.score }));
       if (songName) {
@@ -2805,12 +2848,23 @@ select.btn { appearance: auto; }
     const chooseNames = (n) => { setNames(n); saveJSON("pitchstaff.names.v1", n); };
     const toggleMastery = () => { const v = !masteryRef.current; masteryRef.current = v; setMastery(v); saveJSON("pitchstaff.mastery.v1", v); };
     const chooseMoreTime = (v) => { moreTimeRef.current = v; setMoreTime(v); saveJSON("pitchstaff.moretime.v1", v); };
+    const [scrollLine, setScrollLine] = useState(null);
     const startLoop = (a, b) => { const lp = { a: Math.max(0, a), b }; loopRef.current = lp; setLoop(lp); startPlay(Math.max(0, a - 0.3)); };
     const clearLoop = () => { loopRef.current = null; setLoop(null); };
     // sent here from Karaoke or the Analyst: get that part ready to loop
     useEffect(() => {
       if (!focus || !data) return;
       stopAll();
+      if (focus.repeat) {
+        // sent from Analyze: get Repeat after me ready on that line
+        modeRef.current = "repeat"; setModeState("repeat"); chooseView("sheet"); clearLoop();
+        let k = -1, bo = 0;
+        spans.forEach((l, i) => { const o = Math.min(l.end, focus.b) - Math.max(l.start, focus.a); if (o > bo) { bo = o; k = i; } });
+        setScrollLine({ k, id: focus.id }); setCursor(Math.max(0, focus.a - 0.3));
+        setToast("Ready on this line. Tap ▶ Play on it to hear it, then sing it back.");
+        setTimeout(() => setToast(""), 5000);
+        return;
+      }
       modeRef.current = "play"; setModeState("play");
       const lp = { a: Math.max(0, focus.a), b: focus.b };
       loopRef.current = lp; setLoop(lp); setCursor(Math.max(0, focus.a - 0.3));
@@ -2939,7 +2993,7 @@ select.btn { appearance: auto; }
         <span class="text-sm muted" style=${{ flex: 1 }}>Make a practice plan from your Repeat after me tries.</span>
         <button class="btn btn-primary" style=${{ padding: "6px 12px", fontSize: 13, whiteSpace: "nowrap" }} onClick=${() => { const rows = Object.values(attemptsRef.current).flat(); const p = makePlan(rows, notes, spans, phrases, "repeat"); if (p) { p.fresh = false; setPlan(p); } else flash("Nothing big to fix yet. Nice!"); }}>Make plan</button>
       </div>`}
-      ${view === "sheet" && mode === "play" ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords}
+      ${view === "sheet" && mode === "play" ? html`<${SongSheet} scrollLine=${scrollLine} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords}
         onPlayLine=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.2), l.end + 0.15, () => stopAll()); }}
         onLoop=${(l) => { if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) { clearLoop(); stopAll(); } else startLoop(l.start, l.end + 0.3); }} />` : html`<${React.Fragment}>
       <section class="panel p-4 flex flex-col gap-3 min-w-0 coach" ref=${coachRef} style=${view === "sheet" ? { position: "sticky", top: 8, zIndex: 15, boxShadow: "0 8px 24px rgba(0,0,0,.25)" } : undefined}>
@@ -3032,7 +3086,7 @@ select.btn { appearance: auto; }
       ${toast && html`<div class="notice" role="status" style=${{ borderColor: "var(--good)", background: "color-mix(in srgb, var(--good) 10%, var(--surface))" }}>${toast}</div>`}
 
         ${view === "sheet"
-          ? html`<${SongSheet} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords}
+          ? html`<${SongSheet} scrollLine=${scrollLine} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords}
               onPlayLine=${(l) => { clearLoop(); runRepeat(phraseFor(l)); }}
               onLoop=${(l) => { if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) { clearLoop(); stopAll(); } else startLoop(l.start, l.end + 0.3); }} />`
           : html`<${MelodyMap} data=${data} notes=${notes} tr=${tr} nameOf=${nameOf} phrases=${phrases} lyrics=${spans} loop=${loop} cursor=${cursor} curIdx=${curIdx} onTapNote=${tapNote} onSeek=${seek} themeKey=${themeKey} overlay=${liveLine} />`}
@@ -6389,7 +6443,7 @@ select.btn { appearance: auto; }
     }, []);
     const stop = useCallback(() => { stopInput(); pausePlayback(false); }, [stopInput, pausePlayback]);
     const goTab = useCallback((k) => { if (k !== "live") stop(); setTab(k); setVisited((v) => ({ ...v, [k]: true })); try { window.scrollTo(0, 0); } catch (e) {} }, [stop]);
-    const practiceRange = useCallback((a, b) => { setFocus({ a, b, id: Date.now() }); goTab("learn"); }, [goTab]);
+    const practiceRange = useCallback((a, b, repeat) => { setFocus({ a, b, repeat: !!repeat, id: Date.now() }); goTab("learn"); }, [goTab]);
     useEffect(() => stop, [stop]);
 
     // show the note sounding at song time ct, plus the notes before it
