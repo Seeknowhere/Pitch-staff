@@ -1467,8 +1467,22 @@ select.btn { appearance: auto; }
       const her = { grid: td.grid.slice(a, b), loud: td.loud ? td.loud.slice(a, b) : new Float32Array(b - a).fill(-20),
         notes: td.notes.filter((n) => n.pos >= a * GRID && n.end <= b * GRID).map((n) => ({ ...n, pos: n.pos - a * GRID, end: n.end - a * GRID })), duration: (b - a) * GRID };
       const res = scorePhrase(ph, her, 1, 0);
-      return { score: res.score, speed: 1, start: ph.start, trace: res.trace, clip: [Math.max(0, j0 * GRID - 0.3), j1 * GRID + 0.4],
-        rows: res.rows.map((r) => ({ p: Math.round(r.n.pos * 1000) / 1000, m: r.n.midi, c: r.missed ? null : r.cents, sc: !!r.sc, sd: r.sd == null ? null : r.sd })) };
+      // came in early or late: where your voice actually starts near the line's first note (doesn't depend on pitch)
+      let late = null;
+      {
+        const je = map[Math.max(0, Math.round(ph.notes[0].pos / GRID))];
+        // the voice onset (sound after a short silence) closest to where the line should start
+        let bestJ = -1;
+        for (let j = Math.max(4, je - 30); j <= je + 30 && j < td.grid.length; j++) {
+          if (td.grid[j] !== td.grid[j]) continue;
+          let quietBefore = true;
+          for (let q = j - 4; q < j; q++) if (td.grid[q] === td.grid[q]) quietBefore = false;
+          if (quietBefore && (bestJ < 0 || Math.abs(j - je) < Math.abs(bestJ - je))) bestJ = j;
+        }
+        if (bestJ >= 0) late = Math.round((bestJ - je) * GRID * 100) / 100;
+      }
+      return { late, score: res.score, speed: 1, start: ph.start, trace: res.trace, clip: [Math.max(0, j0 * GRID - 0.3), j1 * GRID + 0.4],
+        rows: res.rows.map((r) => ({ p: Math.round(r.n.pos * 1000) / 1000, m: r.n.midi, c: r.missed ? null : r.cents, sc: !!r.sc, sd: r.sd == null ? null : r.sd, dt: r.dt, dr: r.dr || null })), bt: res.bt };
     });
     const sung = lines.filter(Boolean), tot = sung.reduce((s, r) => s + r.rows.length, 0);
     return { lines, score: tot ? Math.round(sung.reduce((s, r) => s + r.score * r.rows.length, 0) / tot) : 0 };
@@ -1526,12 +1540,15 @@ select.btn { appearance: auto; }
     const [view, setView] = useState("run");
     const [order, setOrder] = useState("weak");
     const [open, setOpen] = useState(null);
+    const [dtab, setDtab] = useState("notes");
     useEffect(() => setOpen(null), [run]);
+    useEffect(() => setDtab("notes"), [open]);
     const textOf = (ph) => { let best = null, bo = 0; spans.forEach((l) => { const o = Math.min(l.end, ph.end) - Math.max(l.start, ph.start); if (o > bo) { bo = o; best = l; } }); return best ? best.text : ""; };
     const items = phrases.map((ph, i) => ({ i, ph, text: textOf(ph), rec: run && run.lines ? run.lines[i] : null, hist: lineHistory(i, runs, tries) }));
     const sungItems = items.filter((x) => x.rec);
     const shown = order === "weak" ? [...sungItems].sort((a, b) => a.rec.score - b.rec.score) : sungItems;
     const good = sungItems.filter((x) => x.rec.score >= 80).length, weak = sungItems.filter((x) => x.rec.score < 55).length;
+    const breathLines = sungItems.filter((x) => x.rec.bt && x.rec.bt.breaths.length).length, cutLines = sungItems.filter((x) => x.rec.bt && x.rec.bt.cut).length;
     const prev = runs.length >= 2 ? runs[runs.length - 2] : null;
     const diff = run && prev && run.at === runs[runs.length - 1].at ? run.score - prev.score : null;
     const latest = (x) => (x.hist.length ? x.hist[x.hist.length - 1].s : null);
@@ -1565,6 +1582,7 @@ select.btn { appearance: auto; }
               <span class="label">${(run.src || "Your run") + " · " + dayLabel(run.at)}</span>
               <span class="display font-bold" style=${{ fontSize: 28, color: "var(--" + scoreTone(run.score) + ")" }}>${run.score}%${diff ? html` <span style=${{ fontSize: 14, color: diff > 0 ? "var(--good)" : "var(--muted)" }}>${diff > 0 ? "▲ " + diff : "▼ " + -diff}</span>` : ""}</span>
               <span class="text-xs muted">${good} of ${sungItems.length} lines good${weak ? " · " + weak + " to work on" : ""}${sungItems.length < phrases.length ? " · " + (phrases.length - sungItems.length) + " not sung" : ""}</span>
+              ${(breathLines > 0 || cutLines > 0) && html`<span class="text-xs muted">${[breathLines ? breathLines + " line" + (breathLines > 1 ? "s" : "") + " with a mid-line breath" : "", cutLines ? cutLines + " ended short" : ""].filter(Boolean).join(" · ")}</span>`}
             </span>
             <${Spark} vals=${runs.map((r) => r.score)} w=${96} h=${40} />
           </section>
@@ -1581,6 +1599,7 @@ select.btn { appearance: auto; }
             </div>
             ${x.text && html`<b style=${{ fontSize: 15, lineHeight: 1.3 }}>${x.text}</b>`}
             <div style=${{ padding: "6px 8px", borderRadius: 10, background: "var(--surface-2)", border: "1px solid var(--line)" }}><${TryChart} rec=${x.rec} notes=${notes} /></div>
+            <${BtTags} tags=${btInfo(x.rec, notes, x.text).tags} />
             <div class="flex items-center gap-2"><span class="text-xs" style=${{ flex: 1 }}>${info.tip}</span><${Spark} vals=${x.hist.map((p) => p.s)} /></div>
             <div class="flex items-center gap-2 flex-wrap">
               <button class="btn" style=${{ padding: "5px 10px", fontSize: 12, color: "var(--you)" }} disabled=${!canHear} onClick=${() => onHearMe(x.rec)} title=${canHear ? "" : "The recording isn't kept after you leave"}>▶ Me</button>
@@ -1611,6 +1630,11 @@ select.btn { appearance: auto; }
       <${Sheet} open=${!!(openItem && openInfo)} title=${openItem ? (openItem.text ? "“" + openItem.text + "”" : "Phrase " + (openItem.i + 1)) : ""} onClose=${() => setOpen(null)}>
         ${openItem && openInfo && html`<div class="flex flex-col gap-3">
           <span class="text-sm muted">Line ${openItem.i + 1} · this run ${openItem.rec.score}%</span>
+          <div class="seg" role="group" aria-label="Details" style=${{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1fr" }}>
+            ${[["notes", "Notes"], ["bt", "Breath & timing"], ["time", "Over time"]].map(([k, l]) => html`<button key=${k} aria-pressed=${dtab === k ? "true" : "false"} onClick=${() => setDtab(k)}>${l}</button>`)}
+          </div>
+          ${dtab === "bt" && html`<${BreathTimingView} rec=${openItem.rec} notes=${notes} text=${openItem.text} />`}
+          ${dtab === "notes" && html`<${React.Fragment}>
           <div style=${{ padding: 10, borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
             <${TryChart} rec=${openItem.rec} notes=${notes} />
             <div class="flex gap-4 text-xs muted" style=${{ padding: "4px 4px 0" }}>
@@ -1626,11 +1650,12 @@ select.btn { appearance: auto; }
             </div>`)}
           </div>
           <div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)" }}><span aria-hidden="true">🎯</span><span><b>Tip:</b> ${openInfo.tip}</span></div>
-          <div class="flex flex-col gap-2" style=${{ padding: "12px 14px", borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+          <//>`}
+          ${dtab === "time" && html`<div class="flex flex-col gap-2" style=${{ padding: "12px 14px", borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
             <div class="flex items-center justify-between flex-wrap gap-2"><span class="label">This line over time</span><span class="text-xs muted"><span style=${{ color: "var(--accent)" }}>●</span> whole-song runs  <span style=${{ color: "var(--you)" }}>○</span> practice tries</span></div>
             <${HistChart} pts=${openItem.hist} />
             ${insight && html`<span class="text-xs">${insight}</span>`}
-          </div>
+          </div>`}
           <div class="grid grid-cols-2 gap-2">
             <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} disabled=${!canHear} onClick=${() => onHearMe(openItem.rec)}>▶ Hear me</button>
             <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => { setOpen(null); onPractise(openItem.ph); }}>Practise this line →</button>
@@ -2070,6 +2095,45 @@ select.btn { appearance: auto; }
 
   /* ---------- sing-back scoring (Learn) ---------- */
   const BEST_KEY = "pitchstaff.phrasebest.v1";
+  // Breath and timing for one line: breaths taken where the song keeps going, a last note cut short,
+  // and rushing or dragging (notes drifting earlier or later through the line).
+  function breathTiming(ph, rows, her, map, len, speed) {
+    const b = her.grid, L = her.loud, inB = (j) => j >= 0 && j < b.length;
+    const vl = [];
+    if (L) for (let j = 0; j < b.length; j++) if (b[j] === b[j]) vl.push(L[j]);
+    const thr = vl.length ? median(vl) - 18 : -60;
+    const quiet = (j) => inB(j) && b[j] !== b[j] && (!L || L[j] < thr);
+    const kOf = (t) => Math.max(0, Math.min(len - 1, Math.round((t - ph.start) / speed / GRID)));
+    const breaths = [];
+    for (let i = 0; i + 1 < rows.length; i++) {
+      const n = rows[i].n, m = rows[i + 1].n;
+      if (m.pos - n.end >= 0.15) continue; // the song has a gap here, so a breath is fine
+      const reach = Math.min(15, Math.round((m.end - m.pos) / speed / GRID / 2));
+      const j0 = map[Math.max(0, kOf(n.end) - 3)], j1 = map[Math.min(len - 1, kOf(m.pos) + Math.max(3, reach))];
+      let run = 0, best = 0;
+      for (let j = j0; j <= j1; j++) { if (quiet(j)) { run++; best = Math.max(best, run); } else run = 0; }
+      if (best >= 8) breaths.push({ i, t: n.end, len: Math.round(best * GRID * 100) / 100 });
+    }
+    let cut = null;
+    const lastI = rows.length - 1, last = rows[lastI];
+    if (last && last.n.end - last.n.pos >= 0.35) {
+      // follow your voice from where the last note starts until it stops (gaps of a few frames allowed)
+      const k0 = kOf(last.n.pos), want = Math.round((last.n.end - last.n.pos) / speed / GRID);
+      let jS = map[k0], jl = -1, gap = 0;
+      for (let j = jS - 3; j <= jS + want + 10 && inB(j); j++) {
+        if (b[j] === b[j]) { jl = j; gap = 0; } else if (jl >= 0 && ++gap > 4) break;
+      }
+      const short = jl < 0 ? last.n.end - last.n.pos : Math.max(0, (jS + want - jl) * GRID * speed);
+      if (short >= 0.25) cut = { i: lastI, s: Math.round(short * 10) / 10, t: last.n.end };
+    }
+    const dts = rows.slice(1).filter((r) => !r.missed && r.ok && r.dt != null).map((r) => r.dt); // a late first note is "came in late", not rushing
+    let pace = "steady";
+    if (dts.length >= 6) {
+      const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length, d = avg(dts.slice(-3)) - avg(dts.slice(0, 3));
+      if (d <= -0.15) pace = "rushed"; else if (d >= 0.15) pace = "dragged";
+    }
+    return { breaths, cut, pace };
+  }
   function scorePhrase(ph, her, speed, tr) {
     const len = Math.ceil((ph.end - ph.start) / speed / GRID) + 1;
     const grid = new Float32Array(len).fill(NaN), loud = new Float32Array(len).fill(-100);
@@ -2088,7 +2152,7 @@ select.btn { appearance: auto; }
     const rows = ph.notes.map((n) => {
       const k0 = Math.round((n.pos - ph.start) / speed / GRID), k1 = Math.max(k0 + 1, Math.round((n.end - ph.start) / speed / GRID));
       const cut = Math.floor((k1 - k0) * 0.2), i0 = k0 + cut, i1 = Math.max(i0 + 1, k1 - cut);
-      const ds = [], raw = [];
+      const ds = [], raw = [], lv = [];
       for (let k = i0; k < i1 && k < len; k++) {
         const j = map[k];
         let best = NaN, bd = Infinity;
@@ -2097,9 +2161,20 @@ select.btn { appearance: auto; }
           const d = foldOct(b[q] - (n.midi + tr) - kd.ks);
           if (Math.abs(d) < bd) { bd = Math.abs(d); best = q; }
         }
-        if (best === best) { ds.push(foldOct(b[best] - (n.midi + tr) - kd.ks)); raw.push(b[best]); }
+        if (best === best) { ds.push(foldOct(b[best] - (n.midi + tr) - kd.ks)); raw.push(b[best]); lv.push(her.loud ? her.loud[best] : 0); }
       }
-      if (ds.length < Math.max(1, 0.3 * (i1 - i0))) return { n, missed: true, ok: false };
+      // timing: how far this note's start sits from the line's own average timing (+ late, - early)
+      let dt = len >= 60 && k0 < len ? Math.round((map[k0] - k0 - kd.off) * GRID * speed * 100) / 100 : 0;
+      if (Math.abs(dt) > 0.6) dt = null; // not a believable timing difference: probably matched the wrong spot
+      if (ds.length < Math.max(1, 0.3 * (i1 - i0))) return { n, missed: true, ok: false, dt };
+      // loud/soft drift on long notes: did the pitch sink as you got softer, or rise as you pushed?
+      let dr = null;
+      if ((n.end - n.pos) >= 0.5 && ds.length >= 12 && her.loud) {
+        const t3 = Math.floor(ds.length / 3), avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+        const dL = avg(lv.slice(-t3)) - avg(lv.slice(0, t3)), dP = (avg(ds.slice(-t3)) - avg(ds.slice(0, t3))) * 100;
+        if (dL <= -6 && dP <= -30) dr = { dir: "flat", with: "softer", c: Math.round(dP) };
+        else if (dL >= 6 && dP >= 30) dr = { dir: "sharp", with: "louder", c: Math.round(dP) };
+      }
       const cents = Math.round(median(ds) * 100);
       // did you slide up into it? look at the first moments of the note
       const head = [];
@@ -2112,7 +2187,7 @@ select.btn { appearance: auto; }
       const sc = head.length >= 2 && head[0] <= -0.6 && median(ds) > -0.4;
       let sd = null;
       if (k1 - k0 >= 25 && ds.length > 8) { const mu = ds.reduce((a, x) => a + x, 0) / ds.length; sd = Math.round(Math.sqrt(ds.reduce((a, x) => a + (x - mu) * (x - mu), 0) / ds.length) * 100); }
-      return { n, missed: false, cents, ok: Math.abs(cents) <= 50, sung: Math.round(median(raw)), sc, sd };
+      return { n, missed: false, cents, ok: Math.abs(cents) <= 50, sung: Math.round(median(raw)), sc, sd, dt, dr };
     });
     // your pitch over the phrase, in the song's key, for drawing
     const trace = [];
@@ -2131,6 +2206,8 @@ select.btn { appearance: auto; }
       lean: sung.length ? Math.round(mean(sung.map((r) => r.cents))) : 0,
       keyShift: kd.ks,
       trace,
+      off: kd.off,
+      bt: breathTiming(ph, rows, her, map, len, speed),
     };
   }
 
@@ -2381,7 +2458,66 @@ select.btn { appearance: auto; }
     else tip = "Clean line! Try it without the guide next.";
     return { stats, tip, worst };
   }
-  function TryChart({ rec, notes }) {
+  // words and advice for a line's breath and timing
+  function btInfo(rec, notes, text) {
+    const bt = rec.bt || { breaths: [], cut: null, pace: "steady" };
+    const ph = rec.rows.map((r) => notes.find((n) => Math.abs(n.pos - r.p) < 0.002) || { pos: r.p, end: r.p + 0.2, midi: r.m });
+    const wtn = text ? wordsToNotes(text, ph, looksTagalog([{ text }])) : null;
+    const wordOf = (i) => { const e = wtn && wtn.find((x) => x.idx.includes(i)); return e ? "“" + e.w.replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, "") + "”" : "note " + (i + 1); };
+    const late = rec.late, s1 = (v) => Math.abs(v).toFixed(1).replace(/^0/, "0") + " s";
+    let worst = null;
+    rec.rows.forEach((r, i) => { if (r.c != null && Math.abs(r.c) <= 50 && r.dt != null && Math.abs(r.dt) >= 0.12 && (!worst || Math.abs(r.dt) > Math.abs(worst.dt))) worst = { i, dt: r.dt }; });
+    const timing = late != null
+      ? Math.abs(late) < 0.1 ? { label: "Timing", value: "On time", tone: "good", note: worst ? wordOf(worst.i) + " came " + s1(worst.dt) + (worst.dt > 0 ? " late" : " early") : "came in with the song" }
+        : { label: "Timing", value: late > 0 ? (late > 0.3 ? "Late" : "A bit late") : late < -0.3 ? "Early" : "A bit early", tone: Math.abs(late) > 0.3 ? "bad" : "warn", note: "about " + s1(late) + (late > 0 ? " behind" : " ahead") + (worst ? ", worst on " + wordOf(worst.i) : "") }
+      : worst ? { label: "Timing", value: "Uneven", tone: "warn", note: wordOf(worst.i) + " came " + s1(worst.dt) + (worst.dt > 0 ? " late" : " early") } : { label: "Timing", value: "Even", tone: "good", note: "notes came in evenly" };
+    const pace = { label: "Pace", value: bt.pace === "rushed" ? "Rushed" : bt.pace === "dragged" ? "Dragged" : "Steady", tone: bt.pace === "steady" ? "good" : "warn", note: bt.pace === "rushed" ? "notes got earlier through the line" : bt.pace === "dragged" ? "notes got later through the line" : "didn't rush or drag" };
+    const breath = bt.breaths.length ? { label: "Breath", value: bt.breaths.length > 1 ? bt.breaths.length + " extra breaths" : "Mid-line breath", tone: "warn", note: "you breathed after " + bt.breaths.slice(0, 2).map((x) => wordOf(x.i)).join(" and ") } : { label: "Breath", value: "Good", tone: "good", note: "no extra breaths" };
+    const end = bt.cut ? { label: "Line end", value: "Cut short", tone: "bad", note: "last note " + bt.cut.s.toFixed(1) + " s early" } : { label: "Line end", value: "Held", tone: "good", note: "held to the end" };
+    const dri = rec.rows.findIndex((r) => r.dr);
+    const drift = dri >= 0 ? "You went a little " + rec.rows[dri].dr.dir + " as you got " + rec.rows[dri].dr.with + " on " + wordOf(dri) + "." + (rec.rows[dri].dr.dir === "flat" ? " Keep the breath moving to the very end of the note." : " Ease off a little; pushing makes the pitch climb.") : null;
+    const tip = bt.cut && bt.breaths.length ? "Take a full breath before the line so you don't need one after " + wordOf(bt.breaths[0].i) + ", and hold " + wordOf(bt.cut.i) + " for its whole length."
+      : bt.cut ? "Hold " + wordOf(bt.cut.i) + " for its whole length. Plan your breath before the line so there's air left at the end."
+      : bt.breaths.length ? "Breathe before the line so you don't need one after " + wordOf(bt.breaths[0].i) + ". Sip the air: steady, not all at once."
+      : late != null && late > 0.15 ? "Come in right with the song. Breathe a beat early so you're ready on the first word."
+      : late != null && late < -0.15 ? "You jumped in early. Wait for the beat, then start."
+      : bt.pace === "rushed" ? "Don't rush: tap the beat and let each note take its full time."
+      : bt.pace === "dragged" ? "Keep it moving: you fell behind towards the end. Think ahead to the next word."
+      : "Breath and timing look good on this line.";
+    const tags = [];
+    if (late != null) tags.push(Math.abs(late) < 0.15 ? ["⏱ on time", "good"] : ["⏱ " + s1(late) + (late > 0 ? " late" : " early"), Math.abs(late) > 0.3 ? "bad" : "warn"]);
+    if (bt.pace !== "steady") tags.push([bt.pace === "rushed" ? "🏃 rushed" : "🐢 dragged", "warn"]);
+    if (bt.breaths.length) tags.push(["💨 breath mid-line", "warn"]);
+    if (bt.cut) tags.push(["✂ last note short", "bad"]);
+    return { stats: [timing, pace, breath, end], drift, tip, tags };
+  }
+  function BtTags({ tags }) {
+    if (!tags.length) return null;
+    return html`<div class="flex flex-wrap gap-1">${tags.map(([t, tone]) => html`<span key=${t} class="text-xs" style=${{ padding: "2px 8px", borderRadius: 999, fontWeight: 700, background: "color-mix(in srgb, var(--" + tone + ") 14%, transparent)", color: "var(--" + tone + ")" }}>${t}</span>`)}</div>`;
+  }
+  function BreathTimingView({ rec, notes, text }) {
+    const info = btInfo(rec, notes, text);
+    return html`<div class="flex flex-col gap-3">
+      <div style=${{ padding: 10, borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+        <${TryChart} rec=${rec} notes=${notes} bt=${true} />
+        <div class="flex flex-wrap gap-3 text-xs muted" style=${{ padding: "4px 4px 0" }}>
+          <span class="flex items-center gap-1"><span style=${{ width: 14, height: 6, borderRadius: 3, background: "var(--accent)", opacity: 0.6 }}></span>Song</span>
+          <span class="flex items-center gap-1"><span style=${{ width: 14, height: 3, borderRadius: 2, background: "var(--you)" }}></span>You</span>
+          <span>Bars at the bottom: early ↓ / late ↑ for each note</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        ${info.stats.map((st) => html`<div key=${st.label} style=${{ padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)" }}>
+          <div class="label" style=${{ fontSize: 10 }}>${st.label}</div>
+          <div class="display font-bold" style=${{ fontSize: 17, color: "var(--" + st.tone + ")" }}>${st.value}</div>
+          <div class="text-xs muted">${st.note}</div>
+        </div>`)}
+      </div>
+      ${info.drift && html`<div class="flex items-start gap-2 text-sm" style=${{ padding: "11px 13px", borderRadius: 14, background: "color-mix(in srgb, var(--warn) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--warn) 30%, transparent)" }}><span aria-hidden="true">🔉</span><span><b>Loud / soft:</b> ${info.drift}</span></div>`}
+      <div class="flex items-start gap-2 text-sm" style=${{ padding: "11px 13px", borderRadius: 14, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)" }}><span aria-hidden="true">🎯</span><span><b>Tip:</b> ${info.tip}</span></div>
+    </div>`;
+  }
+  function TryChart({ rec, notes, bt }) {
     const ph = rec.rows.map((r) => notes.find((n) => Math.abs(n.pos - r.p) < 0.002)).filter(Boolean);
     if (!ph.length) return null;
     const t0 = ph[0].pos, t1 = Math.max(t0 + 0.5, ph[ph.length - 1].end), sp = rec.speed || 1, st = rec.start != null ? rec.start : t0;
@@ -2389,12 +2525,21 @@ select.btn { appearance: auto; }
     ph.forEach((n) => { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); });
     (rec.trace || []).forEach((v) => { if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
     lo -= 1; hi += 1;
-    const W = 300, H = 140, x = (t) => 6 + ((t - t0) / (t1 - t0)) * (W - 12), y = (m) => H - 16 - ((m - lo) / (hi - lo)) * (H - 34);
+    const W = 300, H = 140, HB = bt ? H + 30 : H, x = (t) => 6 + ((t - t0) / (t1 - t0)) * (W - 12), y = (m) => H - 16 - ((m - lo) / (hi - lo)) * (H - 34);
     const segs = []; let cur = [];
     (rec.trace || []).forEach((v, k) => { const t = st + k * 2 * GRID * sp; if (v == null || t < t0 - 0.05 || t > t1 + 0.05) { if (cur.length > 1) segs.push(cur); cur = []; } else cur.push(x(t).toFixed(1) + "," + y(v).toFixed(1)); });
     if (cur.length > 1) segs.push(cur);
     const marks = rec.rows.map((r, i) => (r.sc && ph[i] ? ph[i] : null)).filter(Boolean);
-    return html`<svg viewBox=${"0 0 " + W + " " + H} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="Your voice drawn over the song's notes">
+    const B = rec.bt || { breaths: [], cut: null }, base = H + 15;
+    return html`<svg viewBox=${"0 0 " + W + " " + HB} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="Your voice drawn over the song's notes">
+      ${bt && html`<g>
+        <line x1="0" x2=${W} y1=${base} y2=${base} stroke="var(--line)"></line>
+        <text x=${W - 1} y=${base - 9} fill="var(--muted)" fontSize="8" textAnchor="end">late ↑</text><text x=${W - 1} y=${base + 14} fill="var(--muted)" fontSize="8" textAnchor="end">early ↓</text>
+        ${rec.rows.map((r, i) => { const n = ph[i]; if (!n || r.c == null || Math.abs(r.c) > 50 || r.dt == null) return null; const v = Math.max(-0.3, Math.min(0.3, r.dt)), h = Math.max(1.5, (Math.abs(v) / 0.3) * 13), a = Math.abs(r.dt);
+          return html`<rect key=${"t" + i} x=${(x(n.pos) + 1).toFixed(1)} y=${(v > 0 ? base - h : base).toFixed(1)} width=${Math.max(3, Math.min(14, x(n.end) - x(n.pos) - 2)).toFixed(1)} height=${h.toFixed(1)} rx="2" fill=${"var(--" + (a < 0.08 ? "good" : a < 0.18 ? "warn" : "bad") + ")"} opacity="0.85"></rect>`; })}
+        ${B.breaths.map((b, i) => html`<g key=${"b" + i}><line x1=${x(b.t).toFixed(1)} x2=${x(b.t).toFixed(1)} y1="12" y2=${H - 4} stroke="var(--warn)" strokeDasharray="3 3"></line><text x=${x(b.t).toFixed(1)} y="9" fill="var(--warn)" fontSize="9" textAnchor="middle">breath</text></g>`)}
+        ${B.cut && ph[B.cut.i] && html`<g><line x1=${x(Math.max(t0, B.cut.t - B.cut.s)).toFixed(1)} x2=${x(B.cut.t).toFixed(1)} y1=${(y(ph[B.cut.i].midi) + 9).toFixed(1)} y2=${(y(ph[B.cut.i].midi) + 9).toFixed(1)} stroke="var(--bad)" strokeWidth="2.5" strokeLinecap="round"></line><text x=${Math.min(W - 2, x(B.cut.t)).toFixed(1)} y=${Math.min(H - 2, y(ph[B.cut.i].midi) + 21).toFixed(1)} fill="var(--bad)" fontSize="9" textAnchor="end">cut short</text></g>`}
+      </g>`}
       ${ph.map((n, i) => html`<rect key=${"n" + i} x=${x(n.pos).toFixed(1)} y=${(y(n.midi) - 4).toFixed(1)} width=${Math.max(4, x(n.end) - x(n.pos) - 2).toFixed(1)} height="8" rx="4" fill="var(--accent)" opacity="0.55"></rect>`)}
       ${segs.map((pts, i) => html`<polyline key=${"s" + i} points=${pts.join(" ")} fill="none" stroke="var(--you)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"></polyline>`)}
       ${(() => { let lastX = -99; const nm = (m) => pretty(NAMES[((m % 12) + 12) % 12]); return ph.map((n, i) => {
@@ -2415,7 +2560,8 @@ select.btn { appearance: auto; }
   }
   function TryPanel({ open, line, tries, notes, onClose, onHear, canHear, onDrill }) {
     const [which, setWhich] = useState("last");
-    useEffect(() => setWhich("last"), [line]);
+    const [ptab, setPtab] = useState("notes");
+    useEffect(() => { setWhich("last"); setPtab("notes"); }, [line]);
     const rec = tries ? tries[which] || tries.last : null;
     const info = rec ? tryStats(rec) : null;
     return html`<${Sheet} open=${open && !!rec} title=${line ? (line.text ? "“" + line.text + "”" : "Your try") : "Your try"} onClose=${onClose}>
@@ -2425,6 +2571,11 @@ select.btn { appearance: auto; }
           <button aria-pressed=${which === "best" ? "true" : "false"} onClick=${() => setWhich("best")}>Best ${tries.best.score}%</button>
         </div>`}
         ${(!tries.best || tries.best === tries.last) && html`<span class="text-sm muted">Score ${rec.score}%</span>`}
+        ${rec.bt && html`<div class="seg" role="group" aria-label="Details" style=${{ display: "grid", gridTemplateColumns: "1fr 1.4fr" }}>
+          <button aria-pressed=${ptab === "notes" ? "true" : "false"} onClick=${() => setPtab("notes")}>Notes</button>
+          <button aria-pressed=${ptab === "bt" ? "true" : "false"} onClick=${() => setPtab("bt")}>Breath & timing</button>
+        </div>`}
+        ${ptab === "bt" && rec.bt ? html`<${BreathTimingView} rec=${rec} notes=${notes} text=${line && line.text} />` : html`<${React.Fragment}>
         <div style=${{ padding: 10, borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
           <${TryChart} rec=${rec} notes=${notes} />
           <div class="flex gap-4 text-xs muted" style=${{ padding: "4px 4px 0" }}>
@@ -2441,6 +2592,7 @@ select.btn { appearance: auto; }
           </div>`)}
         </div>
         <div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)" }}><span aria-hidden="true">🎯</span><span><b>Tip:</b> ${info.tip}</span></div>
+        <//>`}
         <div class="grid grid-cols-2 gap-2">
           <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${onHear} disabled=${!canHear}>▶ Hear me</button>
           <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => onDrill(rec, info)}>Drill this line</button>
@@ -2824,7 +2976,7 @@ select.btn { appearance: auto; }
       attemptsRef.current[idx] = res.rows;
       {
         const rec = { score: res.score, at: Date.now(), speed: speedRef.current, start: phrases[idx].start, trace: res.trace,
-          rows: res.rows.map((r) => ({ p: Math.round(r.n.pos * 1000) / 1000, m: r.n.midi, c: r.missed ? null : r.cents, sc: !!r.sc, sd: r.sd == null ? null : r.sd })) };
+          rows: res.rows.map((r) => ({ p: Math.round(r.n.pos * 1000) / 1000, m: r.n.midi, c: r.missed ? null : r.cents, sc: !!r.sc, sd: r.sd == null ? null : r.sd, dt: r.dt, dr: r.dr || null })), bt: res.bt };
         setTries((t) => { const cur = t[idx] || {}; const hist = [...(cur.hist || []), { at: rec.at, s: rec.score }].slice(-30); const next = { ...t, [idx]: { last: rec, best: !cur.best || rec.score >= cur.best.score ? rec : cur.best, hist } }; saveTries(songName, next); return next; });
       }
       setLastScores((x) => ({ ...x, [idx]: res.score }));
