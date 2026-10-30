@@ -1343,6 +1343,22 @@ select.btn { appearance: auto; }
         g.lineTo(k * GRID * pps, yOfM(v1 - result.shift));
         g.stroke();
       }
+      // note names: the song's note above its line; where you sang another note, yours in its colour
+      const nm = (m) => pretty(NAMES[((m % 12) + 12) % 12]);
+      g.font = "600 10px " + cssVar("--font-mono"); g.textBaseline = "alphabetic";
+      const rowOf = new Map(result.rows.map((r) => [r.n, r]));
+      let lastX = -99;
+      orig.notes.forEach((n) => {
+        const x = n.pos * pps + 1, r = rowOf.get(n), lab = nm(n.midi);
+        if (x < lastX + 16) return;
+        lastX = x + lab.length * 6;
+        const y = yOfM(n.midi) - 7;
+        g.fillStyle = col.fg; g.globalAlpha = 0.75; g.fillText(lab, x, y);
+        g.globalAlpha = 1;
+        if (!r || r.missed) return;
+        if (r.tone === "warn") { g.fillStyle = col.warn; g.fillText(r.cents > 0 ? "↑" : "↓", x + lab.length * 6 + 1, y); }
+        else if (r.tone === "bad") { const yr = r.yours - result.shift; g.fillStyle = col.bad; g.fillText(nm(yr), x, yOfM(yr) + 15); }
+      });
       if (result.dev) {
         const y0 = MH + 23;
         g.strokeStyle = col.line; g.lineWidth = 1;
@@ -1632,7 +1648,7 @@ select.btn { appearance: auto; }
     const [octaveFree, setOctaveFree] = useState(true);
     const [warp, setWarp] = useState(() => loadJSON("pitchstaff.warp.v1", false));
     useEffect(() => saveJSON("pitchstaff.warp.v1", warp), [warp]);
-    const [keyFree, setKeyFree] = useState(true);
+    const [keyFree, setKeyFree] = useState(false); // judge against the song's own key, like Practice does
     const [ks, setKs] = useState(0);
     const [plain, setPlain] = useState(() => { try { return localStorage.getItem("pitchstaff.plain") !== "0"; } catch (e) { return true; } });
     const choosePlain = (v) => { setPlain(v); try { localStorage.setItem("pitchstaff.plain", v ? "1" : "0"); } catch (e) {} };
@@ -1838,6 +1854,14 @@ select.btn { appearance: auto; }
       const st = Math.max(0, a); src.start(0, st, Math.max(0.2, Math.min(b, buffer.duration) - st));
       p.origSrc = src; setPlaying(true); src.onended = () => { if (p.origSrc === src) { p.origSrc = null; setPlaying(false); } };
     };
+    const hasInst = !!(inst && inst.buffer);
+    const listenMode = mix.t > 0 && mix.o === 0 && !(mix.m > 0) ? "me" : mix.t === 0 ? "song" : "both";
+    const chooseListen = (k) => {
+      const next = k === "me" ? { o: 0, g: 0, t: 1, m: 0 } : k === "song" ? { o: 0.85, g: 0, t: 0, m: hasInst ? 0.8 : 0 } : { o: hasInst ? 0 : 0.45, g: 0, t: 1, m: hasInst ? 0.7 : 0 };
+      mixRef.current = next; setMix(next);
+      try { localStorage.setItem(MIX_KEY, JSON.stringify(next)); } catch (e) {}
+      if (playing) startPlay(cursor || 0);
+    };
 
     const offSec = off * GRID;
     const past = orig ? sessions.filter((s) => s.song === orig.name) : sessions;
@@ -1873,6 +1897,29 @@ select.btn { appearance: auto; }
             <button class="btn" style=${{ padding: "7px 14px", fontSize: 13 }} onClick=${() => { stopPlay(); setTake(null); }}>Change take</button>
           </div>`}
 
+      ${ready && result && html`<section class="flex flex-col gap-2">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <span class="label">Whole take</span>
+          <div class="seg" role="group" aria-label="Listen to">
+            ${[["me", "Me"], ["song", "Song"], ["both", "Both"]].map(([k, l]) => html`<button key=${k} aria-pressed=${listenMode === k ? "true" : "false"} onClick=${() => chooseListen(k)}>${l}</button>`)}
+          </div>
+        </div>
+        <${RollChart} orig=${orig.data} take=${take.data} result=${result} cursor=${cursor} onSeek=${seek} themeKey=${themeKey} lyrics=${spans} loop=${loop} />
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs muted">
+          <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 6, borderRadius: 3, background: "var(--fg)", opacity: 0.3 }}></span>Song</span>
+          <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--good)" }}></span>You, right</span>
+          <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--warn)" }}></span>A bit off ↑↓</span>
+          <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--bad)" }}></span>Other note (yours in red)</span>
+          <span>Tap the chart to jump there.</span>
+        </div>
+        <div class="playbar">
+          <button class="round-btn primary" onClick=${() => (playing ? stopPlay() : startPlay(cursor || 0))} aria-label=${playing ? "Pause" : "Play"}><${Icon} name=${playing ? "pause" : "play"} /></button>
+          <span class="flex flex-col gap-1 min-w-0" style=${{ flex: 1 }}>
+            <input id="an-seek" type="range" min="0" max=${orig.data.duration} step="0.1" value=${cursor || 0} onChange=${(e) => seek(parseFloat(e.target.value))} aria-label="Position in the song" />
+            <span class="flex justify-between gap-2 mono text-xs muted"><span>${fmt(cursor || 0)} / ${fmt(orig.data.duration)}</span><span>${listenMode === "me" ? "Just me" : listenMode === "song" ? "The song" : "Me + the song"}</span></span>
+          </span>
+        </div>
+      </section>`}
       ${orig && orig.data && html`<${AnalyzeView} songName=${songName} notes=${orig.data.notes} phrases=${phrasesA} spans=${spans} run=${shownRun} runs=${runs} tries=${triesA}
         canHear=${!!(liveRun && runMeta && take && take.buffer)} onHearMe=${(rec) => take && rec.clip && playClip(take.buffer, rec.clip[0], rec.clip[1])} onHearSong=${(ph) => playClip(orig.buffer, ph.start - 0.3, ph.end + 0.3)}
         onPractise=${(ph) => { stopPlay(); onPractice && onPractice(ph.start, ph.end, true); }} planDraft=${liveRun ? planDraft : null} onPlan=${() => { stopPlay(); savePlan(orig.name, planDraft); onGo && onGo("learn"); }} />`}
@@ -2342,7 +2389,7 @@ select.btn { appearance: auto; }
     ph.forEach((n) => { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); });
     (rec.trace || []).forEach((v) => { if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
     lo -= 1; hi += 1;
-    const W = 300, H = 130, x = (t) => 6 + ((t - t0) / (t1 - t0)) * (W - 12), y = (m) => H - 10 - ((m - lo) / (hi - lo)) * (H - 20);
+    const W = 300, H = 140, x = (t) => 6 + ((t - t0) / (t1 - t0)) * (W - 12), y = (m) => H - 16 - ((m - lo) / (hi - lo)) * (H - 34);
     const segs = []; let cur = [];
     (rec.trace || []).forEach((v, k) => { const t = st + k * 2 * GRID * sp; if (v == null || t < t0 - 0.05 || t > t1 + 0.05) { if (cur.length > 1) segs.push(cur); cur = []; } else cur.push(x(t).toFixed(1) + "," + y(v).toFixed(1)); });
     if (cur.length > 1) segs.push(cur);
@@ -2350,6 +2397,19 @@ select.btn { appearance: auto; }
     return html`<svg viewBox=${"0 0 " + W + " " + H} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="Your voice drawn over the song's notes">
       ${ph.map((n, i) => html`<rect key=${"n" + i} x=${x(n.pos).toFixed(1)} y=${(y(n.midi) - 4).toFixed(1)} width=${Math.max(4, x(n.end) - x(n.pos) - 2).toFixed(1)} height="8" rx="4" fill="var(--accent)" opacity="0.55"></rect>`)}
       ${segs.map((pts, i) => html`<polyline key=${"s" + i} points=${pts.join(" ")} fill="none" stroke="var(--you)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"></polyline>`)}
+      ${(() => { let lastX = -99; const nm = (m) => pretty(NAMES[((m % 12) + 12) % 12]); return ph.map((n, i) => {
+        const r = rec.rows[i], lab = nm(n.midi), lx = x(n.pos) + 1;
+        if (lx < lastX + 14) return null;
+        lastX = lx + lab.length * 5.5;
+        const off = r && r.c != null && Math.abs(r.c) > 50 ? n.midi + Math.round(r.c / 100) : null;
+        const warn = r && r.c != null && Math.abs(r.c) > 25 && Math.abs(r.c) <= 50;
+        return html`<g key=${"l" + i} fontFamily="var(--font-mono)" fontSize="9" fontWeight="600">
+          <text x=${lx.toFixed(1)} y=${(y(n.midi) - 6).toFixed(1)} fill="var(--fg)" opacity="0.75">${lab}${warn ? "" : ""}</text>
+          ${warn && html`<text x=${(lx + lab.length * 5.5 + 1).toFixed(1)} y=${(y(n.midi) - 6).toFixed(1)} fill="var(--warn)">${r.c > 0 ? "↑" : "↓"}</text>`}
+          ${off != null && html`<text x=${lx.toFixed(1)} y=${Math.min(H - 2, y(off) + 13).toFixed(1)} fill="var(--bad)">${nm(off)}</text>`}
+          ${r && r.c == null && html`<text x=${lx.toFixed(1)} y=${Math.min(H - 2, y(n.midi) + 14).toFixed(1)} fill="var(--muted)">–</text>`}
+        </g>`;
+      }); })()}
       ${marks.map((n, i) => html`<circle key=${"m" + i} cx=${(x(n.pos) + 4).toFixed(1)} cy=${(y(n.midi) + 6).toFixed(1)} r="9" fill="none" stroke="var(--bad)" strokeWidth="2" strokeDasharray="3 3"></circle>`)}
     </svg>`;
   }
