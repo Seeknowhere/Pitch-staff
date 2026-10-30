@@ -1843,11 +1843,83 @@ select.btn { appearance: auto; }
 
 
   /* ---------- shared song pieces ---------- */
+  // Lyrics from another version of the song (or a lyric video with a longer intro) can be early or
+  // late. Try shifts up to ±25 s and keep the one where line starts best match where singing starts
+  // (lyric files usually show a line about half a second before it is sung).
+  function bestLyricShift(lines, notes) {
+    const ts = lines.filter((l) => l.text).map((l) => l.t);
+    if (ts.length < 4 || notes.length < 8) return null;
+    const on = [];
+    notes.forEach((n, i) => { if (!i || n.pos - notes[i - 1].end > 0.3) on.push(n.pos); });
+    if (on.length < 4) return null;
+    const near = (t) => { let lo = 0, hi = on.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (on[m] < t) lo = m + 1; else hi = m; } return Math.min(Math.abs(on[lo] - t), lo ? Math.abs(on[lo - 1] - t) : Infinity); };
+    const score = (off) => ts.reduce((a, t) => { const d = near(t + off + 0.45); return a + Math.exp(-(d * d) / 0.08); }, 0) / ts.length;
+    let best = 0, bs = -1;
+    for (let off = -25; off <= 25.001; off += 0.05) { const s = score(off); if (s > bs) { bs = s; best = off; } }
+    for (let off = best - 0.05; off <= best + 0.05; off += 0.01) { const s = score(off); if (s > bs) { bs = s; best = off; } }
+    const s0 = score(0);
+    return { off: Math.round(best * 100) / 100, score: bs, base: s0, sure: bs >= 0.5 && bs >= s0 + 0.15 };
+  }
+  // a search phrase from a file name: drop the extension, brackets and video/upload words
+  function cleanSongName(name) {
+    let t = (name || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
+    t = t.replace(/\([^)]*\)|\[[^\]]*\]|\{[^}]*\}/g, " ");
+    t = t.replace(/\b(official|lyrics?|lyric video|video|audio|hd|hq|4k|1080p|720p|mp3pm|mp3|karaoke|acapella|a cappella|vocals?|voice only|instrumental|music|letra|remaster(ed)?|sung by|my take|mixed|e major|\d+bpm|\d+hz)\b/gi, " ");
+    return t.replace(/&/g, " ").replace(/\s+-\s+/g, " - ").replace(/[^\p{L}\p{N}'\- ]+/gu, " ").replace(/\s+/g, " ").replace(/(^[\s-]+|[\s-]+$)/g, "").trim();
+  }
+  async function findLyrics(query, dur) {
+    const tries = [query];
+    const parts = query.split(" - ").map((x) => x.trim()).filter(Boolean);
+    if (parts.length > 1) tries.push(parts.join(" "), parts.slice(1).join(" "), parts[0]);
+    const words = query.replace(/ - /g, " ").split(" ");
+    for (let k = words.length - 1; k >= 2; k--) tries.push(words.slice(0, k).join(" "));
+    const seen = new Set();
+    for (const q of tries) {
+      const key = q.toLowerCase(); if (!q || seen.has(key)) continue; seen.add(key);
+      const res = await fetch("https://lrclib.net/api/search?q=" + encodeURIComponent(q));
+      if (!res.ok) throw new Error("lrclib " + res.status);
+      const list = (await res.json()).filter((x) => x && !x.instrumental);
+      if (!list.length) continue;
+      const synced = list.filter((x) => x.syncedLyrics);
+      const rank = (x) => (dur && x.duration ? Math.abs(x.duration - dur) : 30);
+      return { synced: synced.sort((a, b) => rank(a) - rank(b)).slice(0, 5), plainOnly: !synced.length };
+    }
+    return { synced: [], plainOnly: false };
+  }
   function LyricsCard({ orig, lyrics, updateLyrics, count, hint, musicName }) {
+    const [find, setFind] = useState(null); // { q, busy, results, msg }
+    const [lineMsg, setLineMsg] = useState("");
     const [err, setErr] = useState("");
     const ref = useRef(null);
     const origName = orig && orig.data ? orig.name : null;
-    useEffect(() => setErr(""), [origName]);
+    useEffect(() => { setErr(""); setLineMsg(""); setFind(null); }, [origName]);
+    const dur = orig && orig.data ? orig.data.duration : 0;
+    const runFind = async (q) => {
+      if (!q) return;
+      setFind({ q, busy: true });
+      try {
+        const r = await findLyrics(q, dur);
+        setFind({ q, results: r.synced, msg: r.synced.length ? "" : r.plainOnly ? "Found lyrics, but without timing. Tono needs timed lyrics. Try another search or upload a file." : "No timed lyrics found. Try fewer words, like just the title, or upload a file." });
+      } catch (e) { setFind({ q, results: [], msg: "Couldn't reach the lyrics library. Check your connection, or upload a lyrics file." }); }
+    };
+    // search once by itself when a new song has no lyrics yet
+    useEffect(() => { if (origName && !lyrics) runFind(cleanSongName(origName)); }, [origName]);
+    const useFound = (x) => {
+      const lines = parseLrc(x.syncedLyrics || "");
+      if (!lines.filter((l) => l.text).length) { setErr("Those lyrics couldn't be read."); return; }
+      const sh = orig && orig.data ? bestLyricShift(lines, orig.data.notes) : null;
+      const offset = sh && sh.sure ? sh.off : 0;
+      updateLyrics({ name: x.trackName + " · " + x.artistName, lines, offset, from: "lrclib" });
+      setFind(null);
+      setLineMsg(offset ? "Lined up with the singing (shifted " + signed(offset.toFixed(2)) + " s). Nudge below if it's still off." : "Added. Check the timing in Practice; nudge below if it's off.");
+    };
+    const lineUp = () => {
+      if (!lyrics || !orig || !orig.data) return;
+      const sh = bestLyricShift(lyrics.lines, orig.data.notes);
+      if (sh && Math.abs(sh.off - lyrics.offset) < 0.2) setLineMsg("These lyrics already line up with the singing.");
+      else if (sh && sh.sure) { updateLyrics({ ...lyrics, offset: sh.off }); setLineMsg("Lined up with the singing (shift " + signed(sh.off.toFixed(2)) + " s)."); }
+      else setLineMsg("Couldn't find a clear match. These lyrics may be from a different version. Use the shift buttons.");
+    };
     const pickLyrics = async (file) => {
       setErr("");
       let text = "";
@@ -1882,6 +1954,7 @@ select.btn { appearance: auto; }
           : html`<p class="muted text-sm">${origName ? hint : "Upload the song first, then add its lyrics file."}</p>`}
         ${err && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${err}</p>`}
         ${lyrics && orig && orig.data && html`<p class="text-xs muted" style=${{ marginTop: 4 }}><button class="link-btn" onClick=${exportUs}>Save as UltraStar file</button>${expMsg ? " · " + expMsg : " · plays in UltraStar and other karaoke games"}</p>`}
+        ${lyrics && orig && orig.data && !lyrics.us && html`<p class="text-xs muted" style=${{ marginTop: 4 }}><button class="link-btn" onClick=${lineUp}>Line up with the singing</button>${lineMsg ? " · " + lineMsg : ""}</p>`}
       </div>
       ${lyrics && html`<div class="flex items-center gap-2">
         <button class="btn" style=${btn} onClick=${() => updateLyrics({ ...lyrics, offset: Math.round((lyrics.offset - 0.25) * 100) / 100 })}>−0.25 s</button>
@@ -1889,7 +1962,23 @@ select.btn { appearance: auto; }
         <button class="btn" style=${btn} onClick=${() => updateLyrics({ ...lyrics, offset: Math.round((lyrics.offset + 0.25) * 100) / 100 })}>+0.25 s</button>
         <button class="btn btn-ghost" style=${btn} onClick=${() => updateLyrics(null)}>Remove</button>
       </div>`}
-      <button class=${"btn" + (lyrics ? "" : " btn-primary")} disabled=${!origName} onClick=${() => ref.current && ref.current.click()}>${lyrics ? "Replace lyrics" : "Upload lyrics"}</button>
+      <button class=${"btn" + (lyrics ? "" : " btn-primary")} disabled=${!origName} onClick=${() => runFind(find ? find.q : cleanSongName(origName))}>Find lyrics</button>
+      <button class="btn" disabled=${!origName} onClick=${() => ref.current && ref.current.click()}>${lyrics ? "Replace with a file" : "Upload a file"}</button>
+      ${find && html`<div class="flex flex-col gap-2" style=${{ flexBasis: "100%" }}>
+        <form class="flex gap-2" onSubmit=${(e) => { e.preventDefault(); runFind(e.target.elements.q.value.trim()); }}>
+          <input name="q" class="input" aria-label="Search lyrics" defaultValue=${find.q} key=${find.q} style=${{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--fg)" }} />
+          <button class="btn" type="submit" disabled=${find.busy}>${find.busy ? "Searching…" : "Search"}</button>
+        </form>
+        ${find.msg && html`<p class="text-xs muted">${find.msg}</p>`}
+        ${(find.results || []).map((x) => { const d = dur && x.duration ? x.duration - dur : null; return html`<div key=${x.id} class="file-row" style=${{ padding: "8px 12px" }}>
+          <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
+            <span class="text-sm font-semibold" style=${{ overflowWrap: "anywhere" }}>${x.trackName}</span>
+            <span class="text-xs muted" style=${{ overflowWrap: "anywhere" }}>${x.artistName}${x.duration ? " · " + fmt(x.duration) : ""}${d == null ? "" : Math.abs(d) <= 3 ? " · same length as your song" : " · " + Math.round(Math.abs(d)) + " s " + (d > 0 ? "longer" : "shorter")}</span>
+          </span>
+          <button class="btn" style=${{ padding: "5px 12px", fontSize: 13 }} onClick=${() => useFound(x)}>Use</button>
+        </div>`; })}
+        ${!find.busy && html`<p class="text-xs muted">Timed lyrics from <a href="https://lrclib.net" target="_blank" rel="noopener" style=${{ color: "var(--accent)" }}>LRCLIB</a>, a free community library.</p>`}
+      </div>`}
       <input ref=${ref} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) pickLyrics(f); }} />
     </div>`;
   }
