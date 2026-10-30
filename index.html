@@ -4987,6 +4987,12 @@ select.btn { appearance: auto; }
           : html`<button class="btn btn-primary" style=${{ padding: "6px 12px", fontSize: 13 }} onClick=${() => ref.current && ref.current.click()}>Choose song</button>`}
         <input id="setup-song" ref=${ref} type="file" accept="audio/*,.mp3,.m4a,.wav,.flac,.ogg" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onSplit(f); }} />
       </div>
+      ${split && split.done && split.files && html`<div class="flex flex-wrap items-center gap-3 text-xs">
+        <span class="muted">Save the split files:</span>
+        <button class="link-btn text-xs" onClick=${() => saveBlob(split.files.vocal, split.base + " (vocal).wav")}>Save vocal</button>
+        <button class="link-btn text-xs" onClick=${() => saveBlob(split.files.music, split.base + " (music).wav")}>Save music</button>
+        <span class="muted">WAV, about ${Math.max(1, Math.round(split.files.vocal.size / 1e6))} MB each</span>
+      </div>`}
       ${busy && html`<div style=${{ height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden" }}><div style=${{ height: "100%", width: pct + "%", background: "var(--accent)", transition: "width .3s" }}></div></div>`}
     </div>`;
   }
@@ -6222,7 +6228,7 @@ select.btn { appearance: auto; }
         const vf = wavFile(r.vocals, r.sr, base + ".wav"), mf = wavFile(r.inst, r.sr, base + " (music).wav");
         // both halves come from the same file, so they are already in time
         const all = loadJSON(KARA_SYNC_KEY, {}); all[vf.name] = { inst: mf.name, sync: 0, split: true }; saveJSON(KARA_SYNC_KEY, all);
-        setSplit({ name: file.name, done: true });
+        setSplit({ name: file.name, done: true, base, files: { vocal: vf, music: mf } });
         setSampleName(null); setPickStay(true);
         await Promise.all([pickVocal(vf), pickMusic(mf)]);
       } catch (e) {
