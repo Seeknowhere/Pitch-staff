@@ -1,0 +1,8 @@
+Song splitting in Tono
+
+Model: UVR_MDXNET_KARA_2.onnx (MDX-Net) from Ultimate Vocal Remover
+https://github.com/Anjok07/ultimatevocalremovergui
+UVR is MIT-licensed. UVR asks third-party apps using its models to credit UVR and its developers: thank you.
+
+Runtime: ONNX Runtime Web (MIT), see ort/LICENSE-onnxruntime.txt
+mdx.js: Tono's own JavaScript port of the MDX-Net pre/post-processing (STFT/ISTFT and chunking).

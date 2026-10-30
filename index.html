@@ -3629,6 +3629,10 @@ select.btn { appearance: auto; }
         </button>
         <p class="text-xs muted">Experimental. Uses Spotify's Basic Pitch model on this device to split notes where it hears a new syllable starting on the same pitch. It helps a little with fast lines, can add a few extra notes, takes a while on slower phones, and is a one-time 2.5 MB download. The result is saved per song. Applies to the next song you load.</p>
       </div>
+      <div class="flex flex-col gap-1">
+        <span class="label">Credits</span>
+        <p class="text-xs muted">Splitting songs into voice and music uses an MDX-Net model from <a href="https://github.com/Anjok07/ultimatevocalremovergui" target="_blank" rel="noopener" style=${{ color: "var(--accent)" }}>Ultimate Vocal Remover</a> (MIT licence), run with ONNX Runtime. Thanks to UVR and its developers.</p>
+      </div>
     </section>`;
   }
 
@@ -4869,6 +4873,78 @@ select.btn { appearance: auto; }
       </div>
     </div>`;
   }
+  /* ---------- split a normal song into vocal + music, on the device ---------- */
+  // Uses the MDX-Net karaoke model from the Ultimate Vocal Remover project, run with ONNX Runtime
+  // in a worker (graphics chip via WebGPU when the browser allows, otherwise the CPU).
+  const SEP_BASE = "sep/", SEP_MODEL = "UVR_MDXNET_KARA_2.onnx", SEP_MODEL_BYTES = 52786726;
+  let sepCheck = null;
+  function canSplitSongs() {
+    if (!sepCheck) sepCheck = /^https?:$/.test(location.protocol) && typeof Worker !== "undefined" ? fetch(SEP_BASE + "sep-worker.js", { method: "HEAD" }).then((r) => r.ok).catch(() => false) : Promise.resolve(false);
+    return sepCheck;
+  }
+  let gpuCheck = null;
+  function hasWebGPU() {
+    if (!gpuCheck) gpuCheck = (async () => { try { return !!(navigator.gpu && (await navigator.gpu.requestAdapter())); } catch (e) { return false; } })();
+    return gpuCheck;
+  }
+  async function sepModel(onBytes) {
+    const url = SEP_BASE + SEP_MODEL;
+    let cache = null;
+    try { cache = await caches.open("tono-models-v1"); const hit = await cache.match(url); if (hit) return await hit.arrayBuffer(); } catch (e) { cache = null; }
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Couldn't download the splitting model.");
+    const total = +res.headers.get("content-length") || SEP_MODEL_BYTES, rd = res.body.getReader(), parts = [];
+    let got = 0;
+    for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; onBytes(got, total); }
+    const out = new Uint8Array(got); let o = 0;
+    parts.forEach((p) => { out.set(p, o); o += p.length; });
+    if (cache) cache.put(url, new Response(out.slice(0), { headers: { "content-type": "application/octet-stream" } })).catch(() => {});
+    return out.buffer;
+  }
+  const splitter = { worker: null, cancel: null };
+  // returns { vocals: [L, R], inst: [L, R], sr }
+  async function splitSong(file, onStage) {
+    const Ctx = window.AudioContext || window.webkitAudioContext, ctx = new Ctx({ sampleRate: 44100 });
+    let audio;
+    try { audio = await ctx.decodeAudioData(await file.arrayBuffer()); } finally { if (ctx.close) ctx.close().catch(() => {}); }
+    const gpu = await hasWebGPU();
+    const model = await sepModel((got, total) => onStage({ stage: "model", p: got / total }));
+    if (splitter.worker) splitter.worker.terminate();
+    const w = (splitter.worker = new Worker(SEP_BASE + "sep-worker.js"));
+    const call = (msg, transfer) => new Promise((resolve, reject) => {
+      splitter.cancel = () => reject(new Error("cancelled"));
+      w.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === "progress") onStage({ stage: "split", p: m.p });
+        else if (m.type === "error") reject(new Error(m.text));
+        else if (m.type !== "log") resolve(m);
+      };
+      w.onerror = () => reject(new Error("The splitter stopped unexpectedly."));
+      w.postMessage(msg, transfer || []);
+    });
+    try {
+      onStage({ stage: "start", p: 0 });
+      const r = await call({ type: "load", model, cpuOnly: !gpu }, [model]);
+      onStage({ stage: "split", p: 0, backend: r.backend });
+      const L = audio.getChannelData(0).slice(), R = (audio.numberOfChannels > 1 ? audio.getChannelData(1) : audio.getChannelData(0)).slice();
+      const d = await call({ type: "run", L, R }, [L.buffer, R.buffer]);
+      return { vocals: [d.bufs[0], d.bufs[1]], inst: [d.bufs[2], d.bufs[3]], sr: 44100 };
+    } finally { w.terminate(); if (splitter.worker === w) splitter.worker = null; splitter.cancel = null; }
+  }
+  function cancelSplit() { if (splitter.worker) splitter.worker.terminate(); splitter.worker = null; if (splitter.cancel) splitter.cancel(); }
+  function wavFile(chs, sr, name) {
+    const n = chs[0].length, b = new ArrayBuffer(44 + n * 4), v = new DataView(b);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, "RIFF"); v.setUint32(4, 36 + n * 4, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 4, true);
+    const a = chs[0], c = chs[1];
+    for (let i = 0, o = 44; i < n; i++, o += 4) {
+      v.setInt16(o, Math.max(-1, Math.min(1, a[i])) * 32767, true);
+      v.setInt16(o + 2, Math.max(-1, Math.min(1, c[i])) * 32767, true);
+    }
+    return new File([b], name, { type: "audio/wav" });
+  }
+
   function FileRow({ id, title, sub, slot, onPick, disabled }) {
     const ref = useRef(null);
     const ready = slot && (slot.data || slot.buffer);
@@ -4887,17 +4963,48 @@ select.btn { appearance: auto; }
     return vocal && vocal.name ? vocal.name.replace(/\.[^.]+$/, "") : "";
   }
   // the song picker: sample songs first, then your own files
-  function SongSetup({ vocal, music, lyricsEntry, updateLyrics, onPickVocal, onPickMusic, onLoadSample, sampleName, sync, onSync, onAutoSync, syncMsg, keyWarn, onDone, onContinue }) {
+  function SplitRow({ split, onSplit, onCancel }) {
+    const ref = useRef(null);
+    const [gpu, setGpu] = useState(null);
+    useEffect(() => { hasWebGPU().then(setGpu); }, []);
+    const busy = split && !split.error && !split.done;
+    const pct = busy ? Math.round((split.p || 0) * 100) : 0;
+    const left = busy && split.stage === "split" && split.p > 0.02 && split.t0 ? Math.max(0, ((Date.now() - split.t0) / 1000) * (1 / split.p - 1)) : null;
+    const msg = !split ? (gpu === false ? "Any song file with singing and music. This device can't use its graphics chip, so splitting may take 10+ minutes." : "Any song file with singing and music. Tono splits the voice from the music on your device, about a minute on most laptops.")
+      : split.error ? split.error
+      : split.done ? "Split " + split.name + "."
+      : split.stage === "decode" ? "Reading " + split.name + "…"
+      : split.stage === "model" ? "Downloading the splitter (once): " + pct + "%"
+      : split.stage === "start" ? "Starting the splitter…"
+      : "Splitting voice from music… " + pct + "%" + (left != null ? " · about " + (left < 60 ? Math.ceil(left / 5) * 5 + " s" : Math.ceil(left / 60) + " min") + " left" : "");
+    return html`<div class="file-row" style=${{ flexDirection: "column", alignItems: "stretch", gap: 10, borderColor: "color-mix(in srgb, var(--accent) 45%, var(--line))" }}>
+      <div class="flex items-center gap-3">
+        <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
+          <span class="font-semibold text-sm">Load a song</span>
+          <span class="text-xs muted" role="status" style=${{ overflowWrap: "anywhere", color: split && split.error ? "var(--warn)" : undefined }}>${msg}</span>
+        </span>
+        ${busy ? html`<button class="btn" style=${{ padding: "6px 12px", fontSize: 13 }} onClick=${onCancel}>Stop</button>`
+          : html`<button class="btn btn-primary" style=${{ padding: "6px 12px", fontSize: 13 }} onClick=${() => ref.current && ref.current.click()}>Choose song</button>`}
+        <input id="setup-song" ref=${ref} type="file" accept="audio/*,.mp3,.m4a,.wav,.flac,.ogg" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onSplit(f); }} />
+      </div>
+      ${busy && html`<div style=${{ height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden" }}><div style=${{ height: "100%", width: pct + "%", background: "var(--accent)", transition: "width .3s" }}></div></div>`}
+    </div>`;
+  }
+  function SongSetup({ vocal, music, lyricsEntry, updateLyrics, onPickVocal, onPickMusic, onLoadSample, sampleName, sync, onSync, onAutoSync, syncMsg, keyWarn, onDone, onContinue, canSplit, split, onSplit, onCancelSplit }) {
     const ready = vocal && vocal.data;
     const spans = ready ? lyricSpans(lyricsEntry, vocal.data.duration) : [];
     const small = { padding: "5px 10px", fontSize: 13 };
     return html`<div class="flex flex-col gap-5">
+      ${canSplit && html`<section class="flex flex-col gap-2">
+        <span class="label">Your song</span>
+        <${SplitRow} split=${split} onSplit=${onSplit} onCancel=${onCancelSplit} />
+      </section>`}
       <section class="flex flex-col gap-2">
         <span class="label">Sample songs</span>
         <${SongLibrary} inline=${true} onLoad=${async (x) => { await onLoadSample(x); onDone && onDone(); }} current=${ready ? sampleName : null} />
       </section>
       <section class="flex flex-col gap-2">
-        <span class="label">Or use your own files</span>
+        <span class="label">${canSplit ? "Or upload the vocal and music separately" : "Or use your own files"}</span>
         <div class="file-list">
           <${FileRow} id="setup-vocal" title="Vocal (acapella)" sub="Needed. The singer's voice on its own." slot=${vocal} onPick=${onPickVocal} />
           <${FileRow} id="setup-music" title="Instrumental" sub="For Karaoke. The song without vocals." slot=${music} onPick=${onPickMusic} disabled=${!ready} />
@@ -6074,7 +6181,7 @@ select.btn { appearance: auto; }
     const [msync, setMsync] = useState({ sync: 0, msg: "", keyWarn: 0 });
     const saveMusicSync = useCallback((v, msg) => {
       setMsync((x) => ({ ...x, sync: v, msg: msg || "" }));
-      if (vocalName && music && music.buffer) { const all = loadJSON(KARA_SYNC_KEY, {}); all[vocalName] = { inst: music.name, sync: v }; saveJSON(KARA_SYNC_KEY, all); }
+      if (vocalName && music && music.buffer) { const all = loadJSON(KARA_SYNC_KEY, {}); const old = all[vocalName]; all[vocalName] = { ...(old && old.inst === music.name ? old : {}), inst: music.name, sync: v }; saveJSON(KARA_SYNC_KEY, all); }
     }, [vocalName, music]);
     const autoMusicSync = useCallback(() => {
       if (!vocal || !vocal.buffer || !music || !music.onset) return;
@@ -6085,8 +6192,10 @@ select.btn { appearance: auto; }
     useEffect(() => {
       if (!vocal || !vocal.data || !music || !music.buffer) return;
       const saved = loadJSON(KARA_SYNC_KEY, {})[vocal.name];
-      setMsync((x) => ({ ...x, keyWarn: music.chroma ? keyGap(vocal.data.notes, music.chroma) : 0 }));
-      if (saved && saved.inst === music.name) setMsync((x) => ({ ...x, sync: saved.sync, msg: "Using the timing you saved for this song." }));
+      // a song Tono split itself can't be in two keys, so skip the clash check there
+      const sameSource = saved && saved.split && saved.inst === music.name;
+      setMsync((x) => ({ ...x, keyWarn: music.chroma && !sameSource ? keyGap(vocal.data.notes, music.chroma) : 0 }));
+      if (saved && saved.inst === music.name) setMsync((x) => ({ ...x, sync: saved.sync, msg: sameSource ? "Split from the same song, so already in time." : "Using the timing you saved for this song." }));
       else autoMusicSync();
     }, [vocal, music]);
     const [sampleName, setSampleName] = useState(null);
@@ -6100,6 +6209,28 @@ select.btn { appearance: auto; }
       if (inf) jobs.push(pickMusic(inf));
       await Promise.all(jobs);
     }, [pickVocal, pickMusic]);
+    const [canSplit, setCanSplit] = useState(false);
+    useEffect(() => { canSplitSongs().then(setCanSplit); }, []);
+    const [split, setSplit] = useState(null);
+    const splitJob = useRef(0);
+    const onSplit = useCallback(async (file) => {
+      const job = ++splitJob.current, base = file.name.replace(/\.[^.]+$/, "");
+      setSplit({ name: file.name, stage: "decode", p: 0 });
+      try {
+        const r = await splitSong(file, (st) => { if (splitJob.current === job) setSplit((x) => ({ ...x, ...st, t0: st.stage === "split" && !(x && x.stage === "split") ? Date.now() : x && x.t0 })); });
+        if (splitJob.current !== job) return;
+        const vf = wavFile(r.vocals, r.sr, base + ".wav"), mf = wavFile(r.inst, r.sr, base + " (music).wav");
+        // both halves come from the same file, so they are already in time
+        const all = loadJSON(KARA_SYNC_KEY, {}); all[vf.name] = { inst: mf.name, sync: 0, split: true }; saveJSON(KARA_SYNC_KEY, all);
+        setSplit({ name: file.name, done: true });
+        setSampleName(null); setPickStay(true);
+        await Promise.all([pickVocal(vf), pickMusic(mf)]);
+      } catch (e) {
+        if (splitJob.current !== job) return;
+        setSplit(e.message === "cancelled" ? null : { name: file.name, error: (e && e.name === "EncodingError" ? "That file couldn't be read as audio." : "Couldn't split this song: " + (e.message || e)) + " You can upload the vocal and music separately below." });
+      }
+    }, [pickVocal, pickMusic]);
+    const onCancelSplit = useCallback(() => { splitJob.current++; cancelSplit(); setSplit(null); }, []);
     const musicProps = { inst: music, onPickInst: pickMusic, sync: msync.sync, syncMsg: msync.msg, keyWarn: msync.keyWarn, onSync: saveMusicSync, onAutoSync: autoMusicSync };
     const [mode, setMode] = useState("idle"); // idle | mic | file
     const [error, setError] = useState("");
@@ -6454,13 +6585,13 @@ select.btn { appearance: auto; }
           ${vocal && vocal.busy && html`<p class="text-sm" style=${{ color: "var(--accent)" }}>Analyzing ${vocal.name}… ${Math.round((vocal.progress || 0) * 100)}%</p>`}
         </div>
         <${SongSetup} vocal=${vocalEff} music=${music} lyricsEntry=${vocalLyrics} updateLyrics=${updateVocalLyrics} onPickVocal=${(f) => { setPickStay(true); setSampleName(null); pickVocal(f); }} onPickMusic=${pickMusic}
-          onLoadSample=${loadSample} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn}
+          onLoadSample=${loadSample} canSplit=${canSplit} split=${split} onSplit=${onSplit} onCancelSplit=${onCancelSplit} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn}
           onDone=${() => setPickStay(false)} onContinue=${() => setPickStay(false)} />
       </section>`}
 
       <${Sheet} open=${setupOpen} title="Song" onClose=${() => setSetupOpen(false)}>
         <${SongSetup} vocal=${vocalEff} music=${music} lyricsEntry=${vocalLyrics} updateLyrics=${updateVocalLyrics} onPickVocal=${(f) => { setSampleName(null); pickVocal(f); }} onPickMusic=${pickMusic}
-          onLoadSample=${loadSample} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn} onDone=${() => setSetupOpen(false)} />
+          onLoadSample=${loadSample} canSplit=${canSplit} split=${split} onSplit=${onSplit} onCancelSplit=${onCancelSplit} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn} onDone=${() => setSetupOpen(false)} />
       <//>
 
       ${tab === "lessons" && html`<${Lessons} active=${tab === "lessons"} onGo=${goTab} onFocus=${setLessonFocus} />`}

@@ -58,7 +58,7 @@ $("file").onchange = async (e) => {
 };
 async function getModel() {
   if (modelBuf) return modelBuf;
-  const res = await fetch("UVR_MDXNET_KARA_2.onnx"), total = +res.headers.get("content-length") || 52786726;
+  const res = await fetch("../sep/UVR_MDXNET_KARA_2.onnx"), total = +res.headers.get("content-length") || 52786726;
   const rd = res.body.getReader(), parts = []; let got = 0;
   for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length;
     $("status").textContent = "Downloading the AI model (once): " + Math.round(got / 1e6) + " of " + Math.round(total / 1e6) + " MB";
@@ -94,7 +94,7 @@ async function run(secs) {
     if (!worker || loadedFor !== cpuOnly) {
       if (worker) worker.terminate();
       const model = await getModel();
-      worker = new Worker("sep-worker.js");
+      worker = new Worker("../sep/sep-worker.js");
       $("status").textContent = "Starting the AI model…"; $("bar").style.width = "0%";
       const r = await call({ type: "load", model: model.slice(0), cpuOnly });
       backend = r.backend === "webgpu" ? "graphics chip" : "CPU (" + r.threads + " core" + (r.threads > 1 ? "s" : "") + ")";
