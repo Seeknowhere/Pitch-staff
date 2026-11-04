@@ -2,83 +2,16 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import htm from 'htm';
 import { Stars } from './components/Stars.js';
+import { Ring } from './components/Ring.js';
+import { loadJSON, saveJSON } from "./lib/storage.js";
+import { detectPitch} from "./lib/pitch.js";
+import { SETTINGS, SETTINGS_KEY, saveSettings, micGate, getMicStream} from "./lib/settings.js";
+import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
 
 (function () {
   const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
   const html = htm.bind(React.createElement);
 
-  /* ---------- music helpers ---------- */
-  const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  const LETTERS = "CDEFGAB";
-  function midiInfo(m) {
-    const name = NAMES[((m % 12) + 12) % 12];
-    const octave = Math.floor(m / 12) - 1;
-    const letter = name[0];
-    return { name, letter, sharp: name.length > 1, octave, label: name + octave, step: octave * 7 + LETTERS.indexOf(letter) };
-  }
-  /* ---------- app-wide settings ---------- */
-  const SETTINGS_KEY = "pitchstaff.settings.v1";
-  const SETTINGS = (() => {
-    const d = { a4: 440, sens: 4, micId: "", ai: false };
-    try { return { ...d, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {}) }; } catch (e) { return d; }
-  })();
-  function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ a4: SETTINGS.a4, sens: SETTINGS.sens, micId: SETTINGS.micId, ai: SETTINGS.ai })); } catch (e) {} }
-  // loudness below this is treated as silence for live listening (sensitivity 1 = least, 10 = most)
-  const micGate = () => 0.04 * Math.pow(0.6, SETTINGS.sens - 1);
-  async function getMicStream() {
-    const base = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
-    if (SETTINGS.micId) {
-      try { return await navigator.mediaDevices.getUserMedia({ audio: { ...base, deviceId: { exact: SETTINGS.micId } } }); }
-      catch (e) { if (e && e.name === "NotAllowedError") throw e; SETTINGS.micId = ""; saveSettings(); }
-    }
-    return navigator.mediaDevices.getUserMedia({ audio: base });
-  }
-
-  function freqToMidi(f) {
-    const exact = 69 + 12 * Math.log2(f / SETTINGS.a4);
-    const midi = Math.round(exact);
-    return { midi, cents: Math.round((exact - midi) * 100) };
-  }
-  const pretty = (s) => s.replace("#", "♯");
-  const fmt = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
-
-  /* ---------- autocorrelation pitch detection ---------- */
-  function detectPitch(buf, sr, gate = 0.01, minClarity = 0.8) {
-    const n = buf.length;
-    let rms = 0;
-    for (let i = 0; i < n; i++) rms += buf[i] * buf[i];
-    rms = Math.sqrt(rms / n);
-    if (rms < gate) return { freq: -1, rms };
-
-    const minLag = Math.floor(sr / 1400);             // highest pitch ~1400 Hz
-    const maxLag = Math.min(Math.floor(sr / 65), n - 2); // lowest pitch ~65 Hz
-    const c = new Float32Array(maxLag + 2);
-    let c0 = 0;
-    for (let j = 0; j < n; j++) c0 += buf[j] * buf[j];
-    for (let lag = minLag; lag <= maxLag + 1; lag++) {
-      let s = 0;
-      for (let j = 0; j < n - lag; j++) s += buf[j] * buf[j + lag];
-      c[lag] = s;
-    }
-    // skip the initial downward slope from lag 0
-    let d = minLag;
-    while (d < maxLag && c[d] > c[d + 1]) d++;
-    let max = -Infinity, pos = -1;
-    for (let i = d; i <= maxLag; i++) if (c[i] > max) { max = c[i]; pos = i; }
-    if (pos < 0) return { freq: -1, rms };
-    // prefer the first strong peak (avoids octave-down errors)
-    for (let i = d + 1; i < maxLag; i++) {
-      if (c[i] >= 0.9 * max && c[i] >= c[i - 1] && c[i] >= c[i + 1]) { pos = i; break; }
-    }
-    const clarity = (c[pos] * n) / ((n - pos) * c0);
-    if (clarity < minClarity) return { freq: -1, rms };
-    // parabolic interpolation for sub-sample accuracy
-    let T = pos;
-    const x1 = c[pos - 1], x2 = c[pos], x3 = c[pos + 1];
-    const a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
-    if (a) T = pos - b / (2 * a);
-    return { freq: sr / T, rms, clarity };
-  }
 
   /* ---------- storage ---------- */
   const KEY = "pitchstaff.history.v1";
@@ -152,7 +85,6 @@ import { Stars } from './components/Stars.js';
   /* ---------- singing analyst ---------- */
   const GRID = 0.02; // pitch track resolution: 50 frames per second
   const SESS_KEY = "pitchstaff.sessions.v1";
-  const median = (arr) => { if (!arr.length) return NaN; const s = [...arr].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
   const foldOct = (d) => d - 12 * Math.round(d / 12);
   const signed = (c) => (c > 0 ? "+" : "") + c;
 
@@ -2051,8 +1983,6 @@ import { Stars } from './components/Stars.js';
     });
   }
 
-  function loadJSON(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key) || "null"); return v == null ? fallback : v; } catch (e) { return fallback; } }
-  function saveJSON(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
   const LEARNED_KEY = "pitchstaff.learned.v1";
 
   function MelodyMap({ data, notes, tr, nameOf, phrases, lyrics, loop, cursor, curIdx, onTapNote, onSeek, themeKey, overlay, height, marks }) {
@@ -3945,21 +3875,7 @@ import { Stars } from './components/Stars.js';
   const KARA_SYNC_KEY = "pitchstaff.karasync.v1";
   const KARA_BEST_KEY = "pitchstaff.karabest.v1";
 
-  function monoHalf(audio) {
-    let data = audio.getChannelData(0);
-    if (audio.numberOfChannels > 1) {
-      const r = audio.getChannelData(1), m = new Float32Array(data.length);
-      for (let i = 0; i < data.length; i++) m[i] = (data[i] + r[i]) / 2;
-      data = m;
-    }
-    let sr = audio.sampleRate;
-    if (sr >= 44100) {
-      const h = new Float32Array(Math.floor(data.length / 2));
-      for (let i = 0; i < h.length; i++) h[i] = (data[2 * i] + data[2 * i + 1]) / 2;
-      data = h; sr = sr / 2;
-    }
-    return { data, sr };
-  }
+
 
   // onset strength at 50 fps: how sharply the loudness rises
   function onsetEnvelope(audio) {
@@ -3993,58 +3909,10 @@ import { Stars } from './components/Stars.js';
     return { off: bestL * GRID, z: (best - mu) / sd };
   }
 
-  function fftInPlace(re, im) {
-    const n = re.length;
-    for (let i = 1, j = 0; i < n; i++) {
-      let bit = n >> 1;
-      for (; j & bit; bit >>= 1) j ^= bit;
-      j ^= bit;
-      if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
-    }
-    for (let len = 2; len <= n; len <<= 1) {
-      const ang = (-2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang), half = len >> 1;
-      for (let i = 0; i < n; i += len) {
-        let cr = 1, ci = 0;
-        for (let j = 0; j < half; j++) {
-          const a = i + j, b = a + half;
-          const vr = re[b] * cr - im[b] * ci, vi = re[b] * ci + im[b] * cr;
-          re[b] = re[a] - vr; im[b] = im[a] - vi; re[a] += vr; im[a] += vi;
-          const nc = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nc;
-        }
-      }
-    }
-  }
+ 
 
-  // which notes the music uses most (12 note classes), to compare its key with the vocal's
-  async function chromaOf(audio, isCancelled) {
-    const { data, sr } = monoHalf(audio);
-    const N = 4096, hop = Math.round(sr * 0.5), df = sr / N;
-    const win = new Float32Array(N);
-    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1));
-    const h = new Array(12).fill(0);
-    const re = new Float32Array(N), im = new Float32Array(N);
-    const k0 = Math.ceil(100 / df), k1 = Math.floor(2000 / df);
-    let frame = 0;
-    for (let start = 0; start + N < data.length; start += hop) {
-      if (isCancelled()) return null;
-      for (let i = 0; i < N; i++) { re[i] = data[start + i] * win[i]; im[i] = 0; }
-      fftInPlace(re, im);
-      for (let k = k0; k <= k1; k++) {
-        const mag = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
-        const m = 69 + 12 * Math.log2((k * df) / SETTINGS.a4);
-        h[((Math.round(m) % 12) + 12) % 12] += mag;
-      }
-      if (++frame % 25 === 0) await new Promise((r) => setTimeout(r, 0));
-    }
-    const s = h.reduce((x, y) => x + y, 0) || 1;
-    return h.map((v) => v / s);
-  }
-  function pearson(x, y) {
-    const mx = mean(x), my = mean(y);
-    let a = 0, b = 0, c = 0;
-    for (let i = 0; i < x.length; i++) { a += (x[i] - mx) * (y[i] - my); b += (x[i] - mx) ** 2; c += (y[i] - my) ** 2; }
-    return b && c ? a / Math.sqrt(b * c) : 0;
-  }
+
+
   // how many piano keys the music sits above the vocal (0 = same key)
   function keyGap(notes, instChroma) {
     const v = new Array(12).fill(0);
@@ -5497,19 +5365,7 @@ import { Stars } from './components/Stars.js';
     return { later: (fn, ms) => { const id = setTimeout(fn, ms); ids.current.push(id); return id; }, clear: () => { ids.current.forEach(clearTimeout); ids.current = []; } };
   };
   const nm = (m) => pretty(midiInfo(Math.round(m)).label);
-  function Ring({ p, label, value, tone = "good", size = 104 }) {
-    const rr = size / 2 - 6, C = 2 * Math.PI * rr;
-    return html`<span style=${{ position: "relative", width: size, height: size, flexShrink: 0 }}>
-      <svg width=${size} height=${size} viewBox=${"0 0 " + size + " " + size} role="img" aria-label=${label + " " + Math.round(p * 100) + " percent"}>
-        <circle cx=${size / 2} cy=${size / 2} r=${rr} fill="none" stroke="var(--line)" strokeWidth="6"></circle>
-        <circle cx=${size / 2} cy=${size / 2} r=${rr} fill="none" stroke=${"var(--" + tone + ")"} strokeWidth="6" strokeLinecap="round" strokeDasharray=${(C * Math.max(0, Math.min(1, p))).toFixed(1) + " " + C.toFixed(1)} transform=${"rotate(-90 " + size / 2 + " " + size / 2 + ")"}></circle>
-      </svg>
-      <span style=${{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <span class="label" style=${{ fontSize: 10 }}>${label}</span>
-        <span class="display font-bold" style=${{ fontSize: 28, lineHeight: 1, color: "var(--" + tone + ")" }}>${value}</span>
-      </span>
-    </span>`;
-  }
+ <Ring/>
   const TryDots = ({ n, results, cur }) => html`<span class="flex gap-1" role="img" aria-label=${"Try " + Math.min(n, cur + 1) + " of " + n}>
     ${Array.from({ length: n }, (_, k) => html`<span key=${k} style=${{ width: 10, height: 10, borderRadius: "50%", background: k < results.length ? (results[k] ? "var(--good)" : "var(--bad)") : k === cur ? "var(--accent)" : "var(--line)" }}></span>`)}
   </span>`;
