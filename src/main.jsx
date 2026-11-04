@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import htm from 'htm';
+import { Stars } from './components/Stars.js';
 
 (function () {
   const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
@@ -3742,7 +3743,7 @@ import htm from 'htm';
   const AI_KEY = "pitchstaff.ainotes.v4";
   const AI_FPS = 22050 / 256;
   let bpModule = null;
-  const loadBasicPitch = () => (bpModule = bpModule || import(new URL("tono-basic-pitch.js", document.baseURI).href));
+  const loadBasicPitch = () => (bpModule = bpModule || import(/* @vite-ignore */ new URL("tono-basic-pitch.js", document.baseURI).href));
   function aiCacheGet(name, dur) {
     const all = loadJSON(AI_KEY, {}), e = all[name];
     if (!e || Math.abs(e.d - dur) > 0.5) return null;
@@ -4120,11 +4121,7 @@ import htm from 'htm';
 
   const karaStars = (sc) => (sc >= 90 ? 5 : sc >= 75 ? 4 : sc >= 60 ? 3 : sc >= 40 ? 2 : 1);
   const KARA_RANKS = ["Warming up", "Getting there", "Rising star", "Showstopper", "Superstar"];
-  function Stars({ n, size = 36, big }) {
-    return html`<span class="flex items-end gap-1" role="img" aria-label=${n + " out of 5 stars"}>
-      ${[0, 1, 2, 3, 4].map((i) => html`<svg key=${i} width=${big && i === 2 ? size + 8 : size} height=${big && i === 2 ? size + 8 : size} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z" fill=${i < n ? "#f3d18c" : "none"} stroke=${i < n ? "#f3d18c" : "var(--line)"} strokeWidth="1.3" strokeLinejoin="round"></path></svg>`)}
-    </span>`;
-  }
+  <Stars/>
   const CONFETTI = Array.from({ length: 36 }, (_, i) => ({ l: (i * 37) % 100, d: ((i * 53) % 90) / 100, c: ["#f3d18c", "#8b5cf6", "#8fbcff", "#5fd39a", "#ff7a9c"][i % 5], r: (i * 29) % 360, w: i % 3 ? 7 : 9, h: i % 2 ? 12 : 8 }));
 
   function Karaoke({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, onSendTake, onTakeReady, onPractice, inst, onPickInst, sync, syncMsg, keyWarn, onSync, onAutoSync }) {
