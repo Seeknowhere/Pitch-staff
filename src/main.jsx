@@ -1,92 +1,62 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import htm from 'htm';
-import { Stars } from './components/Stars.js';
-import { Ring } from './components/Ring.js';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import htm from "htm";
+import { Stars } from "./components/Stars.js";
+import { Ring } from "./components/Ring.js";
 import { loadJSON, saveJSON } from "./lib/storage.js";
-import { detectPitch} from "./lib/pitch.js";
-import { SETTINGS, SETTINGS_KEY, saveSettings, micGate, getMicStream} from "./lib/settings.js";
-import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
+import { detectPitch } from "./lib/pitch.js";
+import {
+  SETTINGS,
+  SETTINGS_KEY,
+  saveSettings,
+  micGate,
+  getMicStream,
+} from "./lib/settings.js";
+import { NAMES, midiInfo, freqToMidi, pretty, fmt, signed } from "./lib/music.js";
+import { mean, median, pearson } from "./lib/math.js";
+import { monoHalf, chromaOf, encodeWav, makeImpulse, peakOf, saveBlob } from "./lib/audio.js";
+import { Stat } from "./components/Stat.js";
+import { BtTags } from "./components/BtTags.js";
+import { Icon } from "./components/Icon.js";
+import { Keyboard } from "./components/Keyboard.js";
+import { RangeKeys } from "./components/RangeKeys.js";
+import { Dial } from "./components/Dial.js";
+import { Staff, yOf } from "./components/Staff.js";
 
 (function () {
-  const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } = React;
+  const { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } =
+    React;
   const html = htm.bind(React.createElement);
-
 
   /* ---------- storage ---------- */
   const KEY = "pitchstaff.history.v1";
   const THEME_KEY = "pitchstaff.theme";
   function loadHistory() {
-    try { const v = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(v) ? v : []; }
-    catch (e) { return []; }
+    try {
+      const v = JSON.parse(localStorage.getItem(KEY) || "[]");
+      return Array.isArray(v) ? v : [];
+    } catch (e) {
+      return [];
+    }
   }
-  function saveHistory(h) { try { localStorage.setItem(KEY, JSON.stringify(h)); } catch (e) {} }
+  function saveHistory(h) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(h));
+    } catch (e) {}
+  }
 
   /* ---------- staff ---------- */
-  const BOTTOM = 140, HALF = 7; // E4 bottom line; half a line gap = one diatonic step
-  const yOf = (step) => BOTTOM - (step - 30) * HALF;
+<Staff/>
 
-  function NoteHead({ x, step, sharp, color, opacity }) {
-    const s = Math.max(12, Math.min(50, step));
-    const y = yOf(s);
-    const ledgers = [];
-    if (s <= 28) for (let k = 28; k >= s; k -= 2) ledgers.push(k);
-    if (s >= 40) for (let k = 40; k <= s; k += 2) ledgers.push(k);
-    const up = s < 34;
-    return html`<g opacity=${opacity}>
-      ${ledgers.map((k) => html`<line key=${k} x1=${x - 12} x2=${x + 12} y1=${yOf(k)} y2=${yOf(k)} stroke="var(--muted)" stroke-width="1.3" />`)}
-      ${sharp && html`<text x=${x - 22} y=${y + 5} font-size="17" fill=${color} font-family="var(--font-music)">♯</text>`}
-      <ellipse cx=${x} cy=${y} rx="7.6" ry="5.4" transform=${`rotate(-22 ${x} ${y})`} fill=${color} />
-      <line x1=${up ? x + 6.8 : x - 6.8} x2=${up ? x + 6.8 : x - 6.8} y1=${y} y2=${up ? y - 36 : y + 36} stroke=${color} stroke-width="1.6" />
-    </g>`;
-  }
-
-  function Staff({ trail, live, example, target }) {
-    const lines = [30, 32, 34, 36, 38];
-    const slots = trail.slice(-7);
-    const startX = 108, gap = 32;
-    return html`<svg viewBox="0 -4 400 276" width="100%" style=${{ minWidth: 320, display: "block" }} role="img"
-        aria-label=${live ? "Staff showing " + midiInfo(live.midi).label : "Treble clef staff"}>
-      ${lines.map((s) => html`<line key=${s} x1="8" x2="392" y1=${yOf(s)} y2=${yOf(s)} stroke="var(--muted)" stroke-opacity="0.75" stroke-width="1.2" />`)}
-      <line x1="8" x2="8" y1=${yOf(38)} y2=${yOf(30)} stroke="var(--muted)" stroke-opacity="0.75" stroke-width="1.2" />
-      <text x="14" y=${yOf(30) + 15} font-size="76" fill="var(--fg)" font-family="var(--font-music)">𝄞</text>
-      <line x1="338" x2="338" y1="10" y2="262" stroke="var(--accent)" stroke-opacity="0.25" stroke-dasharray="3 5" />
-      ${slots.map((t, i) => {
-        const info = midiInfo(t.midi);
-        const x = startX + i * gap;
-        return html`<g key=${t.id}>
-          <${NoteHead} x=${x} step=${info.step} sharp=${info.sharp} color="var(--fg)" opacity=${example ? 0.35 : 0.45 + (0.5 * (i + 1)) / slots.length} />
-          <text x=${x} y="270" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="var(--font-mono)">${info.label}</text>
-        </g>`;
-      })}
-      ${target && (() => {
-        const info = midiInfo(target.midi), sMin = Math.max(12, Math.min(50, info.step)), y = yOf(sMin);
-        const col = target.matched ? "var(--good)" : "var(--fg)";
-        return html`<g aria-hidden="true">
-          ${sMin <= 28 && Array.from({ length: Math.floor((28 - sMin) / 2) + 1 }, (_, i) => 28 - 2 * i).map((k) => html`<line key=${"t" + k} x1="345" x2="375" y1=${yOf(k)} y2=${yOf(k)} stroke="var(--muted)" stroke-width="1.3" />`)}
-          ${sMin >= 40 && Array.from({ length: Math.floor((sMin - 40) / 2) + 1 }, (_, i) => 40 + 2 * i).map((k) => html`<line key=${"t" + k} x1="345" x2="375" y1=${yOf(k)} y2=${yOf(k)} stroke="var(--muted)" stroke-width="1.3" />`)}
-          <ellipse cx="360" cy=${y} rx="10" ry="7.5" transform=${`rotate(-22 360 ${y})`} fill=${target.matched ? "color-mix(in srgb, var(--good) 25%, transparent)" : "none"} stroke=${col} stroke-width="2" stroke-dasharray=${target.matched ? "" : "3 2"} />
-          ${info.sharp && html`<text x="334" y=${y + 5} font-size="15" fill=${col} font-family="var(--font-music)">♯</text>`}
-          <text x="360" y="10" text-anchor="middle" font-size="9" fill=${col} font-family="var(--font-mono)">target ${info.label}</text>
-        </g>`;
-      })()}
-      ${live && (() => {
-        const info = midiInfo(live.midi);
-        return html`<g>
-          <${NoteHead} x=${360} step=${info.step} sharp=${info.sharp} color="var(--accent)" opacity=${1} />
-          <text x="360" y="270" text-anchor="middle" font-size="10" font-weight="600" fill="var(--accent)" font-family="var(--font-mono)">${info.label}</text>
-        </g>`;
-      })()}
-    </svg>`;
-  }
-
-  const EXAMPLE = [60, 62, 64, 65, 67, 69, 71].map((m, i) => ({ id: "ex" + i, midi: m }));
+  const EXAMPLE = [60, 62, 64, 65, 67, 69, 71].map((m, i) => ({
+    id: "ex" + i,
+    midi: m,
+  }));
 
   /* ---------- singing analyst ---------- */
   const GRID = 0.02; // pitch track resolution: 50 frames per second
   const SESS_KEY = "pitchstaff.sessions.v1";
   const foldOct = (d) => d - 12 * Math.round(d / 12);
-  const signed = (c) => (c > 0 ? "+" : "") + c;
 
   async function decodeFile(file) {
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -97,72 +67,125 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         const p = ctx.decodeAudioData(ab, res, rej);
         if (p && p.then) p.then(res, rej);
       });
-    } finally { if (ctx.close) ctx.close().catch(() => {}); }
+    } finally {
+      if (ctx.close) ctx.close().catch(() => {});
+    }
   }
 
   // Full pitch track (50 fps grid of fractional MIDI, NaN = silence) plus the list of held notes.
   async function trackPitch(audio, onProgress, isCancelled) {
     let data = audio.getChannelData(0);
     if (audio.numberOfChannels > 1) {
-      const r = audio.getChannelData(1), m = new Float32Array(data.length);
+      const r = audio.getChannelData(1),
+        m = new Float32Array(data.length);
       for (let i = 0; i < data.length; i++) m[i] = (data[i] + r[i]) / 2;
       data = m;
     }
     let sr = audio.sampleRate;
     if (sr >= 44100) {
       const h = new Float32Array(Math.floor(data.length / 2));
-      for (let i = 0; i < h.length; i++) h[i] = (data[2 * i] + data[2 * i + 1]) / 2;
-      data = h; sr = sr / 2;
+      for (let i = 0; i < h.length; i++)
+        h[i] = (data[2 * i] + data[2 * i + 1]) / 2;
+      data = h;
+      sr = sr / 2;
     }
-    const N = 1024, hop = 512, total = Math.max(1, Math.floor((data.length - N) / hop));
-    const raw = new Float32Array(total).fill(NaN), rawL = new Float32Array(total).fill(-100), weak = new Float32Array(total).fill(NaN);
+    const N = 1024,
+      hop = 512,
+      total = Math.max(1, Math.floor((data.length - N) / hop));
+    const raw = new Float32Array(total).fill(NaN),
+      rawL = new Float32Array(total).fill(-100),
+      weak = new Float32Array(total).fill(NaN);
     const notes = [];
-    let cand = { midi: null, since: 0 }, confirmed = null, silentSince = -1;
+    let cand = { midi: null, since: 0 },
+      confirmed = null,
+      silentSince = -1;
     const recent = [];
     for (let f = 0; f < total; f++) {
       if (isCancelled()) return null;
       const t = (f * hop) / sr;
       // songs are a little less strict than the live mic: breathy, echoey singing still counts
-      const r = detectPitch(data.subarray(f * hop, f * hop + N), sr, 0.01, 0.55);
+      const r = detectPitch(
+        data.subarray(f * hop, f * hop + N),
+        sr,
+        0.01,
+        0.55,
+      );
       rawL[f] = 20 * Math.log10(r.rms + 1e-5);
       // weaker pitch (clarity 0.55–0.75) is kept aside: lyric lines that are short of notes can look here later
-      if (r.freq > 0 && r.clarity < 0.75) { weak[f] = 69 + 12 * Math.log2(r.freq / SETTINGS.a4); r.freq = -1; }
+      if (r.freq > 0 && r.clarity < 0.75) {
+        weak[f] = 69 + 12 * Math.log2(r.freq / SETTINGS.a4);
+        r.freq = -1;
+      }
       if (r.freq > 0) {
         raw[f] = 69 + 12 * Math.log2(r.freq / SETTINGS.a4);
         silentSince = -1;
-        recent.push(r.freq); if (recent.length > 5) recent.shift();
+        recent.push(r.freq);
+        if (recent.length > 5) recent.shift();
         const med = median(recent);
         const { midi, cents } = freqToMidi(med);
         if (midi !== cand.midi) cand = { midi, since: t };
         if (t - cand.since >= 0.12 && confirmed !== midi) {
-          if (notes.length && notes[notes.length - 1].end == null) notes[notes.length - 1].end = cand.since;
-          notes.push({ midi, freq: med, cents, pos: cand.since, end: null, cut: confirmed === null ? "silence" : "pitch" });
+          if (notes.length && notes[notes.length - 1].end == null)
+            notes[notes.length - 1].end = cand.since;
+          notes.push({
+            midi,
+            freq: med,
+            cents,
+            pos: cand.since,
+            end: null,
+            cut: confirmed === null ? "silence" : "pitch",
+          });
           confirmed = midi;
         }
       } else {
         if (silentSince < 0) silentSince = t;
         if (t - silentSince > 0.12) {
-          if (confirmed !== null && notes.length && notes[notes.length - 1].end == null) notes[notes.length - 1].end = silentSince;
-          confirmed = null; cand = { midi: null, since: 0 }; recent.length = 0;
+          if (
+            confirmed !== null &&
+            notes.length &&
+            notes[notes.length - 1].end == null
+          )
+            notes[notes.length - 1].end = silentSince;
+          confirmed = null;
+          cand = { midi: null, since: 0 };
+          recent.length = 0;
         }
       }
-      if (f % 150 === 0) { onProgress(f / total); await new Promise((res) => setTimeout(res, 0)); }
+      if (f % 150 === 0) {
+        onProgress(f / total);
+        await new Promise((res) => setTimeout(res, 0));
+      }
     }
-    if (notes.length && notes[notes.length - 1].end == null) notes[notes.length - 1].end = data.length / sr;
+    if (notes.length && notes[notes.length - 1].end == null)
+      notes[notes.length - 1].end = data.length / sr;
     // light 3-frame median to remove single-frame glitches
     const smooth = new Float32Array(total).fill(NaN);
     for (let f = 0; f < total; f++) {
-      const w = [raw[f - 1], raw[f], raw[f + 1]].filter((v) => v === v && v !== undefined);
+      const w = [raw[f - 1], raw[f], raw[f + 1]].filter(
+        (v) => v === v && v !== undefined,
+      );
       if (w.length >= 2 && raw[f] === raw[f]) smooth[f] = median(w);
     }
     const len = Math.ceil(audio.duration / GRID);
-    const grid = new Float32Array(len).fill(NaN), loud = new Float32Array(len).fill(-100), loose = new Float32Array(len).fill(NaN);
+    const grid = new Float32Array(len).fill(NaN),
+      loud = new Float32Array(len).fill(-100),
+      loose = new Float32Array(len).fill(NaN);
     for (let k = 0; k < len; k++) {
       const f = Math.round((k * GRID * sr) / hop);
-      if (f < total) { grid[k] = smooth[f]; loud[k] = rawL[f]; loose[k] = weak[f]; }
+      if (f < total) {
+        grid[k] = smooth[f];
+        loud[k] = rawL[f];
+        loose[k] = weak[f];
+      }
     }
     onProgress(1);
-    return { duration: audio.duration, grid, loud, loose, notes: fixOctaves(splitOnConsonants(notes, raw, rawL, hop, sr), grid) };
+    return {
+      duration: audio.duration,
+      grid,
+      loud,
+      loose,
+      notes: fixOctaves(splitOnConsonants(notes, raw, rawL, hop, sr), grid),
+    };
   }
   // The pitch finder sometimes lands a whole octave too low or high. Pull a note back when it sits
   // 9+ semitones away from the notes around it (within 4 s) and moving it an octave brings it closer.
@@ -171,19 +194,36 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const out = notes.map((n) => ({ ...n }));
     for (let pass = 0; pass < 2; pass++) {
       out.forEach((n, i) => {
-        const mid = (n.pos + n.end) / 2, w = [];
-        out.forEach((m, j) => { if (j !== i && Math.abs((m.pos + m.end) / 2 - mid) < 4) w.push([m.midi, m.end - m.pos]); });
+        const mid = (n.pos + n.end) / 2,
+          w = [];
+        out.forEach((m, j) => {
+          if (j !== i && Math.abs((m.pos + m.end) / 2 - mid) < 4)
+            w.push([m.midi, m.end - m.pos]);
+        });
         if (w.length < 4) return;
         w.sort((a, b) => a[0] - b[0]);
         const tot = w.reduce((a, x) => a + x[1], 0);
-        let acc = 0, med = w[0][0];
-        for (const [mm, d] of w) { acc += d; if (acc >= tot / 2) { med = mm; break; } }
+        let acc = 0,
+          med = w[0][0];
+        for (const [mm, d] of w) {
+          acc += d;
+          if (acc >= tot / 2) {
+            med = mm;
+            break;
+          }
+        }
         const off = n.midi - med;
         if (Math.abs(off) < 9) return;
         const sh = off > 0 ? -12 : 12;
         if (Math.abs(off + sh) >= Math.abs(off)) return;
-        n.midi += sh; n.freq *= Math.pow(2, sh / 12);
-        for (let k = Math.round(n.pos / GRID); k < Math.round(n.end / GRID) && k < grid.length; k++) if (grid[k] === grid[k]) grid[k] += sh;
+        n.midi += sh;
+        n.freq *= Math.pow(2, sh / 12);
+        for (
+          let k = Math.round(n.pos / GRID);
+          k < Math.round(n.end / GRID) && k < grid.length;
+          k++
+        )
+          if (grid[k] === grid[k]) grid[k] += sh;
       });
     }
     return out;
@@ -193,54 +233,118 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   // lines with too many drop blips that look like breaths or echo. Real notes are never forced out.
   function guideBySyllables(notes, data, spans, tl) {
     if (!notes.length || !spans.length || !data.loud) return notes;
-    const G = GRID, grid = data.grid, loud = data.loud, loose = data.loose || new Float32Array(0);
-    const kOf = (t) => Math.max(0, Math.min(grid.length - 1, Math.round(t / G)));
-    const med = (a) => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
-    const loudOf = (a, b) => { let m = -100; for (let k = kOf(a); k <= kOf(b); k++) m = Math.max(m, loud[k]); return m; };
+    const G = GRID,
+      grid = data.grid,
+      loud = data.loud,
+      loose = data.loose || new Float32Array(0);
+    const kOf = (t) =>
+      Math.max(0, Math.min(grid.length - 1, Math.round(t / G)));
+    const med = (a) => {
+      if (!a.length) return NaN;
+      const s = [...a].sort((x, y) => x - y);
+      return s[s.length >> 1];
+    };
+    const loudOf = (a, b) => {
+      let m = -100;
+      for (let k = kOf(a); k <= kOf(b); k++) m = Math.max(m, loud[k]);
+      return m;
+    };
     let out = notes.map((n) => ({ ...n }));
     spans.forEach((l) => {
       if (!l.text) return;
-      const want = l.text.split(/\s+/).filter(Boolean).reduce((a, w) => a + syllableCount(w, tl), 0);
+      const want = l.text
+        .split(/\s+/)
+        .filter(Boolean)
+        .reduce((a, w) => a + syllableCount(w, tl), 0);
       if (!want) return;
-      const a = l.start - 0.08, b = l.end - 0.02;
+      const a = l.start - 0.08,
+        b = l.end - 0.02;
       const inLine = () => out.filter((n) => n.pos >= a && n.pos < b);
       let ln = inLine();
-      const lineLoud = med(ln.map((n) => loudOf(n.pos, n.end)).filter((v) => v > -90));
+      const lineLoud = med(
+        ln.map((n) => loudOf(n.pos, n.end)).filter((v) => v > -90),
+      );
       const centre = ln.length ? med(ln.map((n) => n.midi)) : NaN;
       // 1. too many: drop blips (very short, or short and quiet, or short and glued to the same pitch)
       if (ln.length > want) {
-        const cand = ln.filter((n) => n.end - n.pos < 0.15).map((n) => {
-          const i = out.indexOf(n), p = out[i - 1], q = out[i + 1];
-          const glued = (p && p.midi === n.midi && n.pos - p.end < 0.04) || (q && q.midi === n.midi && q.pos - n.end < 0.04);
-          const quiet = loudOf(n.pos, n.end) < lineLoud - 6;
-          return { n, p, q, glued, junk: n.end - n.pos < 0.1 || quiet || glued, sc: (n.end - n.pos) + (quiet ? -0.1 : 0) + (glued ? -0.05 : 0) };
-        }).filter((c) => c.junk).sort((x, y) => x.sc - y.sc);
+        const cand = ln
+          .filter((n) => n.end - n.pos < 0.15)
+          .map((n) => {
+            const i = out.indexOf(n),
+              p = out[i - 1],
+              q = out[i + 1];
+            const glued =
+              (p && p.midi === n.midi && n.pos - p.end < 0.04) ||
+              (q && q.midi === n.midi && q.pos - n.end < 0.04);
+            const quiet = loudOf(n.pos, n.end) < lineLoud - 6;
+            return {
+              n,
+              p,
+              q,
+              glued,
+              junk: n.end - n.pos < 0.1 || quiet || glued,
+              sc: n.end - n.pos + (quiet ? -0.1 : 0) + (glued ? -0.05 : 0),
+            };
+          })
+          .filter((c) => c.junk)
+          .sort((x, y) => x.sc - y.sc);
         for (const c of cand) {
           if (inLine().length <= want) break;
-          const i = out.indexOf(c.n); if (i < 0) continue;
-          if (c.p && c.p.midi === c.n.midi && c.n.pos - c.p.end < 0.04) c.p.end = c.n.end;
-          else if (c.q && c.q.midi === c.n.midi && c.q.pos - c.n.end < 0.04) c.q.pos = c.n.pos;
+          const i = out.indexOf(c.n);
+          if (i < 0) continue;
+          if (c.p && c.p.midi === c.n.midi && c.n.pos - c.p.end < 0.04)
+            c.p.end = c.n.end;
+          else if (c.q && c.q.midi === c.n.midi && c.q.pos - c.n.end < 0.04)
+            c.q.pos = c.n.pos;
           out.splice(i, 1);
         }
       }
       // 2. too few: pick up sung stretches that never became notes (weak or short pitch)
       ln = inLine();
       if (ln.length < want) {
-        const covered = (k) => out.some((n) => k * G >= n.pos - 0.01 && k * G < n.end + 0.01);
-        const runs = []; let cur = null;
+        const covered = (k) =>
+          out.some((n) => k * G >= n.pos - 0.01 && k * G < n.end + 0.01);
+        const runs = [];
+        let cur = null;
         for (let k = kOf(a); k <= kOf(b); k++) {
-          const v = grid[k] === grid[k] ? grid[k] : loose[k] === loose[k] ? loose[k] : NaN;
-          const ok = v === v && !covered(k) && (!cur || Math.abs(v - med(cur.v)) < 1);
-          if (ok) { if (!cur) cur = { k0: k, v: [] }; cur.v.push(v); cur.k1 = k; }
-          else { if (cur) runs.push(cur); cur = v === v && !covered(k) ? { k0: k, k1: k, v: [v] } : null; }
+          const v =
+            grid[k] === grid[k]
+              ? grid[k]
+              : loose[k] === loose[k]
+                ? loose[k]
+                : NaN;
+          const ok =
+            v === v && !covered(k) && (!cur || Math.abs(v - med(cur.v)) < 1);
+          if (ok) {
+            if (!cur) cur = { k0: k, v: [] };
+            cur.v.push(v);
+            cur.k1 = k;
+          } else {
+            if (cur) runs.push(cur);
+            cur = v === v && !covered(k) ? { k0: k, k1: k, v: [v] } : null;
+          }
         }
         if (cur) runs.push(cur);
-        const adds = runs.filter((r) => r.k1 - r.k0 + 1 >= 5 && loudOf(r.k0 * G, r.k1 * G) > lineLoud - 10)
-          .sort((x, y) => (y.k1 - y.k0) - (x.k1 - x.k0)).slice(0, want - ln.length);
+        const adds = runs
+          .filter(
+            (r) =>
+              r.k1 - r.k0 + 1 >= 5 &&
+              loudOf(r.k0 * G, r.k1 * G) > lineLoud - 10,
+          )
+          .sort((x, y) => y.k1 - y.k0 - (x.k1 - x.k0))
+          .slice(0, want - ln.length);
         adds.forEach((r) => {
           let m = Math.round(med(r.v));
-          if (centre === centre && Math.abs(m - centre) >= 9) m += m > centre ? -12 : 12;
-          out.push({ midi: m, freq: SETTINGS.a4 * Math.pow(2, (m - 69) / 12), cents: 0, pos: r.k0 * G, end: (r.k1 + 1) * G, cut: "guide" });
+          if (centre === centre && Math.abs(m - centre) >= 9)
+            m += m > centre ? -12 : 12;
+          out.push({
+            midi: m,
+            freq: SETTINGS.a4 * Math.pow(2, (m - 69) / 12),
+            cents: 0,
+            pos: r.k0 * G,
+            end: (r.k1 + 1) * G,
+            cut: "guide",
+          });
         });
         out.sort((x, y) => x.pos - y.pos);
       }
@@ -249,36 +353,69 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         let best = null;
         inLine().forEach((n) => {
           if (n.end - n.pos < 0.24) return;
-          const k0 = kOf(n.pos) + 5, k1 = kOf(n.end) - 5;
+          const k0 = kOf(n.pos) + 5,
+            k1 = kOf(n.end) - 5;
           for (let k = k0; k <= k1; k++) {
-            const dip = Math.min(loudOf((k - 5) * G, (k - 1) * G), loudOf((k + 1) * G, (k + 5) * G)) - loud[k];
-            const pa = [], pb = [];
-            for (let j = k - 5; j < k; j++) if (grid[j] === grid[j]) pa.push(grid[j]);
-            for (let j = k; j < k + 5; j++) if (grid[j] === grid[j]) pb.push(grid[j]);
-            const step = pa.length >= 3 && pb.length >= 3 ? Math.abs(med(pa) - med(pb)) : 0;
+            const dip =
+              Math.min(
+                loudOf((k - 5) * G, (k - 1) * G),
+                loudOf((k + 1) * G, (k + 5) * G),
+              ) - loud[k];
+            const pa = [],
+              pb = [];
+            for (let j = k - 5; j < k; j++)
+              if (grid[j] === grid[j]) pa.push(grid[j]);
+            for (let j = k; j < k + 5; j++)
+              if (grid[j] === grid[j]) pb.push(grid[j]);
+            const step =
+              pa.length >= 3 && pb.length >= 3
+                ? Math.abs(med(pa) - med(pb))
+                : 0;
             const sc = Math.max(dip / 3, step / 0.8);
-            if (sc >= 1 && (!best || sc > best.sc)) best = { n, k, sc, mb: pb.length >= 3 ? Math.round(med(pb)) : n.midi };
+            if (sc >= 1 && (!best || sc > best.sc))
+              best = {
+                n,
+                k,
+                sc,
+                mb: pb.length >= 3 ? Math.round(med(pb)) : n.midi,
+              };
           }
         });
         if (!best) break;
-        const n = best.n, t = best.k * G;
-        let m2 = best.mb; if (Math.abs(m2 - n.midi) >= 9) m2 = n.midi;
-        out.splice(out.indexOf(n) + 1, 0, { ...n, pos: t, midi: m2, freq: SETTINGS.a4 * Math.pow(2, (m2 - 69) / 12), cut: "guide" });
+        const n = best.n,
+          t = best.k * G;
+        let m2 = best.mb;
+        if (Math.abs(m2 - n.midi) >= 9) m2 = n.midi;
+        out.splice(out.indexOf(n) + 1, 0, {
+          ...n,
+          pos: t,
+          midi: m2,
+          freq: SETTINGS.a4 * Math.pow(2, (m2 - 69) / 12),
+          cut: "guide",
+        });
         n.end = t;
       }
     });
     out.sort((x, y) => x.pos - y.pos);
-    for (let i = 1; i < out.length; i++) if (out[i].pos < out[i - 1].end) out[i - 1].end = out[i].pos;
+    for (let i = 1; i < out.length; i++)
+      if (out[i].pos < out[i - 1].end) out[i - 1].end = out[i].pos;
     return out.filter((n) => n.end - n.pos > 0.04);
   }
   // Two syllables sung on the same pitch would merge into one long note. Split notes where a
   // consonant shows: a short unvoiced gap (s, t, k…) or a clear dip in loudness (m, n, l…).
   function splitOnConsonants(notes, raw, rawL, hop, sr) {
-    const fr = (t) => Math.round((t * sr) / hop), tm = (f) => (f * hop) / sr;
-    const W = Math.max(3, Math.round((0.12 * sr) / hop)), out = [];
+    const fr = (t) => Math.round((t * sr) / hop),
+      tm = (f) => (f * hop) / sr;
+    const W = Math.max(3, Math.round((0.12 * sr) / hop)),
+      out = [];
     notes.forEach((n) => {
-      if (n.end - n.pos < 0.28) { out.push(n); return; }
-      const f0 = fr(n.pos), f1 = Math.min(raw.length - 1, fr(n.end)), cuts = [];
+      if (n.end - n.pos < 0.28) {
+        out.push(n);
+        return;
+      }
+      const f0 = fr(n.pos),
+        f1 = Math.min(raw.length - 1, fr(n.end)),
+        cuts = [];
       let last = f0;
       for (let f = f0 + 3; f < f1 - 3; f++) {
         let gap = 0;
@@ -286,17 +423,38 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         let cut = -1;
         if (gap >= 2) cut = f + (gap >> 1);
         else {
-          let a = -200, b = -200;
-          for (let q = Math.max(f0, f - W); q < f; q++) a = Math.max(a, rawL[q]);
-          for (let q = f + 1; q <= Math.min(f1 - 1, f + W); q++) b = Math.max(b, rawL[q]);
-          if (rawL[f] <= rawL[f - 1] && rawL[f] <= rawL[f + 1] && rawL[f] <= Math.min(a, b) - 7) cut = f;
+          let a = -200,
+            b = -200;
+          for (let q = Math.max(f0, f - W); q < f; q++)
+            a = Math.max(a, rawL[q]);
+          for (let q = f + 1; q <= Math.min(f1 - 1, f + W); q++)
+            b = Math.max(b, rawL[q]);
+          if (
+            rawL[f] <= rawL[f - 1] &&
+            rawL[f] <= rawL[f + 1] &&
+            rawL[f] <= Math.min(a, b) - 7
+          )
+            cut = f;
         }
-        if (cut >= 0 && tm(cut) - tm(last) >= 0.12 && tm(f1) - tm(cut) >= 0.12) { cuts.push(cut); last = cut; f = cut + 3; }
-        else if (gap >= 2) f += gap;
+        if (
+          cut >= 0 &&
+          tm(cut) - tm(last) >= 0.12 &&
+          tm(f1) - tm(cut) >= 0.12
+        ) {
+          cuts.push(cut);
+          last = cut;
+          f = cut + 3;
+        } else if (gap >= 2) f += gap;
       }
-      if (!cuts.length) { out.push(n); return; }
+      if (!cuts.length) {
+        out.push(n);
+        return;
+      }
       let st = n.pos;
-      cuts.forEach((c, i) => { out.push({ ...n, pos: st, end: tm(c), cut: i === 0 ? n.cut : "dip" }); st = tm(c); });
+      cuts.forEach((c, i) => {
+        out.push({ ...n, pos: st, end: tm(c), cut: i === 0 ? n.cut : "dip" });
+        st = tm(c);
+      });
       out.push({ ...n, pos: st, end: n.end, cut: "dip" });
     });
     return out;
@@ -306,9 +464,11 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   function scheduleGuide(ctx, dest, notes, from, to, when, semis, speed = 1) {
     const out = [];
     notes.forEach((n) => {
-      const s = Math.max(n.pos, from), e = Math.min(n.end, to);
+      const s = Math.max(n.pos, from),
+        e = Math.min(n.end, to);
       if (e - s < 0.06) return;
-      const st = when + (s - from) / speed, en = when + (e - from) / speed;
+      const st = when + (s - from) / speed,
+        en = when + (e - from) / speed;
       const f = SETTINGS.a4 * Math.pow(2, (n.midi + semis - 69) / 12);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, st);
@@ -316,10 +476,21 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       g.gain.exponentialRampToValueAtTime(0.15, Math.max(st + 0.03, en - 0.05));
       g.gain.exponentialRampToValueAtTime(0.0001, en);
       g.connect(dest);
-      const o1 = ctx.createOscillator(); o1.type = "triangle"; o1.frequency.value = f; o1.connect(g);
-      const o2 = ctx.createOscillator(); o2.type = "sine"; o2.frequency.value = f * 2;
-      const g2 = ctx.createGain(); g2.gain.value = 0.25; o2.connect(g2); g2.connect(g);
-      o1.start(st); o2.start(st); o1.stop(en + 0.02); o2.stop(en + 0.02);
+      const o1 = ctx.createOscillator();
+      o1.type = "triangle";
+      o1.frequency.value = f;
+      o1.connect(g);
+      const o2 = ctx.createOscillator();
+      o2.type = "sine";
+      o2.frequency.value = f * 2;
+      const g2 = ctx.createGain();
+      g2.gain.value = 0.25;
+      o2.connect(g2);
+      g2.connect(g);
+      o1.start(st);
+      o2.start(st);
+      o1.stop(en + 0.02);
+      o2.stop(en + 0.02);
       out.push(o1, o2);
     });
     return out;
@@ -328,21 +499,34 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   // Which key did the singer use? Compare note-class histograms, then confirm with alignment.
   function keyCandidates(o, t) {
     const hist = (g) => {
-      const h = new Float64Array(12); let n = 0;
+      const h = new Float64Array(12);
+      let n = 0;
       for (let k = 0; k < g.length; k++) {
-        const v = g[k]; if (v !== v) continue;
-        const pc = ((v % 12) + 12) % 12, i = Math.floor(pc), f = pc - i;
-        h[i % 12] += 1 - f; h[(i + 1) % 12] += f; n++;
+        const v = g[k];
+        if (v !== v) continue;
+        const pc = ((v % 12) + 12) % 12,
+          i = Math.floor(pc),
+          f = pc - i;
+        h[i % 12] += 1 - f;
+        h[(i + 1) % 12] += f;
+        n++;
       }
       if (n) for (let i = 0; i < 12; i++) h[i] /= n;
       return h;
     };
-    const A = hist(o.grid), B = hist(t.grid);
+    const A = hist(o.grid),
+      B = hist(t.grid);
     const sc = [];
-    for (let r = 0; r < 12; r++) { let s = 0; for (let i = 0; i < 12; i++) s += A[i] * B[(i + r) % 12]; sc.push({ r: r > 6 ? r - 12 : r, s }); }
+    for (let r = 0; r < 12; r++) {
+      let s = 0;
+      for (let i = 0; i < 12; i++) s += A[i] * B[(i + r) % 12];
+      sc.push({ r: r > 6 ? r - 12 : r, s });
+    }
     sc.sort((x, y) => y.s - x.s);
     const c = [0];
-    sc.slice(0, 2).forEach((x) => { if (!c.includes(x.r)) c.push(x.r); });
+    sc.slice(0, 2).forEach((x) => {
+      if (!c.includes(x.r)) c.push(x.r);
+    });
     return c;
   }
   function detectKeyAndOffset(o, t, keyFree) {
@@ -350,14 +534,18 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     let best = null;
     cands.forEach((ks) => {
       const r = autoAlign(o, t, ks);
-      if (!best || r.score > best.score * (ks === 0 ? 0.95 : 1.05)) best = { ks, off: r.off, score: r.score };
+      if (!best || r.score > best.score * (ks === 0 ? 0.95 : 1.05))
+        best = { ks, off: r.off, score: r.score };
     });
     return best;
   }
 
   function autoAlign(o, t, ks = 0) {
-    const a = o.grid, b = t.grid, maxLag = 750; // ±15 s
-    let best = -1, bestL = 0;
+    const a = o.grid,
+      b = t.grid,
+      maxLag = 750; // ±15 s
+    let best = -1,
+      bestL = 0;
     for (let L = -maxLag; L <= maxLag; L++) {
       let m = 0;
       for (let k = 0; k < a.length; k += 2) {
@@ -369,7 +557,10 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         if (bj !== bj) continue;
         if (Math.abs(foldOct(bj - ak - ks)) < 0.6) m++;
       }
-      if (m > best || (m === best && Math.abs(L) < Math.abs(bestL))) { best = m; bestL = L; }
+      if (m > best || (m === best && Math.abs(L) < Math.abs(bestL))) {
+        best = m;
+        bestL = L;
+      }
     }
     return { off: bestL, score: best };
   }
@@ -383,16 +574,24 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   // Dynamic time warping on 10 fps features (note class, voicing, loudness, onsets).
   // Returns a 50 fps map: take frame index for each original frame, or null if it fails.
   function warpMap(o, t, off, ks = 0) {
-    const S = 5, B = 120, PEN = 0.3; // 10 fps, ±12 s band around the tempo line
+    const S = 5,
+      B = 120,
+      PEN = 0.3; // 10 fps, ±12 s band around the tempo line
     const feat = (tr) => {
       const n = Math.floor(tr.grid.length / S);
-      const p = new Float32Array(n).fill(NaN), L = new Float32Array(n), on = new Float32Array(n);
-      const ls = Array.from(tr.loud).filter((v) => isFinite(v)).sort((x, y) => x - y);
+      const p = new Float32Array(n).fill(NaN),
+        L = new Float32Array(n),
+        on = new Float32Array(n);
+      const ls = Array.from(tr.loud)
+        .filter((v) => isFinite(v))
+        .sort((x, y) => x - y);
       const ref = ls.length ? ls[Math.floor(ls.length * 0.95)] : 0;
       for (let i = 0; i < n; i++) {
-        const vals = []; let sum = 0;
+        const vals = [];
+        let sum = 0;
         for (let r = 0; r < S; r++) {
-          const k = i * S + r, g = tr.grid[k];
+          const k = i * S + r,
+            g = tr.grid[k];
           if (g === g) vals.push(g);
           const l = tr.loud[k];
           sum += isFinite(l) ? Math.max(-60, l - ref) : -60;
@@ -403,76 +602,144 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       for (let i = 1; i < n; i++) on[i] = Math.max(0, L[i] - L[i - 1]);
       return { p, L, on, n };
     };
-    const A = feat(o), T = feat(t);
+    const A = feat(o),
+      T = feat(t);
     if (A.n < 10 || T.n < 10) return null;
     const ext = (F) => {
-      const ok = (i) => { let c = 0; for (let r = 0; r < 5 && i + r < F.n; r++) if (F.p[i + r] === F.p[i + r]) c++; return c >= 3; };
-      let a = -1, b = -1;
-      for (let i = 0; i < F.n; i++) if (ok(i)) { a = i; break; }
-      for (let i = F.n - 5; i >= 0; i--) if (ok(i)) { b = i + 4; break; }
+      const ok = (i) => {
+        let c = 0;
+        for (let r = 0; r < 5 && i + r < F.n; r++)
+          if (F.p[i + r] === F.p[i + r]) c++;
+        return c >= 3;
+      };
+      let a = -1,
+        b = -1;
+      for (let i = 0; i < F.n; i++)
+        if (ok(i)) {
+          a = i;
+          break;
+        }
+      for (let i = F.n - 5; i >= 0; i--)
+        if (ok(i)) {
+          b = i + 4;
+          break;
+        }
       return [a, b];
     };
-    const [oa, ob] = ext(A), [ta, tb] = ext(T);
-    let slope = 1, inter = off / S;
+    const [oa, ob] = ext(A),
+      [ta, tb] = ext(T);
+    let slope = 1,
+      inter = off / S;
     if (oa >= 0 && ta >= 0 && ob > oa + 20 && tb > ta + 20) {
       slope = Math.min(2, Math.max(0.5, (tb - ta) / (ob - oa)));
       inter = ta - oa * slope;
     }
     const W = 2 * B + 1;
-    const lo = (i) => Math.min(Math.max(Math.round(inter + i * slope) - B, 0), Math.max(0, T.n - W));
+    const lo = (i) =>
+      Math.min(
+        Math.max(Math.round(inter + i * slope) - B, 0),
+        Math.max(0, T.n - W),
+      );
     const cost = (i, j) => {
-      const pa = A.p[i], pb = T.p[j];
+      const pa = A.p[i],
+        pb = T.p[j];
       let pc;
-      if (pa === pa && pb === pb) pc = Math.min(Math.abs(foldOct(pb - pa - ks)), 3) / 3;
+      if (pa === pa && pb === pb)
+        pc = Math.min(Math.abs(foldOct(pb - pa - ks)), 3) / 3;
       else if (pa === pa || pb === pb) pc = 0.6;
       else pc = 0.1;
       const lc = Math.min(1, Math.abs(A.L[i] - T.L[j]) / 20);
       const oc = Math.min(1, Math.abs(A.on[i] - T.on[j]) / 10);
       return 0.6 * pc + 0.25 * lc + 0.15 * oc;
     };
-    const D = new Float32Array(A.n * W).fill(Infinity), P = new Uint8Array(A.n * W);
+    const D = new Float32Array(A.n * W).fill(Infinity),
+      P = new Uint8Array(A.n * W);
     for (let i = 0; i < A.n; i++) {
-      const l = lo(i), lp = i ? lo(i - 1) : 0;
+      const l = lo(i),
+        lp = i ? lo(i - 1) : 0;
       for (let w = 0; w < W; w++) {
         const j = l + w;
         if (j < 0 || j >= T.n) continue;
         const c = cost(i, j);
-        if (i === 0) { D[w] = c; continue; } // free start anywhere in the take
-        let best = Infinity, ptr = 0;
-        const wd = j - 1 - lp, wu = j - lp;
-        if (wd >= 0 && wd < W && D[(i - 1) * W + wd] < best) { best = D[(i - 1) * W + wd]; ptr = 1; }
-        if (wu >= 0 && wu < W && D[(i - 1) * W + wu] + PEN < best) { best = D[(i - 1) * W + wu] + PEN; ptr = 2; }
-        if (w >= 1 && D[i * W + w - 1] + PEN < best) { best = D[i * W + w - 1] + PEN; ptr = 3; }
-        if (ptr) { D[i * W + w] = c + best; P[i * W + w] = ptr; }
+        if (i === 0) {
+          D[w] = c;
+          continue;
+        } // free start anywhere in the take
+        let best = Infinity,
+          ptr = 0;
+        const wd = j - 1 - lp,
+          wu = j - lp;
+        if (wd >= 0 && wd < W && D[(i - 1) * W + wd] < best) {
+          best = D[(i - 1) * W + wd];
+          ptr = 1;
+        }
+        if (wu >= 0 && wu < W && D[(i - 1) * W + wu] + PEN < best) {
+          best = D[(i - 1) * W + wu] + PEN;
+          ptr = 2;
+        }
+        if (w >= 1 && D[i * W + w - 1] + PEN < best) {
+          best = D[i * W + w - 1] + PEN;
+          ptr = 3;
+        }
+        if (ptr) {
+          D[i * W + w] = c + best;
+          P[i * W + w] = ptr;
+        }
       }
     }
-    let w = -1, bestEnd = Infinity;
-    for (let x = 0; x < W; x++) { const v = D[(A.n - 1) * W + x]; if (v < bestEnd) { bestEnd = v; w = x; } }
+    let w = -1,
+      bestEnd = Infinity;
+    for (let x = 0; x < W; x++) {
+      const v = D[(A.n - 1) * W + x];
+      if (v < bestEnd) {
+        bestEnd = v;
+        w = x;
+      }
+    }
     if (w < 0) return null;
-    const Mc = new Float32Array(A.n), cnt = new Uint16Array(A.n);
-    let i = A.n - 1, guard = A.n * W;
+    const Mc = new Float32Array(A.n),
+      cnt = new Uint16Array(A.n);
+    let i = A.n - 1,
+      guard = A.n * W;
     while (i >= 0 && guard-- > 0) {
       const j = lo(i) + w;
-      Mc[i] += j; cnt[i]++;
+      Mc[i] += j;
+      cnt[i]++;
       const ptr = P[i * W + w];
-      if (ptr === 1) { i--; if (i < 0) break; w = j - 1 - lo(i); }
-      else if (ptr === 2) { i--; if (i < 0) break; w = j - lo(i); }
-      else if (ptr === 3) { w--; }
-      else break;
+      if (ptr === 1) {
+        i--;
+        if (i < 0) break;
+        w = j - 1 - lo(i);
+      } else if (ptr === 2) {
+        i--;
+        if (i < 0) break;
+        w = j - lo(i);
+      } else if (ptr === 3) {
+        w--;
+      } else break;
     }
-    for (let x = 0; x < A.n; x++) if (!cnt[x]) return null; else Mc[x] /= cnt[x];
+    for (let x = 0; x < A.n; x++)
+      if (!cnt[x]) return null;
+      else Mc[x] /= cnt[x];
     // back to 50 fps, smoothed and kept moving forward
-    const len = o.grid.length, raw = new Float32Array(len);
+    const len = o.grid.length,
+      raw = new Float32Array(len);
     for (let k = 0; k < len; k++) {
       const x = Math.max(0, Math.min(A.n - 1, (k - 2) / S));
-      const i0 = Math.floor(x), i1 = Math.min(A.n - 1, i0 + 1), fr = x - i0;
+      const i0 = Math.floor(x),
+        i1 = Math.min(A.n - 1, i0 + 1),
+        fr = x - i0;
       raw[k] = (Mc[i0] + (Mc[i1] - Mc[i0]) * fr) * S + 2;
     }
     const out = new Int32Array(len);
     let run = -Infinity;
     for (let k = 0; k < len; k++) {
-      let s = 0, c = 0;
-      for (let q = Math.max(0, k - 10); q <= Math.min(len - 1, k + 10); q++) { s += raw[q]; c++; }
+      let s = 0,
+        c = 0;
+      for (let q = Math.max(0, k - 10); q <= Math.min(len - 1, k + 10); q++) {
+        s += raw[q];
+        c++;
+      }
       run = Math.max(run, Math.round(s / c));
       out[k] = run;
     }
@@ -487,68 +754,109 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   function invTime(map, tT) {
     const n = map.length;
     if (tT <= map[0] * GRID) return tT - map[0] * GRID;
-    if (tT >= map[n - 1] * GRID) return (n - 1) * GRID + (tT - map[n - 1] * GRID);
-    let lo = 0, hi = n - 1;
-    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (map[mid] * GRID <= tT) lo = mid; else hi = mid - 1; }
+    if (tT >= map[n - 1] * GRID)
+      return (n - 1) * GRID + (tT - map[n - 1] * GRID);
+    let lo = 0,
+      hi = n - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (map[mid] * GRID <= tT) lo = mid;
+      else hi = mid - 1;
+    }
     return lo * GRID + Math.min(GRID, tT - map[lo] * GRID);
   }
 
   // warp only the stretch of the song your take covers, so a short take isn't squeezed across the whole song
   function warpTake(o, t, off, ks) {
-    const len = o.grid.length, tl = t.grid.length;
+    const len = o.grid.length,
+      tl = t.grid.length;
     const pad = Math.max(150, Math.round(0.15 * tl));
-    const lo = Math.max(0, -off - pad), hi = Math.min(len, tl - off + pad);
+    const lo = Math.max(0, -off - pad),
+      hi = Math.min(len, tl - off + pad);
     if (hi - lo < 60) return null;
     if (lo === 0 && hi === len) return warpMap(o, t, off, ks);
-    const sub = { grid: o.grid.subarray(lo, hi), loud: o.loud.subarray(lo, hi), notes: [], duration: (hi - lo) * GRID };
+    const sub = {
+      grid: o.grid.subarray(lo, hi),
+      loud: o.loud.subarray(lo, hi),
+      notes: [],
+      duration: (hi - lo) * GRID,
+    };
     const m = warpMap(sub, t, off + lo, ks);
     if (!m) return null;
     const out = new Int32Array(len);
-    for (let k = 0; k < len; k++) out[k] = k < lo ? k + off : k >= hi ? k + off : m[k - lo];
+    for (let k = 0; k < len; k++)
+      out[k] = k < lo ? k + off : k >= hi ? k + off : m[k - lo];
     return out;
   }
 
   function compare(o, t, map, octaveFree, warped, off, ks = 0) {
-    const a = o.grid, b = t.grid;
+    const a = o.grid,
+      b = t.grid;
     const fold = octaveFree ? foldOct : (d) => d;
     const rawD = [];
-    for (let k = 0; k < a.length; k += 3) { const j = map[k]; if (a[k] === a[k] && j >= 0 && j < b.length && b[j] === b[j]) rawD.push(b[j] - a[k]); }
+    for (let k = 0; k < a.length; k += 3) {
+      const j = map[k];
+      if (a[k] === a[k] && j >= 0 && j < b.length && b[j] === b[j])
+        rawD.push(b[j] - a[k]);
+    }
     const med0 = rawD.length ? median(rawD) : 0;
     const shift = octaveFree ? ks + 12 * Math.round((med0 - ks) / 12) : ks;
     // with warping, allow ±40 ms of slack so tiny boundary errors don't count as wrong notes
     const reach = warped ? 2 : 0;
     const takeAt = (k) => {
       const j = map[k];
-      let best = NaN, bd = Infinity;
+      let best = NaN,
+        bd = Infinity;
       for (let q = j - reach; q <= j + reach; q++) {
         if (q < 0 || q >= b.length) continue;
         const v = b[q];
         if (v !== v) continue;
         const dd = Math.abs(fold(v - a[k] - shift));
-        if (dd < bd) { bd = dd; best = v; }
+        if (dd < bd) {
+          bd = dd;
+          best = v;
+        }
       }
       return best;
     };
     // the part of the song you actually sang: from the note where you start to the note where you stop
     const sungAt = new Float32Array(a.length).fill(NaN);
-    let firstK = -1, lastK = -1;
+    let firstK = -1,
+      lastK = -1;
     for (let k = 0; k < a.length; k++) {
       if (a[k] !== a[k]) continue;
       const v = takeAt(k);
       sungAt[k] = v;
-      if (v === v) { if (firstK < 0) firstK = k; lastK = k; }
+      if (v === v) {
+        if (firstK < 0) firstK = k;
+        lastK = k;
+      }
     }
-    let lo = 0, hi = a.length - 1;
+    let lo = 0,
+      hi = a.length - 1;
     if (firstK >= 0) {
-      const t0 = firstK * GRID, t1 = lastK * GRID;
-      const n0 = o.notes.find((n) => t0 >= n.pos - 0.05 && t0 < n.end + 0.05), n1 = [...o.notes].reverse().find((n) => t1 >= n.pos - 0.05 && t1 < n.end + 0.05);
+      const t0 = firstK * GRID,
+        t1 = lastK * GRID;
+      const n0 = o.notes.find((n) => t0 >= n.pos - 0.05 && t0 < n.end + 0.05),
+        n1 = [...o.notes]
+          .reverse()
+          .find((n) => t1 >= n.pos - 0.05 && t1 < n.end + 0.05);
       lo = Math.max(0, Math.round((n0 ? Math.min(n0.pos, t0) : t0) / GRID));
-      hi = Math.min(a.length - 1, Math.round((n1 ? Math.max(n1.end, t1) : t1) / GRID));
+      hi = Math.min(
+        a.length - 1,
+        Math.round((n1 ? Math.max(n1.end, t1) : t1) / GRID),
+      );
     }
     const inRange = (k) => k >= lo && k <= hi;
-    const rangeLo = lo * GRID, rangeHi = (hi + 1) * GRID;
+    const rangeLo = lo * GRID,
+      rangeHi = (hi + 1) * GRID;
     const d = new Float32Array(a.length).fill(NaN);
-    let voiced = 0, both = 0, w50 = 0, w25 = 0, sum = 0, sumN = 0;
+    let voiced = 0,
+      both = 0,
+      w50 = 0,
+      w25 = 0,
+      sum = 0,
+      sumN = 0;
     for (let k = lo; k <= hi; k++) {
       if (a[k] !== a[k]) continue;
       voiced++;
@@ -560,91 +868,198 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const c = Math.abs(dd) * 100;
       if (c <= 50) w50++;
       if (c <= 25) w25++;
-      if (c <= 300) { sum += dd * 100; sumN++; }
+      if (c <= 300) {
+        sum += dd * 100;
+        sumN++;
+      }
     }
     // timing: how far the take drifts from the original's timing (warped mode)
-    let dev = null, drift = null;
+    let dev = null,
+      drift = null;
     if (warped) {
       const offs = [];
-      for (let k = lo; k <= hi; k += 2) if (a[k] === a[k]) offs.push(map[k] - k);
+      for (let k = lo; k <= hi; k += 2)
+        if (a[k] === a[k]) offs.push(map[k] - k);
       const base = offs.length ? median(offs) : 0;
       dev = new Float32Array(a.length);
       const absd = [];
-      for (let k = 0; k < a.length; k++) { dev[k] = (map[k] - k - base) * GRID; if (a[k] === a[k] && inRange(k)) absd.push(Math.abs(dev[k])); }
+      for (let k = 0; k < a.length; k++) {
+        dev[k] = (map[k] - k - base) * GRID;
+        if (a[k] === a[k] && inRange(k)) absd.push(Math.abs(dev[k]));
+      }
       drift = absd.length ? Math.round(median(absd) * 1000) : 0;
     }
     const offSec = off * GRID;
     const timings = [];
-    const rows = o.notes.filter((n) => n.end > rangeLo + 0.02 && n.pos < rangeHi - 0.02).map((n) => {
-      const k0 = Math.round(n.pos / GRID), k1 = Math.max(k0 + 1, Math.round(n.end / GRID));
-      const vals = [];
-      for (let k = k0; k < k1 && k < d.length; k++) if (d[k] === d[k]) vals.push(d[k]);
-      let timing = null;
-      if (dev) timing = dev[Math.min(dev.length - 1, k0)];
-      else {
-        t.notes.forEach((m) => {
-          const dt = m.pos - offSec - n.pos;
-          const same = octaveFree ? foldOct(m.midi - n.midi) === 0 : m.midi === n.midi;
-          if (same && Math.abs(dt) < 0.6 && (timing === null || Math.abs(dt) < Math.abs(timing))) timing = dt;
-        });
-        if (timing !== null) timings.push(timing);
-      }
-      if (vals.length < 0.3 * (k1 - k0)) return { n, missed: true, timing };
-      const med = median(vals);
-      const cents = Math.round(med * 100);
-      const yours = Math.round(n.midi + med) + shift;
-      let verdict, tone;
-      if (Math.abs(cents) <= 25) { verdict = "On pitch"; tone = "good"; }
-      else if (Math.abs(cents) <= 50) { verdict = cents > 0 ? "A bit sharp" : "A bit flat"; tone = "warn"; }
-      else { const st = Math.round(med); verdict = "Off by " + Math.abs(st) + (Math.abs(st) === 1 ? " half step" : " half steps"); tone = "bad"; }
-      return { n, cents, yours, verdict, tone, timing };
-    });
+    const rows = o.notes
+      .filter((n) => n.end > rangeLo + 0.02 && n.pos < rangeHi - 0.02)
+      .map((n) => {
+        const k0 = Math.round(n.pos / GRID),
+          k1 = Math.max(k0 + 1, Math.round(n.end / GRID));
+        const vals = [];
+        for (let k = k0; k < k1 && k < d.length; k++)
+          if (d[k] === d[k]) vals.push(d[k]);
+        let timing = null;
+        if (dev) timing = dev[Math.min(dev.length - 1, k0)];
+        else {
+          t.notes.forEach((m) => {
+            const dt = m.pos - offSec - n.pos;
+            const same = octaveFree
+              ? foldOct(m.midi - n.midi) === 0
+              : m.midi === n.midi;
+            if (
+              same &&
+              Math.abs(dt) < 0.6 &&
+              (timing === null || Math.abs(dt) < Math.abs(timing))
+            )
+              timing = dt;
+          });
+          if (timing !== null) timings.push(timing);
+        }
+        if (vals.length < 0.3 * (k1 - k0)) return { n, missed: true, timing };
+        const med = median(vals);
+        const cents = Math.round(med * 100);
+        const yours = Math.round(n.midi + med) + shift;
+        let verdict, tone;
+        if (Math.abs(cents) <= 25) {
+          verdict = "On pitch";
+          tone = "good";
+        } else if (Math.abs(cents) <= 50) {
+          verdict = cents > 0 ? "A bit sharp" : "A bit flat";
+          tone = "warn";
+        } else {
+          const st = Math.round(med);
+          verdict =
+            "Off by " +
+            Math.abs(st) +
+            (Math.abs(st) === 1 ? " half step" : " half steps");
+          tone = "bad";
+        }
+        return { n, cents, yours, verdict, tone, timing };
+      });
     // phrases to practice: 3 s windows, step 1 s, flagged for pitch or timing
     const cand = [];
     for (let s = 0; s + 150 <= a.length; s += 50) {
       if (s + 150 <= lo || s > hi) continue;
-      let v = 0, bad = 0, missing = 0, sc = 0, scN = 0, dv = 0;
+      let v = 0,
+        bad = 0,
+        missing = 0,
+        sc = 0,
+        scN = 0,
+        dv = 0;
       for (let k = s; k < s + 150; k++) {
         if (a[k] !== a[k] || !inRange(k)) continue;
         v++;
         if (dev) dv += dev[k];
-        if (d[k] !== d[k]) { bad++; missing++; continue; }
+        if (d[k] !== d[k]) {
+          bad++;
+          missing++;
+          continue;
+        }
         if (Math.abs(d[k]) > 0.5) bad++;
-        if (Math.abs(d[k]) <= 3) { sc += d[k] * 100; scN++; }
+        if (Math.abs(d[k]) <= 3) {
+          sc += d[k] * 100;
+          scN++;
+        }
       }
       if (v < 40) continue;
-      const rate = bad / v, meanDev = dev ? dv / v : 0;
+      const rate = bad / v,
+        meanDev = dev ? dv / v : 0;
       const late = Math.abs(meanDev) >= 0.25;
       if (rate < 0.25 && !late) continue;
       const avg = scN ? sc / scN : 0;
       const parts = [];
-      const kind = rate >= 0.25 ? (missing / v > 0.5 ? "missing" : Math.abs(avg) >= 30 ? "lean" : "wrong") : null;
+      const kind =
+        rate >= 0.25
+          ? missing / v > 0.5
+            ? "missing"
+            : Math.abs(avg) >= 30
+              ? "lean"
+              : "wrong"
+          : null;
       if (rate >= 0.25) {
-        if (missing / v > 0.5) parts.push("Mostly missing here. You may be too quiet.");
-        else if (Math.abs(avg) >= 30) parts.push("Mostly " + (avg > 0 ? "sharp" : "flat") + " by about " + Math.round(Math.abs(avg)) + "¢.");
+        if (missing / v > 0.5)
+          parts.push("Mostly missing here. You may be too quiet.");
+        else if (Math.abs(avg) >= 30)
+          parts.push(
+            "Mostly " +
+              (avg > 0 ? "sharp" : "flat") +
+              " by about " +
+              Math.round(Math.abs(avg)) +
+              "¢.",
+          );
         else parts.push("Several wrong notes in this phrase.");
       }
-      if (late) parts.push("You're about " + Math.abs(meanDev).toFixed(1) + " s " + (meanDev > 0 ? "behind" : "ahead") + " here.");
-      cand.push({ start: s * GRID, end: (s + 150) * GRID, rate: Math.max(rate, late ? Math.min(0.9, Math.abs(meanDev)) : 0), why: parts.join(" "), kind, avg, late, meanDev });
+      if (late)
+        parts.push(
+          "You're about " +
+            Math.abs(meanDev).toFixed(1) +
+            " s " +
+            (meanDev > 0 ? "behind" : "ahead") +
+            " here.",
+        );
+      cand.push({
+        start: s * GRID,
+        end: (s + 150) * GRID,
+        rate: Math.max(rate, late ? Math.min(0.9, Math.abs(meanDev)) : 0),
+        why: parts.join(" "),
+        kind,
+        avg,
+        late,
+        meanDev,
+      });
     }
     cand.sort((x, y) => y.rate - x.rate);
     const spots = [];
-    cand.forEach((c) => { if (spots.length < 3 && spots.every((s) => c.end <= s.start || c.start >= s.end)) spots.push(c); });
+    cand.forEach((c) => {
+      if (
+        spots.length < 3 &&
+        spots.every((s) => c.end <= s.start || c.start >= s.end)
+      )
+        spots.push(c);
+    });
     spots.sort((x, y) => x.start - y.start);
     return {
-      d, dev, drift, shift, keyShift: ks, octShift: shift - ks, rows, spots, map,
-      range: { start: rangeLo, end: Math.min(rangeHi, a.length * GRID), whole: lo <= 5 && hi >= a.length - 6 },
+      d,
+      dev,
+      drift,
+      shift,
+      keyShift: ks,
+      octShift: shift - ks,
+      rows,
+      spots,
+      map,
+      range: {
+        start: rangeLo,
+        end: Math.min(rangeHi, a.length * GRID),
+        whole: lo <= 5 && hi >= a.length - 6,
+      },
       score: voiced ? Math.round((100 * w50) / voiced) : 0,
       inTune: both ? Math.round((100 * w25) / both) : 0,
       rightNote: both ? Math.round((100 * w50) / both) : 0,
       coverage: voiced ? Math.round((100 * both) / voiced) : 0,
       tendency: sumN ? Math.round(sum / sumN) : 0,
-      timing: dev ? null : timings.length ? Math.round(median(timings) * 1000) : null,
+      timing: dev
+        ? null
+        : timings.length
+          ? Math.round(median(timings) * 1000)
+          : null,
     };
   }
 
   /* ---------- plain-language wording ---------- */
-  const howMuch = (c) => { const a = Math.abs(c); return a < 10 ? "right on" : a < 25 ? "a tiny bit" : a < 50 ? "a little" : a < 100 ? "quite a bit" : "a lot"; };
+  const howMuch = (c) => {
+    const a = Math.abs(c);
+    return a < 10
+      ? "right on"
+      : a < 25
+        ? "a tiny bit"
+        : a < 50
+          ? "a little"
+          : a < 100
+            ? "quite a bit"
+            : "a lot";
+  };
   const lowHigh = (c) => (c > 0 ? "high (sharp)" : "low (flat)");
   const pianoKeys = (n) => n + (n === 1 ? " piano key" : " piano keys");
   function plainVerdict(r) {
@@ -652,15 +1067,39 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const a = Math.abs(r.cents);
     if (a <= 25) return "Right on";
     if (a <= 50) return "A little too " + (r.cents > 0 ? "high" : "low");
-    return "Wrong note, " + pianoKeys(Math.abs(Math.round(r.cents / 100))) + " too " + (r.cents > 0 ? "high" : "low");
+    return (
+      "Wrong note, " +
+      pianoKeys(Math.abs(Math.round(r.cents / 100))) +
+      " too " +
+      (r.cents > 0 ? "high" : "low")
+    );
   }
   function spotText(s, plain) {
     if (!plain) return s.why;
     const parts = [];
-    if (s.kind === "missing") parts.push("It's hard to hear you here. Sing a bit louder, or check that you come in on time.");
-    else if (s.kind === "lean") parts.push("You're singing " + howMuch(s.avg) + " too " + lowHigh(s.avg) + " in this part.");
+    if (s.kind === "missing")
+      parts.push(
+        "It's hard to hear you here. Sing a bit louder, or check that you come in on time.",
+      );
+    else if (s.kind === "lean")
+      parts.push(
+        "You're singing " +
+          howMuch(s.avg) +
+          " too " +
+          lowHigh(s.avg) +
+          " in this part.",
+      );
     else if (s.kind === "wrong") parts.push("A few wrong notes in this part.");
-    if (s.late) parts.push(s.meanDev > 0 ? "You're coming in late here, about " + Math.abs(s.meanDev).toFixed(1) + " seconds behind." : "You're rushing here, about " + Math.abs(s.meanDev).toFixed(1) + " seconds ahead.");
+    if (s.late)
+      parts.push(
+        s.meanDev > 0
+          ? "You're coming in late here, about " +
+              Math.abs(s.meanDev).toFixed(1) +
+              " seconds behind."
+          : "You're rushing here, about " +
+              Math.abs(s.meanDev).toFixed(1) +
+              " seconds ahead.",
+      );
     return parts.join(" ");
   }
 
@@ -670,26 +1109,32 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const f = Float32Array.from(g);
     let k = 0;
     while (k < f.length) {
-      if (f[k] === f[k]) { k++; continue; }
+      if (f[k] === f[k]) {
+        k++;
+        continue;
+      }
       let e = k;
       while (e < f.length && f[e] !== f[e]) e++;
       if (k > 0 && e < f.length && e - k <= 3) {
-        const a = f[k - 1], b = f[e];
-        for (let q = k; q < e; q++) f[q] = a + ((b - a) * (q - k + 1)) / (e - k + 1);
+        const a = f[k - 1],
+          b = f[e];
+        for (let q = k; q < e; q++)
+          f[q] = a + ((b - a) * (q - k + 1)) / (e - k + 1);
       }
       k = e;
     }
     return f;
   }
-  const mean = (arr) => arr.reduce((s, v) => s + v, 0) / (arr.length || 1);
-
   // sliding up into notes that start after a breath
   function scoopStats(tr) {
     const g = fillGaps(tr.grid);
-    let n = 0, sc = 0, depthSum = 0;
+    let n = 0,
+      sc = 0,
+      depthSum = 0;
     const ex = [];
     tr.notes.forEach((note) => {
-      const k = Math.round(note.pos / GRID), k1 = Math.round(note.end / GRID);
+      const k = Math.round(note.pos / GRID),
+        k1 = Math.round(note.end / GRID);
       let s = k;
       while (s > 0 && k - s < 15 && g[s - 1] === g[s - 1]) s--;
       if (s > 0 && g[s - 1] === g[s - 1]) return; // joined from a previous note: legato, not a scoop
@@ -700,9 +1145,19 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       if (!first.length) return;
       const depth = median(mid) - median(first);
       n++;
-      if (depth >= 0.6 && depth < 4) { sc++; depthSum += depth; ex.push(note.pos); }
+      if (depth >= 0.6 && depth < 4) {
+        sc++;
+        depthSum += depth;
+        ex.push(note.pos);
+      }
     });
-    return { count: n, scoops: sc, rate: n ? sc / n : 0, depth: sc ? Math.round((depthSum / sc) * 100) : 0, examples: ex };
+    return {
+      count: n,
+      scoops: sc,
+      rate: n ? sc / n : 0,
+      depth: sc ? Math.round((depthSum / sc) * 100) : 0,
+      examples: ex,
+    };
   }
 
   // vibrato, steadiness and drift on held notes
@@ -710,32 +1165,54 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const g = fillGaps(tr.grid);
     const out = [];
     tr.notes.forEach((note) => {
-      const k0 = Math.round(note.pos / GRID) + 8, k1 = Math.round(note.end / GRID) - 3;
+      const k0 = Math.round(note.pos / GRID) + 8,
+        k1 = Math.round(note.end / GRID) - 3;
       if (k1 - k0 < 22) return;
       const seg = [];
-      for (let q = k0; q < k1; q++) { if (g[q] !== g[q]) return; seg.push(g[q]); }
-      const N = seg.length, mx = (N - 1) / 2, my = mean(seg);
-      let cov = 0, vx = 0;
-      for (let i = 0; i < N; i++) { cov += (i - mx) * (seg[i] - my); vx += (i - mx) * (i - mx); }
+      for (let q = k0; q < k1; q++) {
+        if (g[q] !== g[q]) return;
+        seg.push(g[q]);
+      }
+      const N = seg.length,
+        mx = (N - 1) / 2,
+        my = mean(seg);
+      let cov = 0,
+        vx = 0;
+      for (let i = 0; i < N; i++) {
+        cov += (i - mx) * (seg[i] - my);
+        vx += (i - mx) * (i - mx);
+      }
       const slope = vx ? cov / vx : 0;
       const r = seg.map((v, i) => v - (my + slope * (i - mx)));
       const v0 = r.reduce((s, v) => s + v * v, 0);
       const std = Math.sqrt(v0 / N);
-      let bestL = 0, bestC = -1;
+      let bestL = 0,
+        bestC = -1;
       for (let L = 5; L <= 13 && L < N - 4; L++) {
         let c = 0;
         for (let i = 0; i + L < N; i++) c += r[i] * r[i + L];
         c = v0 ? (c / v0) * (N / (N - L)) : 0;
-        if (c > bestC) { bestC = c; bestL = L; }
+        if (c > bestC) {
+          bestC = c;
+          bestL = L;
+        }
       }
       const ext = Math.SQRT2 * std * 100; // approx. half-width in cents
       const vib = bestC >= 0.45 && ext >= 12;
-      out.push({ pos: note.pos, vib, rate: vib ? 50 / bestL : 0, ext: vib ? ext : 0, std: std * 100, drift: slope * (N - 1) * 100 });
+      out.push({
+        pos: note.pos,
+        vib,
+        rate: vib ? 50 / bestL : 0,
+        ext: vib ? ext : 0,
+        std: std * 100,
+        drift: slope * (N - 1) * 100,
+      });
     });
     return out;
   }
   function summarizeHolds(h) {
-    const vib = h.filter((x) => x.vib), straight = h.filter((x) => !x.vib);
+    const vib = h.filter((x) => x.vib),
+      straight = h.filter((x) => !x.vib);
     return {
       count: h.length,
       vibShare: h.length ? vib.length / h.length : 0,
@@ -743,7 +1220,8 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       ext: vib.length ? mean(vib.map((x) => x.ext)) : 0,
       wobble: straight.length ? median(straight.map((x) => x.std)) : null,
       drift: h.length ? median(h.map((x) => x.drift)) : 0,
-      straight, all: h,
+      straight,
+      all: h,
     };
   }
 
@@ -753,145 +1231,372 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const out = [];
 
     // 1. scoops
-    const sy = scoopStats(t), so = scoopStats(o);
+    const sy = scoopStats(t),
+      so = scoopStats(o);
     if (sy.count >= 4) {
       const extra = sy.rate - so.rate;
       out.push({
-        key: "scoop", title: "Landing on notes",
+        key: "scoop",
+        title: "Landing on notes",
         value: sy.scoops ? pct(sy.rate) + " scooped" : "Clean",
         compare: "Original: " + pct(so.rate) + " of fresh starts",
         tone: extra > 0.35 ? "bad" : extra > 0.15 ? "warn" : "good",
         detail: sy.scoops
-          ? "You slide up into " + sy.scoops + " of " + sy.count + " notes that start after a breath, from about " + sy.depth + "¢ below the note."
+          ? "You slide up into " +
+            sy.scoops +
+            " of " +
+            sy.count +
+            " notes that start after a breath, from about " +
+            sy.depth +
+            "¢ below the note."
           : "You land notes that start after a breath right on pitch.",
-        tip: extra > 0.15 ? "Hear the note in your head before you breathe in, then aim for the middle of it. Starting on a light, clear vowel helps you land instead of slide." : "",
+        tip:
+          extra > 0.15
+            ? "Hear the note in your head before you breathe in, then aim for the middle of it. Starting on a light, clear vowel helps you land instead of slide."
+            : "",
         p: {
           title: "Hitting notes cleanly",
-          value: sy.scoops ? sy.scoops + " of " + sy.count + " slid in" : "Clean starts",
-          compare: so.scoops ? "The original singer slides into " + pct(so.rate) + " of notes" : "The original singer starts notes cleanly",
-          detail: sy.scoops ? "Sometimes you start a note too low and slide up to it. Singers call this a scoop, and it can make you sound unsure." : "You start your notes right on pitch instead of sliding up to them.",
-          tip: extra > 0.15 ? "Before you sing, hear the note in your head, then aim straight for it. Starting softly on the vowel sound helps." : "",
+          value: sy.scoops
+            ? sy.scoops + " of " + sy.count + " slid in"
+            : "Clean starts",
+          compare: so.scoops
+            ? "The original singer slides into " + pct(so.rate) + " of notes"
+            : "The original singer starts notes cleanly",
+          detail: sy.scoops
+            ? "Sometimes you start a note too low and slide up to it. Singers call this a scoop, and it can make you sound unsure."
+            : "You start your notes right on pitch instead of sliding up to them.",
+          tip:
+            extra > 0.15
+              ? "Before you sing, hear the note in your head, then aim straight for it. Starting softly on the vowel sound helps."
+              : "",
         },
         examples: sy.examples.slice(0, 3).map(toOrig),
       });
     }
 
     // 2. phrase endings
-    const og = fillGaps(o.grid), runs = [];
+    const og = fillGaps(o.grid),
+      runs = [];
     let s = -1;
     for (let k = 0; k <= og.length; k++) {
       const v = k < og.length && og[k] === og[k];
       if (v && s < 0) s = k;
-      if (!v && s >= 0) { if (k - s >= 50) runs.push([s, k]); s = -1; }
+      if (!v && s >= 0) {
+        if (k - s >= 50) runs.push([s, k]);
+        s = -1;
+      }
     }
     // compare how your pitch moves over the last 0.3 s of each phrase with how the original's moves
     const tg = fillGaps(t.grid);
-    const herAt = (k) => { const j = result.map[k]; return j >= 0 && j < tg.length ? tg[j] : NaN; };
+    const herAt = (k) => {
+      const j = result.map[k];
+      return j >= 0 && j < tg.length ? tg[j] : NaN;
+    };
     const origAt = (k) => og[k];
-    const win = (k0, k1, f) => { const v = []; for (let k = Math.max(0, k0); k < k1; k++) { const x = f(k); if (x === x) v.push(x); } return v; };
+    const win = (k0, k1, f) => {
+      const v = [];
+      for (let k = Math.max(0, k0); k < k1; k++) {
+        const x = f(k);
+        if (x === x) v.push(x);
+      }
+      return v;
+    };
     const drops = [];
     runs.forEach(([a, b]) => {
-      if (result.range && (a * GRID < result.range.start - 0.1 || b * GRID > result.range.end + 0.1)) return;
-      const oE = win(b - 15, b, origAt), oP = win(b - 30, b - 15, origAt), hE = win(b - 15, b, herAt), hP = win(b - 30, b - 15, herAt);
-      if (oE.length < 8 || oP.length < 8 || hE.length < 8 || hP.length < 8) return;
-      drops.push({ at: b * GRID, drop: ((mean(hE) - mean(hP)) - (mean(oE) - mean(oP))) * 100 });
+      if (
+        result.range &&
+        (a * GRID < result.range.start - 0.1 ||
+          b * GRID > result.range.end + 0.1)
+      )
+        return;
+      const oE = win(b - 15, b, origAt),
+        oP = win(b - 30, b - 15, origAt),
+        hE = win(b - 15, b, herAt),
+        hP = win(b - 30, b - 15, herAt);
+      if (oE.length < 8 || oP.length < 8 || hE.length < 8 || hP.length < 8)
+        return;
+      drops.push({
+        at: b * GRID,
+        drop: (mean(hE) - mean(hP) - (mean(oE) - mean(oP))) * 100,
+      });
     });
     if (drops.length >= 2) {
       const avg = Math.round(mean(drops.map((x) => x.drop)));
       const flatOnes = drops.filter((x) => x.drop <= -25);
       out.push({
-        key: "ends", title: "Phrase endings",
-        value: Math.abs(avg) < 12 ? "Steady" : Math.abs(avg) + "¢ " + (avg < 0 ? "flatter" : "sharper"),
-        compare: flatOnes.length + " of " + drops.length + " phrases end noticeably flat",
+        key: "ends",
+        title: "Phrase endings",
+        value:
+          Math.abs(avg) < 12
+            ? "Steady"
+            : Math.abs(avg) + "¢ " + (avg < 0 ? "flatter" : "sharper"),
+        compare:
+          flatOnes.length +
+          " of " +
+          drops.length +
+          " phrases end noticeably flat",
         tone: avg <= -25 ? "bad" : avg <= -12 || avg >= 20 ? "warn" : "good",
-        detail: Math.abs(avg) < 12
-          ? "You hold your pitch through the ends of phrases."
-          : "The last words of your phrases are about " + Math.abs(avg) + "¢ " + (avg < 0 ? "flatter" : "sharper") + " than the rest of the phrase.",
-        tip: avg <= -12 ? "Going flat at the end of a phrase usually means you're running low on air. Take your breath a little earlier and keep the support going through the last word." : "",
+        detail:
+          Math.abs(avg) < 12
+            ? "You hold your pitch through the ends of phrases."
+            : "The last words of your phrases are about " +
+              Math.abs(avg) +
+              "¢ " +
+              (avg < 0 ? "flatter" : "sharper") +
+              " than the rest of the phrase.",
+        tip:
+          avg <= -12
+            ? "Going flat at the end of a phrase usually means you're running low on air. Take your breath a little earlier and keep the support going through the last word."
+            : "",
         p: {
           title: "Ends of lines",
-          value: Math.abs(avg) < 12 ? "Steady" : "Drops " + (avg < 0 ? "low" : "high"),
-          compare: flatOnes.length + " of " + drops.length + " lines end too low",
-          detail: Math.abs(avg) < 12 ? "You keep your pitch steady right to the end of each line." : avg < 0 ? "At the end of your lines, your voice drops " + howMuch(avg) + " too low (goes flat)." : "At the end of your lines, your voice creeps " + howMuch(avg) + " too high (goes sharp).",
-          tip: avg <= -12 ? "This usually happens when you're running out of breath. Breathe a bit earlier and keep a gentle, steady push of air through the last word." : "",
+          value:
+            Math.abs(avg) < 12
+              ? "Steady"
+              : "Drops " + (avg < 0 ? "low" : "high"),
+          compare:
+            flatOnes.length + " of " + drops.length + " lines end too low",
+          detail:
+            Math.abs(avg) < 12
+              ? "You keep your pitch steady right to the end of each line."
+              : avg < 0
+                ? "At the end of your lines, your voice drops " +
+                  howMuch(avg) +
+                  " too low (goes flat)."
+                : "At the end of your lines, your voice creeps " +
+                  howMuch(avg) +
+                  " too high (goes sharp).",
+          tip:
+            avg <= -12
+              ? "This usually happens when you're running out of breath. Breathe a bit earlier and keep a gentle, steady push of air through the last word."
+              : "",
         },
-        examples: flatOnes.sort((x, y) => x.drop - y.drop).slice(0, 3).map((x) => Math.max(0, x.at - 1.5)),
+        examples: flatOnes
+          .sort((x, y) => x.drop - y.drop)
+          .slice(0, 3)
+          .map((x) => Math.max(0, x.at - 1.5)),
       });
     }
 
     // 3. vibrato and 4. long-note steadiness
-    const hy = summarizeHolds(holdStats(t)), ho = summarizeHolds(holdStats(o));
+    const hy = summarizeHolds(holdStats(t)),
+      ho = summarizeHolds(holdStats(o));
     if (hy.count >= 2) {
-      let tone = "good", detail, tip = "";
+      let tone = "good",
+        detail,
+        tip = "";
       if (hy.vibShare === 0) {
         detail = "You hold your long notes straight, without vibrato.";
-        if (ho.vibShare >= 0.3) { tone = "warn"; tip = "The original uses vibrato on " + pct(ho.vibShare) + " of long notes. Try letting the note relax and wave slightly after you've landed it, instead of holding it rigid."; }
+        if (ho.vibShare >= 0.3) {
+          tone = "warn";
+          tip =
+            "The original uses vibrato on " +
+            pct(ho.vibShare) +
+            " of long notes. Try letting the note relax and wave slightly after you've landed it, instead of holding it rigid.";
+        }
       } else {
-        detail = "Vibrato on " + pct(hy.vibShare) + " of your long notes, about " + hy.rate.toFixed(1) + " waves per second and ±" + Math.round(hy.ext) + "¢ wide.";
-        if (hy.ext > 70 || (ho.ext && hy.ext > ho.ext + 25)) { tone = "warn"; tip = "Your vibrato is wider than the original's. Ease off the pressure and let it get narrower and more even."; }
-        else if (hy.rate > 7.5) { tone = "warn"; tip = "Your vibrato is fast and can sound tight. Relax the throat and jaw so it slows down."; }
-        else if (hy.rate < 4.5) { tone = "warn"; tip = "Your vibrato is slow and can sound wobbly. More steady breath support usually tightens it up."; }
+        detail =
+          "Vibrato on " +
+          pct(hy.vibShare) +
+          " of your long notes, about " +
+          hy.rate.toFixed(1) +
+          " waves per second and ±" +
+          Math.round(hy.ext) +
+          "¢ wide.";
+        if (hy.ext > 70 || (ho.ext && hy.ext > ho.ext + 25)) {
+          tone = "warn";
+          tip =
+            "Your vibrato is wider than the original's. Ease off the pressure and let it get narrower and more even.";
+        } else if (hy.rate > 7.5) {
+          tone = "warn";
+          tip =
+            "Your vibrato is fast and can sound tight. Relax the throat and jaw so it slows down.";
+        } else if (hy.rate < 4.5) {
+          tone = "warn";
+          tip =
+            "Your vibrato is slow and can sound wobbly. More steady breath support usually tightens it up.";
+        }
       }
-      const speedW = (r) => (r < 4.5 ? "slow" : r > 7.5 ? "fast" : "normal speed");
+      const speedW = (r) =>
+        r < 4.5 ? "slow" : r > 7.5 ? "fast" : "normal speed";
       const widthW = (e) => (e < 25 ? "small" : e < 60 ? "medium" : "big");
       let pTip = "";
-      if (tip) pTip = hy.vibShare === 0 ? "The original singer lets long notes wave a little. Once you've landed a note, relax and let it move naturally instead of holding it stiff."
-        : (hy.ext > 70 || (ho.ext && hy.ext > ho.ext + 25)) ? "Your wave is bigger than the original's, which can sound shaky. Use a little less force and let it settle."
-        : hy.rate > 7.5 ? "Your wave is quick and can sound tense. Relax your jaw and throat." : "Your wave is slow and can sound wobbly. Steady breathing helps.";
+      if (tip)
+        pTip =
+          hy.vibShare === 0
+            ? "The original singer lets long notes wave a little. Once you've landed a note, relax and let it move naturally instead of holding it stiff."
+            : hy.ext > 70 || (ho.ext && hy.ext > ho.ext + 25)
+              ? "Your wave is bigger than the original's, which can sound shaky. Use a little less force and let it settle."
+              : hy.rate > 7.5
+                ? "Your wave is quick and can sound tense. Relax your jaw and throat."
+                : "Your wave is slow and can sound wobbly. Steady breathing helps.";
       out.push({
         p: {
           title: "Vibrato (the wave in a long note)",
-          value: hy.vibShare ? widthW(hy.ext)[0].toUpperCase() + widthW(hy.ext).slice(1) + " wave, " + speedW(hy.rate) : "No wave",
-          compare: ho.count ? (ho.vibShare ? "Original: " + widthW(ho.ext) + " wave, " + speedW(ho.rate) : "Original: no wave") : "",
-          detail: hy.vibShare ? "Vibrato is the gentle wave you hear in a held note. You use it on " + pct(hy.vibShare) + " of your long notes." : "You hold your long notes perfectly straight, with no wave.",
+          value: hy.vibShare
+            ? widthW(hy.ext)[0].toUpperCase() +
+              widthW(hy.ext).slice(1) +
+              " wave, " +
+              speedW(hy.rate)
+            : "No wave",
+          compare: ho.count
+            ? ho.vibShare
+              ? "Original: " + widthW(ho.ext) + " wave, " + speedW(ho.rate)
+              : "Original: no wave"
+            : "",
+          detail: hy.vibShare
+            ? "Vibrato is the gentle wave you hear in a held note. You use it on " +
+              pct(hy.vibShare) +
+              " of your long notes."
+            : "You hold your long notes perfectly straight, with no wave.",
           tip: pTip,
         },
-        key: "vib", title: "Vibrato",
-        value: hy.vibShare ? hy.rate.toFixed(1) + " Hz · ±" + Math.round(hy.ext) + "¢" : "None",
-        compare: ho.count ? (ho.vibShare ? "Original: " + ho.rate.toFixed(1) + " Hz · ±" + Math.round(ho.ext) + "¢ on " + pct(ho.vibShare) : "Original: none") : "",
-        tone, detail, tip,
-        examples: hy.all.filter((x) => x.vib).slice(0, 3).map((x) => toOrig(x.pos)),
+        key: "vib",
+        title: "Vibrato",
+        value: hy.vibShare
+          ? hy.rate.toFixed(1) + " Hz · ±" + Math.round(hy.ext) + "¢"
+          : "None",
+        compare: ho.count
+          ? ho.vibShare
+            ? "Original: " +
+              ho.rate.toFixed(1) +
+              " Hz · ±" +
+              Math.round(ho.ext) +
+              "¢ on " +
+              pct(ho.vibShare)
+            : "Original: none"
+          : "",
+        tone,
+        detail,
+        tip,
+        examples: hy.all
+          .filter((x) => x.vib)
+          .slice(0, 3)
+          .map((x) => toOrig(x.pos)),
       });
 
-      const wob = hy.wobble, drift = Math.round(hy.drift);
+      const wob = hy.wobble,
+        drift = Math.round(hy.drift);
       const wobOrig = ho.wobble;
-      let stTone = "good", stDetail, stTip = "";
+      let stTone = "good",
+        stDetail,
+        stTip = "";
       const parts = [];
-      if (wob != null) parts.push("Your straight long notes waver by about ±" + Math.round(wob) + "¢" + (wobOrig != null ? " (original ±" + Math.round(wobOrig) + "¢)" : "") + ".");
-      if (Math.abs(drift) >= 20) parts.push("Over a long note you typically drift " + Math.abs(drift) + "¢ " + (drift < 0 ? "flat" : "sharp") + ".");
+      if (wob != null)
+        parts.push(
+          "Your straight long notes waver by about ±" +
+            Math.round(wob) +
+            "¢" +
+            (wobOrig != null
+              ? " (original ±" + Math.round(wobOrig) + "¢)"
+              : "") +
+            ".",
+        );
+      if (Math.abs(drift) >= 20)
+        parts.push(
+          "Over a long note you typically drift " +
+            Math.abs(drift) +
+            "¢ " +
+            (drift < 0 ? "flat" : "sharp") +
+            ".",
+        );
       stDetail = parts.join(" ") || "Your long notes stay put.";
-      if ((wob != null && wob > 22) || Math.abs(drift) >= 35) { stTone = "bad"; }
-      else if ((wob != null && wob > 12) || Math.abs(drift) >= 20) { stTone = "warn"; }
-      if (stTone !== "good") stTip = drift <= -20 ? "Sagging flat on long notes is usually lost breath support. Keep the air flowing steadily and think of the note staying up." : drift >= 20 ? "Creeping sharp often comes from pushing more air or tension as the note goes on. Keep it relaxed and even." : "An unsteady long note usually needs steadier airflow. Practice holding single notes against the guide tone.";
-      const worst = [...hy.straight].sort((x, y) => (Math.abs(y.drift) + y.std) - (Math.abs(x.drift) + x.std));
+      if ((wob != null && wob > 22) || Math.abs(drift) >= 35) {
+        stTone = "bad";
+      } else if ((wob != null && wob > 12) || Math.abs(drift) >= 20) {
+        stTone = "warn";
+      }
+      if (stTone !== "good")
+        stTip =
+          drift <= -20
+            ? "Sagging flat on long notes is usually lost breath support. Keep the air flowing steadily and think of the note staying up."
+            : drift >= 20
+              ? "Creeping sharp often comes from pushing more air or tension as the note goes on. Keep it relaxed and even."
+              : "An unsteady long note usually needs steadier airflow. Practice holding single notes against the guide tone.";
+      const worst = [...hy.straight].sort(
+        (x, y) => Math.abs(y.drift) + y.std - (Math.abs(x.drift) + x.std),
+      );
       const pParts = [];
-      if (wob != null && wob > 12) pParts.push("Your long notes shake a little" + (wobOrig != null && wobOrig < wob - 5 ? ", more than the original singer's" : "") + ".");
-      if (drift <= -20) pParts.push("As you hold a note, your voice slowly sinks lower (goes flat).");
-      if (drift >= 20) pParts.push("As you hold a note, your voice slowly rises higher (goes sharp).");
+      if (wob != null && wob > 12)
+        pParts.push(
+          "Your long notes shake a little" +
+            (wobOrig != null && wobOrig < wob - 5
+              ? ", more than the original singer's"
+              : "") +
+            ".",
+        );
+      if (drift <= -20)
+        pParts.push(
+          "As you hold a note, your voice slowly sinks lower (goes flat).",
+        );
+      if (drift >= 20)
+        pParts.push(
+          "As you hold a note, your voice slowly rises higher (goes sharp).",
+        );
       out.push({
         p: {
           title: "Holding long notes",
-          value: stTone === "good" ? "Steady" : drift <= -20 ? "Sinks low" : drift >= 20 ? "Creeps high" : "A bit shaky",
+          value:
+            stTone === "good"
+              ? "Steady"
+              : drift <= -20
+                ? "Sinks low"
+                : drift >= 20
+                  ? "Creeps high"
+                  : "A bit shaky",
           compare: hy.count + " long notes checked",
-          detail: pParts.join(" ") || "You hold your long notes nice and steady.",
-          tip: stTone === "good" ? "" : drift <= -20 ? "Your voice sinks when the air runs low. Keep a steady flow of breath until the note ends." : drift >= 20 ? "Your voice rises when you push harder. Keep it relaxed and even." : "Practice holding one note at a time along with the guide notes.",
+          detail:
+            pParts.join(" ") || "You hold your long notes nice and steady.",
+          tip:
+            stTone === "good"
+              ? ""
+              : drift <= -20
+                ? "Your voice sinks when the air runs low. Keep a steady flow of breath until the note ends."
+                : drift >= 20
+                  ? "Your voice rises when you push harder. Keep it relaxed and even."
+                  : "Practice holding one note at a time along with the guide notes.",
         },
-        key: "hold", title: "Long notes",
-        value: wob != null ? "±" + Math.round(wob) + "¢" + (Math.abs(drift) >= 20 ? ", " + Math.abs(drift) + "¢ " + (drift < 0 ? "flat" : "sharp") : "") : (Math.abs(drift) >= 20 ? Math.abs(drift) + "¢ drift" : "Steady"),
+        key: "hold",
+        title: "Long notes",
+        value:
+          wob != null
+            ? "±" +
+              Math.round(wob) +
+              "¢" +
+              (Math.abs(drift) >= 20
+                ? ", " + Math.abs(drift) + "¢ " + (drift < 0 ? "flat" : "sharp")
+                : "")
+            : Math.abs(drift) >= 20
+              ? Math.abs(drift) + "¢ drift"
+              : "Steady",
         compare: hy.count + " long notes measured",
-        tone: stTone, detail: stDetail, tip: stTip,
-        examples: (worst.length ? worst : hy.all).slice(0, 3).map((x) => toOrig(x.pos)),
+        tone: stTone,
+        detail: stDetail,
+        tip: stTip,
+        examples: (worst.length ? worst : hy.all)
+          .slice(0, 3)
+          .map((x) => toOrig(x.pos)),
       });
     }
     return out;
   }
 
   function loadSessions() {
-    try { const v = JSON.parse(localStorage.getItem(SESS_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+    try {
+      const v = JSON.parse(localStorage.getItem(SESS_KEY) || "[]");
+      return Array.isArray(v) ? v : [];
+    } catch (e) {
+      return [];
+    }
   }
 
-  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888"; }
-
+  function cssVar(name) {
+    return (
+      getComputedStyle(document.documentElement)
+        .getPropertyValue(name)
+        .trim() || "#888"
+    );
+  }
 
   const LYR_KEY = "pitchstaff.lyrics.v1";
   const MIX_KEY = "pitchstaff.mix.v1";
@@ -900,13 +1605,25 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const out = [];
     text.split(/\r?\n/).forEach((rawLine) => {
       const om = rawLine.match(/^\s*\[offset:\s*([+-]?\d+)\s*\]/i);
-      if (om) { shift = parseInt(om[1], 10) / 1000; return; }
+      if (om) {
+        shift = parseInt(om[1], 10) / 1000;
+        return;
+      }
       const re = /^\s*\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/;
       const tags = [];
-      let rest = rawLine, mm;
-      while ((mm = rest.match(re))) { tags.push(parseInt(mm[1], 10) * 60 + parseFloat(mm[2].replace(":", "."))); rest = rest.slice(mm[0].length); }
+      let rest = rawLine,
+        mm;
+      while ((mm = rest.match(re))) {
+        tags.push(
+          parseInt(mm[1], 10) * 60 + parseFloat(mm[2].replace(":", ".")),
+        );
+        rest = rest.slice(mm[0].length);
+      }
       if (!tags.length) return;
-      const words = rest.replace(/<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/g, "").replace(/\s+/g, " ").trim();
+      const words = rest
+        .replace(/<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
       // enhanced LRC: <mm:ss.xx> before each word gives word-by-word timing
       let wordRel = null;
       const parts = rest.split(/<(\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?)>/);
@@ -914,97 +1631,211 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         wordRel = [];
         let tt = tags[0];
         parts.forEach((part, i) => {
-          if (i % 2 === 1) { const m2 = part.match(/(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)/); tt = parseInt(m2[1], 10) * 60 + parseFloat(m2[2].replace(":", ".")); return; }
-          part.split(/\s+/).filter(Boolean).forEach((w) => wordRel.push({ dt: tt - tags[0], w }));
+          if (i % 2 === 1) {
+            const m2 = part.match(/(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)/);
+            tt = parseInt(m2[1], 10) * 60 + parseFloat(m2[2].replace(":", "."));
+            return;
+          }
+          part
+            .split(/\s+/)
+            .filter(Boolean)
+            .forEach((w) => wordRel.push({ dt: tt - tags[0], w }));
         });
         if (!wordRel.length) wordRel = null;
       }
-      tags.forEach((t) => out.push({ t, text: words, words: wordRel ? wordRel.map((x) => ({ t: t + x.dt, w: x.w })) : null }));
+      tags.forEach((t) =>
+        out.push({
+          t,
+          text: words,
+          words: wordRel ? wordRel.map((x) => ({ t: t + x.dt, w: x.w })) : null,
+        }),
+      );
     });
     out.sort((x, y) => x.t - y.t);
     // an [offset:] tag in ms makes lyrics appear sooner when positive
-    return out.map((l) => ({ t: Math.max(0, l.t - shift), text: l.text, words: l.words ? l.words.map((w) => ({ t: Math.max(0, w.t - shift), w: w.w })) : null }));
+    return out.map((l) => ({
+      t: Math.max(0, l.t - shift),
+      text: l.text,
+      words: l.words
+        ? l.words.map((w) => ({ t: Math.max(0, w.t - shift), w: w.w }))
+        : null,
+    }));
   }
-  function loadLyricsStore() { try { return JSON.parse(localStorage.getItem(LYR_KEY) || "{}") || {}; } catch (e) { return {}; } }
+  function loadLyricsStore() {
+    try {
+      return JSON.parse(localStorage.getItem(LYR_KEY) || "{}") || {};
+    } catch (e) {
+      return {};
+    }
+  }
   function saveLyricsFor(song, entry) {
-    try { const all = loadLyricsStore(); if (entry) all[song] = entry; else delete all[song]; localStorage.setItem(LYR_KEY, JSON.stringify(all)); } catch (e) {}
+    try {
+      const all = loadLyricsStore();
+      if (entry) all[song] = entry;
+      else delete all[song];
+      localStorage.setItem(LYR_KEY, JSON.stringify(all));
+    } catch (e) {}
   }
   // timed lines with start/end on the original's timeline (break markers removed)
   function lyricSpans(lyr, dur) {
     if (!lyr) return [];
-    const L = lyr.lines, out = [];
+    const L = lyr.lines,
+      out = [];
     for (let i = 0; i < L.length; i++) {
       if (!L[i].text) continue;
-      const start = L[i].t + lyr.offset, end = (i + 1 < L.length ? L[i + 1].t + lyr.offset : dur);
-      if (end > 0 && start < dur) out.push({ src: i, start, end: Math.max(start + 0.2, end), text: L[i].text, words: L[i].words ? L[i].words.map((w) => ({ t: w.t + lyr.offset, w: w.w })) : null });
+      const start = L[i].t + lyr.offset,
+        end = i + 1 < L.length ? L[i + 1].t + lyr.offset : dur;
+      if (end > 0 && start < dur)
+        out.push({
+          src: i,
+          start,
+          end: Math.max(start + 0.2, end),
+          text: L[i].text,
+          words: L[i].words
+            ? L[i].words.map((w) => ({ t: w.t + lyr.offset, w: w.w }))
+            : null,
+        });
     }
     return out;
   }
 
-  function RollChart({ orig, take, result, cursor, onSeek, themeKey, lyrics, loop }) {
-    const canvasRef = useRef(null), boxRef = useRef(null);
+  function RollChart({
+    orig,
+    take,
+    result,
+    cursor,
+    onSeek,
+    themeKey,
+    lyrics,
+    loop,
+  }) {
+    const canvasRef = useRef(null),
+      boxRef = useRef(null);
     const dur = orig.duration;
     const pps = Math.min(50, 12000 / Math.max(1, dur));
-    const W = Math.ceil(dur * pps), MH = 250, H = result.dev ? 296 : 250;
+    const W = Math.ceil(dur * pps),
+      MH = 250,
+      H = result.dev ? 296 : 250;
     const range = useMemo(() => {
-      let lo = Infinity, hi = -Infinity;
-      orig.grid.forEach((v) => { if (v === v) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
+      let lo = Infinity,
+        hi = -Infinity;
+      orig.grid.forEach((v) => {
+        if (v === v) {
+          lo = Math.min(lo, v);
+          hi = Math.max(hi, v);
+        }
+      });
       for (let k = 0; k < orig.grid.length; k++) {
         const j = result.map[k];
-        if (j >= 0 && j < take.grid.length) { const v = take.grid[j] - result.shift; if (v === v) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }
+        if (j >= 0 && j < take.grid.length) {
+          const v = take.grid[j] - result.shift;
+          if (v === v) {
+            lo = Math.min(lo, v);
+            hi = Math.max(hi, v);
+          }
+        }
       }
-      if (!isFinite(lo)) { lo = 55; hi = 79; }
-      lo = Math.floor(lo) - 2; hi = Math.ceil(hi) + 2;
-      if (hi - lo < 14) { const mid = (hi + lo) / 2; lo = Math.floor(mid - 7); hi = Math.ceil(mid + 7); }
+      if (!isFinite(lo)) {
+        lo = 55;
+        hi = 79;
+      }
+      lo = Math.floor(lo) - 2;
+      hi = Math.ceil(hi) + 2;
+      if (hi - lo < 14) {
+        const mid = (hi + lo) / 2;
+        lo = Math.floor(mid - 7);
+        hi = Math.ceil(mid + 7);
+      }
       return { lo, hi };
     }, [orig, take, result]);
-    const yOfM = (m) => MH - 16 - ((m - range.lo) / (range.hi - range.lo)) * (MH - 30);
+    const yOfM = (m) =>
+      MH - 16 - ((m - range.lo) / (range.hi - range.lo)) * (MH - 30);
 
     useEffect(() => {
       const cv = canvasRef.current;
       if (!cv) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      cv.width = W * dpr; cv.height = H * dpr;
-      cv.style.width = W + "px"; cv.style.height = H + "px";
+      cv.width = W * dpr;
+      cv.height = H * dpr;
+      cv.style.width = W + "px";
+      cv.style.height = H + "px";
       const g = cv.getContext("2d");
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, W, H);
-      const col = { line: cssVar("--line"), muted: cssVar("--muted"), fg: cssVar("--fg"), accent: cssVar("--accent"), good: cssVar("--good"), warn: cssVar("--warn"), bad: cssVar("--bad") };
+      const col = {
+        line: cssVar("--line"),
+        muted: cssVar("--muted"),
+        fg: cssVar("--fg"),
+        accent: cssVar("--accent"),
+        good: cssVar("--good"),
+        warn: cssVar("--warn"),
+        bad: cssVar("--bad"),
+      };
       // outside the part you sang
       if (result.range && !result.range.whole) {
-        g.fillStyle = col.muted; g.globalAlpha = 0.12;
+        g.fillStyle = col.muted;
+        g.globalAlpha = 0.12;
         g.fillRect(0, 0, result.range.start * pps, H);
-        g.fillRect(result.range.end * pps, 0, Math.max(0, W - result.range.end * pps), H);
+        g.fillRect(
+          result.range.end * pps,
+          0,
+          Math.max(0, W - result.range.end * pps),
+          H,
+        );
       }
       // trouble spots
-      g.fillStyle = col.bad; g.globalAlpha = 0.09;
-      result.spots.forEach((s) => g.fillRect(s.start * pps, 0, (s.end - s.start) * pps, H));
+      g.fillStyle = col.bad;
+      g.globalAlpha = 0.09;
+      result.spots.forEach((s) =>
+        g.fillRect(s.start * pps, 0, (s.end - s.start) * pps, H),
+      );
       g.globalAlpha = 1;
       // semitone grid with C labels
       for (let m = range.lo; m <= range.hi; m++) {
-        const y = yOfM(m), isC = ((m % 12) + 12) % 12 === 0;
-        g.strokeStyle = isC ? col.muted : col.line; g.globalAlpha = isC ? 0.5 : 0.45; g.lineWidth = 1;
-        g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+        const y = yOfM(m),
+          isC = ((m % 12) + 12) % 12 === 0;
+        g.strokeStyle = isC ? col.muted : col.line;
+        g.globalAlpha = isC ? 0.5 : 0.45;
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(0, y);
+        g.lineTo(W, y);
+        g.stroke();
         if (isC) {
-          g.globalAlpha = 0.9; g.fillStyle = col.muted; g.font = "10px " + cssVar("--font-mono");
-          for (let x = 4; x < W; x += 8 * pps) g.fillText("C" + (Math.floor(m / 12) - 1), x, y - 3);
+          g.globalAlpha = 0.9;
+          g.fillStyle = col.muted;
+          g.font = "10px " + cssVar("--font-mono");
+          for (let x = 4; x < W; x += 8 * pps)
+            g.fillText("C" + (Math.floor(m / 12) - 1), x, y - 3);
         }
       }
       g.globalAlpha = 1;
       // seconds ticks
-      g.fillStyle = col.muted; g.font = "10px " + cssVar("--font-mono");
+      g.fillStyle = col.muted;
+      g.font = "10px " + cssVar("--font-mono");
       for (let s = 0; s < dur; s += 5) g.fillText(fmt(s), s * pps + 3, MH - 3);
       // original melody
-      g.strokeStyle = col.fg; g.globalAlpha = 0.28; g.lineWidth = 6; g.lineCap = "round"; g.lineJoin = "round";
+      g.strokeStyle = col.fg;
+      g.globalAlpha = 0.28;
+      g.lineWidth = 6;
+      g.lineCap = "round";
+      g.lineJoin = "round";
       const a = orig.grid;
       g.beginPath();
       let pen = false;
       for (let k = 0; k < a.length; k++) {
         const v = a[k];
-        if (v !== v) { pen = false; continue; }
+        if (v !== v) {
+          pen = false;
+          continue;
+        }
         if (pen && Math.abs(v - a[k - 1]) > 1.5) pen = false;
-        const x = k * GRID * pps, y = yOfM(v);
-        if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+        const x = k * GRID * pps,
+          y = yOfM(v);
+        if (!pen) {
+          g.moveTo(x, y);
+          pen = true;
+        } else g.lineTo(x, y);
       }
       g.stroke();
       g.globalAlpha = 1;
@@ -1012,12 +1843,21 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       g.lineWidth = 2.4;
       const b = take.grid;
       for (let k = 1; k < a.length; k++) {
-        const j = result.map[k], j0 = result.map[k - 1];
+        const j = result.map[k],
+          j0 = result.map[k - 1];
         if (j < 0 || j >= b.length || j0 < 0 || j0 >= b.length) continue;
-        const v0 = b[j0], v1 = b[j];
+        const v0 = b[j0],
+          v1 = b[j];
         if (v0 !== v0 || v1 !== v1 || Math.abs(v1 - v0) > 1.5) continue;
         const dk = result.d[k];
-        g.strokeStyle = dk !== dk ? col.accent : Math.abs(dk) <= 0.25 ? col.good : Math.abs(dk) <= 0.5 ? col.warn : col.bad;
+        g.strokeStyle =
+          dk !== dk
+            ? col.accent
+            : Math.abs(dk) <= 0.25
+              ? col.good
+              : Math.abs(dk) <= 0.5
+                ? col.warn
+                : col.bad;
         g.beginPath();
         g.moveTo((k - 1) * GRID * pps, yOfM(v0 - result.shift));
         g.lineTo(k * GRID * pps, yOfM(v1 - result.shift));
@@ -1025,31 +1865,61 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       }
       // note names: the song's note above its line; where you sang another note, yours in its colour
       const nm = (m) => pretty(NAMES[((m % 12) + 12) % 12]);
-      g.font = "600 10px " + cssVar("--font-mono"); g.textBaseline = "alphabetic";
+      g.font = "600 10px " + cssVar("--font-mono");
+      g.textBaseline = "alphabetic";
       const rowOf = new Map(result.rows.map((r) => [r.n, r]));
       let lastX = -99;
       orig.notes.forEach((n) => {
-        const x = n.pos * pps + 1, r = rowOf.get(n), lab = nm(n.midi);
+        const x = n.pos * pps + 1,
+          r = rowOf.get(n),
+          lab = nm(n.midi);
         if (x < lastX + 16) return;
         lastX = x + lab.length * 6;
         const y = yOfM(n.midi) - 7;
-        g.fillStyle = col.fg; g.globalAlpha = 0.75; g.fillText(lab, x, y);
+        g.fillStyle = col.fg;
+        g.globalAlpha = 0.75;
+        g.fillText(lab, x, y);
         g.globalAlpha = 1;
         if (!r || r.missed) return;
-        if (r.tone === "warn") { g.fillStyle = col.warn; g.fillText(r.cents > 0 ? "↑" : "↓", x + lab.length * 6 + 1, y); }
-        else if (r.tone === "bad") { const yr = r.yours - result.shift; g.fillStyle = col.bad; g.fillText(nm(yr), x, yOfM(yr) + 15); }
+        if (r.tone === "warn") {
+          g.fillStyle = col.warn;
+          g.fillText(r.cents > 0 ? "↑" : "↓", x + lab.length * 6 + 1, y);
+        } else if (r.tone === "bad") {
+          const yr = r.yours - result.shift;
+          g.fillStyle = col.bad;
+          g.fillText(nm(yr), x, yOfM(yr) + 15);
+        }
       });
       if (result.dev) {
         const y0 = MH + 23;
-        g.strokeStyle = col.line; g.lineWidth = 1;
-        g.beginPath(); g.moveTo(0, y0); g.lineTo(W, y0); g.stroke();
-        g.fillStyle = col.muted; g.font = "10px " + cssVar("--font-mono");
-        for (let x = 4; x < W; x += 8 * pps) { g.fillText("late", x, MH + 10); g.fillText("early", x, H - 2); }
+        g.strokeStyle = col.line;
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(0, y0);
+        g.lineTo(W, y0);
+        g.stroke();
+        g.fillStyle = col.muted;
+        g.font = "10px " + cssVar("--font-mono");
+        for (let x = 4; x < W; x += 8 * pps) {
+          g.fillText("late", x, MH + 10);
+          g.fillText("early", x, H - 2);
+        }
         for (let k = 0; k < a.length; k += 5) {
           if (a[k] !== a[k]) continue;
-          const dv = result.dev[k], h = Math.max(-1, Math.min(1, dv / 0.5)) * 18;
-          g.fillStyle = Math.abs(dv) < 0.1 ? col.good : Math.abs(dv) < 0.25 ? col.warn : col.bad;
-          g.fillRect(k * GRID * pps, h > 0 ? y0 - h : y0, Math.max(1, 5 * GRID * pps - 1), Math.max(1, Math.abs(h)));
+          const dv = result.dev[k],
+            h = Math.max(-1, Math.min(1, dv / 0.5)) * 18;
+          g.fillStyle =
+            Math.abs(dv) < 0.1
+              ? col.good
+              : Math.abs(dv) < 0.25
+                ? col.warn
+                : col.bad;
+          g.fillRect(
+            k * GRID * pps,
+            h > 0 ? y0 - h : y0,
+            Math.max(1, 5 * GRID * pps - 1),
+            Math.max(1, Math.abs(h)),
+          );
         }
       }
     }, [orig, take, result, range, W, H, pps, themeKey]);
@@ -1059,24 +1929,81 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const box = boxRef.current;
       if (!box || cursor == null) return;
       const x = cursor * pps;
-      if (x < box.scrollLeft + 30 || x > box.scrollLeft + box.clientWidth - 60) box.scrollLeft = Math.max(0, x - 60);
+      if (x < box.scrollLeft + 30 || x > box.scrollLeft + box.clientWidth - 60)
+        box.scrollLeft = Math.max(0, x - 60);
     }, [cursor, pps]);
 
-    return html`<div ref=${boxRef} style=${{ overflowX: "auto", position: "relative", borderRadius: 10, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+    return html`<div
+      ref=${boxRef}
+      style=${{
+        overflowX: "auto",
+        position: "relative",
+        borderRadius: 10,
+        background: "var(--surface-2)",
+        border: "1px solid var(--line)",
+      }}
+    >
       <div style=${{ position: "relative", width: W }}>
-        ${lyrics && lyrics.length > 0 && html`<div class="lyr-band">
-          ${lyrics.map((l, i) => html`<div key=${i} class=${"lyr" + (cursor != null && cursor >= l.start && cursor < l.end ? " on" : "")}
-            style=${{ left: l.start * pps, width: Math.max(8, (l.end - l.start) * pps - 2) }} title=${l.text}
-            onClick=${() => onSeek(l.start)}>${l.text}</div>`)}
+        ${lyrics &&
+        lyrics.length > 0 &&
+        html`<div class="lyr-band">
+          ${lyrics.map(
+            (l, i) =>
+              html`<div
+                key=${i}
+                class=${"lyr" +
+                (cursor != null && cursor >= l.start && cursor < l.end
+                  ? " on"
+                  : "")}
+                style=${{
+                  left: l.start * pps,
+                  width: Math.max(8, (l.end - l.start) * pps - 2),
+                }}
+                title=${l.text}
+                onClick=${() => onSeek(l.start)}
+              >
+                ${l.text}
+              </div>`,
+          )}
         </div>`}
-        <canvas ref=${canvasRef} style=${{ display: "block", cursor: "pointer" }}
-          onClick=${(e) => { const r = e.currentTarget.getBoundingClientRect(); onSeek(Math.max(0, (e.clientX - r.left) / pps)); }}></canvas>
-        ${loop && html`<div style=${{ position: "absolute", top: 0, bottom: 0, left: loop.a * pps, width: (loop.b - loop.a) * pps, background: "color-mix(in srgb, var(--accent) 12%, transparent)", borderLeft: "1px solid var(--accent)", borderRight: "1px solid var(--accent)", pointerEvents: "none" }}></div>`}
-        ${cursor != null && html`<div style=${{ position: "absolute", top: 0, bottom: 0, left: cursor * pps, width: 2, marginLeft: -1, background: "var(--accent)", pointerEvents: "none" }}></div>`}
+        <canvas
+          ref=${canvasRef}
+          style=${{ display: "block", cursor: "pointer" }}
+          onClick=${(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            onSeek(Math.max(0, (e.clientX - r.left) / pps));
+          }}
+        ></canvas>
+        ${loop &&
+        html`<div
+          style=${{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: loop.a * pps,
+            width: (loop.b - loop.a) * pps,
+            background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+            borderLeft: "1px solid var(--accent)",
+            borderRight: "1px solid var(--accent)",
+            pointerEvents: "none",
+          }}
+        ></div>`}
+        ${cursor != null &&
+        html`<div
+          style=${{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: cursor * pps,
+            width: 2,
+            marginLeft: -1,
+            background: "var(--accent)",
+            pointerEvents: "none",
+          }}
+        ></div>`}
       </div>
     </div>`;
   }
-
 
   function UploadSlot({ id, step, title, hint, slot, onPick }) {
     const ref = useRef(null);
@@ -1084,68 +2011,113 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     return html`<div class="panel p-4 flex flex-col gap-3 min-w-0">
       <div class="flex items-center justify-between gap-2">
         <span class="label">Step ${step}</span>
-        ${slot && slot.data && html`<span class="mono text-xs" style=${{ color: "var(--good)" }}>Ready</span>`}
+        ${slot &&
+        slot.data &&
+        html`<span class="mono text-xs" style=${{ color: "var(--good)" }}
+          >Ready</span
+        >`}
       </div>
       <h3 class="display text-lg font-bold">${title}</h3>
       ${slot && slot.data
         ? html`<div class="text-sm min-w-0">
-            <p class="font-semibold" style=${{ overflowWrap: "anywhere" }}>${slot.name}</p>
-            <p class="muted mono text-xs">${fmt(slot.data.duration)} · ${slot.data.notes.length} notes found</p>
+            <p class="font-semibold" style=${{ overflowWrap: "anywhere" }}>
+              ${slot.name}
+            </p>
+            <p class="muted mono text-xs">
+              ${fmt(slot.data.duration)} · ${slot.data.notes.length} notes found
+            </p>
           </div>`
         : html`<p class="muted text-sm">${hint}</p>`}
-      ${busy && html`<div class="flex flex-col gap-1">
-        <div class="level"><div style=${{ width: Math.round(slot.progress * 100) + "%" }}></div></div>
-        <span class="mono text-xs muted">${slot.progress < 0.01 ? "Reading file…" : "Analyzing " + Math.round(slot.progress * 100) + "%"}</span>
+      ${busy &&
+      html`<div class="flex flex-col gap-1">
+        <div class="level">
+          <div style=${{ width: Math.round(slot.progress * 100) + "%" }}></div>
+        </div>
+        <span class="mono text-xs muted"
+          >${slot.progress < 0.01
+            ? "Reading file…"
+            : "Analyzing " + Math.round(slot.progress * 100) + "%"}</span
+        >
       </div>`}
-      ${slot && slot.error && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${slot.error}</p>`}
+      ${slot &&
+      slot.error &&
+      html`<p class="text-sm" style=${{ color: "var(--bad)" }}>
+        ${slot.error}
+      </p>`}
       <div>
-        <button class=${"btn" + (slot && slot.data ? "" : " btn-primary")} disabled=${busy} onClick=${() => ref.current && ref.current.click()}>
+        <button
+          class=${"btn" + (slot && slot.data ? "" : " btn-primary")}
+          disabled=${busy}
+          onClick=${() => ref.current && ref.current.click()}
+        >
           ${slot && slot.data ? "Replace file" : "Upload audio"}
         </button>
       </div>
-      <input id=${id} ref=${ref} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPick(f); }} />
+      <input
+        id=${id}
+        ref=${ref}
+        type="file"
+        class="hidden"
+        onChange=${(e) => {
+          const f = e.target.files && e.target.files[0];
+          e.target.value = "";
+          if (f) onPick(f);
+        }}
+      />
     </div>`;
   }
 
-  function Stat({ label, value, note, tone }) {
-    return html`<div class="flex flex-col gap-1 min-w-0">
-      <span class="label">${label}</span>
-      <span class="mono text-lg font-semibold" style=${{ color: tone ? "var(--" + tone + ")" : "var(--fg)" }}>${value}</span>
-      ${note && html`<span class="text-xs muted">${note}</span>`}
-    </div>`;
-  }
+ <Stat/>
 
   /* ---------- Analyze: a whole-song run, scored line by line ---------- */
-  const RUNS_KEY = "pitchstaff.runs.v1", LASTRUN_KEY = "pitchstaff.lastrun.v1";
+  const RUNS_KEY = "pitchstaff.runs.v1",
+    LASTRUN_KEY = "pitchstaff.lastrun.v1";
   const loadRuns = (song) => (song ? loadJSON(RUNS_KEY, {})[song] || [] : []);
   function addRun(song, run) {
     if (!song) return [];
-    const all = loadJSON(RUNS_KEY, {}), list = [...(all[song] || []), run].slice(-40);
-    all[song] = list; saveJSON(RUNS_KEY, all);
+    const all = loadJSON(RUNS_KEY, {}),
+      list = [...(all[song] || []), run].slice(-40);
+    all[song] = list;
+    saveJSON(RUNS_KEY, all);
     return list;
   }
-  const loadLastRun = (song) => (song ? loadJSON(LASTRUN_KEY, {})[song] || null : null);
+  const loadLastRun = (song) =>
+    song ? loadJSON(LASTRUN_KEY, {})[song] || null : null;
   function saveLastRun(song, run) {
     if (!song) return;
     const all = loadJSON(LASTRUN_KEY, {});
     all[song] = run;
     const keys = Object.keys(all);
-    if (keys.length > 8) keys.sort((a, b) => (all[a].at || 0) - (all[b].at || 0)).slice(0, keys.length - 8).forEach((k) => delete all[k]);
+    if (keys.length > 8)
+      keys
+        .sort((a, b) => (all[a].at || 0) - (all[b].at || 0))
+        .slice(0, keys.length - 8)
+        .forEach((k) => delete all[k]);
     saveJSON(LASTRUN_KEY, all);
   }
   // Cut the take around each lyric line (using the whole-song alignment) and score it with the same
   // scorer Repeat after me uses, so numbers and charts match Practice.
   function analyzeRun(od, phrases, td, map) {
     const lines = phrases.map((ph) => {
-      const k0 = Math.max(0, Math.round(ph.start / GRID)), k1 = Math.min(map.length - 1, Math.round(ph.end / GRID));
-      const j0 = map[k0], j1 = map[k1];
+      const k0 = Math.max(0, Math.round(ph.start / GRID)),
+        k1 = Math.min(map.length - 1, Math.round(ph.end / GRID));
+      const j0 = map[k0],
+        j1 = map[k1];
       if (!(j0 >= 0) || !(j1 > j0) || j0 >= td.grid.length) return null;
       let v = 0;
-      for (let j = j0; j < Math.min(j1, td.grid.length); j++) if (td.grid[j] === td.grid[j]) v++;
+      for (let j = j0; j < Math.min(j1, td.grid.length); j++)
+        if (td.grid[j] === td.grid[j]) v++;
       if (v < 0.15 * (j1 - j0)) return null; // this line wasn't sung
-      const a = Math.max(0, j0 - 30), b = Math.min(td.grid.length, j1 + 30);
-      const her = { grid: td.grid.slice(a, b), loud: td.loud ? td.loud.slice(a, b) : new Float32Array(b - a).fill(-20),
-        notes: td.notes.filter((n) => n.pos >= a * GRID && n.end <= b * GRID).map((n) => ({ ...n, pos: n.pos - a * GRID, end: n.end - a * GRID })), duration: (b - a) * GRID };
+      const a = Math.max(0, j0 - 30),
+        b = Math.min(td.grid.length, j1 + 30);
+      const her = {
+        grid: td.grid.slice(a, b),
+        loud: td.loud ? td.loud.slice(a, b) : new Float32Array(b - a).fill(-20),
+        notes: td.notes
+          .filter((n) => n.pos >= a * GRID && n.end <= b * GRID)
+          .map((n) => ({ ...n, pos: n.pos - a * GRID, end: n.end - a * GRID })),
+        duration: (b - a) * GRID,
+      };
       const res = scorePhrase(ph, her, 1, 0);
       // came in early or late: where your voice actually starts near the line's first note (doesn't depend on pitch)
       let late = null;
@@ -1153,211 +2125,895 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         const je = map[Math.max(0, Math.round(ph.notes[0].pos / GRID))];
         // the voice onset (sound after a short silence) closest to where the line should start
         let bestJ = -1;
-        for (let j = Math.max(4, je - 30); j <= je + 30 && j < td.grid.length; j++) {
+        for (
+          let j = Math.max(4, je - 30);
+          j <= je + 30 && j < td.grid.length;
+          j++
+        ) {
           if (td.grid[j] !== td.grid[j]) continue;
           let quietBefore = true;
-          for (let q = j - 4; q < j; q++) if (td.grid[q] === td.grid[q]) quietBefore = false;
-          if (quietBefore && (bestJ < 0 || Math.abs(j - je) < Math.abs(bestJ - je))) bestJ = j;
+          for (let q = j - 4; q < j; q++)
+            if (td.grid[q] === td.grid[q]) quietBefore = false;
+          if (
+            quietBefore &&
+            (bestJ < 0 || Math.abs(j - je) < Math.abs(bestJ - je))
+          )
+            bestJ = j;
         }
         if (bestJ >= 0) late = Math.round((bestJ - je) * GRID * 100) / 100;
       }
-      return { late, score: res.score, speed: 1, start: ph.start, trace: res.trace, clip: [Math.max(0, j0 * GRID - 0.3), j1 * GRID + 0.4],
-        rows: res.rows.map((r) => ({ p: Math.round(r.n.pos * 1000) / 1000, m: r.n.midi, c: r.missed ? null : r.cents, sc: !!r.sc, sd: r.sd == null ? null : r.sd, dt: r.dt, dr: r.dr || null })), bt: res.bt };
+      return {
+        late,
+        score: res.score,
+        speed: 1,
+        start: ph.start,
+        trace: res.trace,
+        clip: [Math.max(0, j0 * GRID - 0.3), j1 * GRID + 0.4],
+        rows: res.rows.map((r) => ({
+          p: Math.round(r.n.pos * 1000) / 1000,
+          m: r.n.midi,
+          c: r.missed ? null : r.cents,
+          sc: !!r.sc,
+          sd: r.sd == null ? null : r.sd,
+          dt: r.dt,
+          dr: r.dr || null,
+        })),
+        bt: res.bt,
+      };
     });
-    const sung = lines.filter(Boolean), tot = sung.reduce((s, r) => s + r.rows.length, 0);
-    return { lines, score: tot ? Math.round(sung.reduce((s, r) => s + r.score * r.rows.length, 0) / tot) : 0 };
+    const sung = lines.filter(Boolean),
+      tot = sung.reduce((s, r) => s + r.rows.length, 0);
+    return {
+      lines,
+      score: tot
+        ? Math.round(
+            sung.reduce((s, r) => s + r.score * r.rows.length, 0) / tot,
+          )
+        : 0,
+    };
   }
   // every score a line has had: whole-song runs and Repeat-after-me tries, oldest first
   function lineHistory(i, runs, tries) {
     const pts = [];
-    runs.forEach((r) => { const s = r.lines && r.lines[i]; if (s != null) pts.push({ at: r.at, s, kind: "run" }); });
+    runs.forEach((r) => {
+      const s = r.lines && r.lines[i];
+      if (s != null) pts.push({ at: r.at, s, kind: "run" });
+    });
     const t = tries && tries[i];
     if (t) {
-      if (t.hist && t.hist.length) t.hist.forEach((h) => pts.push({ at: h.at, s: h.s, kind: "try" }));
-      else if (t.last) pts.push({ at: t.last.at || 0, s: t.last.score, kind: "try" });
+      if (t.hist && t.hist.length)
+        t.hist.forEach((h) => pts.push({ at: h.at, s: h.s, kind: "try" }));
+      else if (t.last)
+        pts.push({ at: t.last.at || 0, s: t.last.score, kind: "try" });
     }
     return pts.sort((a, b) => a.at - b.at);
   }
   const scoreTone = (s) => (s >= 80 ? "good" : s >= 55 ? "warn" : "bad");
   function Spark({ vals, w = 74, h = 22, tone }) {
     if (!vals || vals.length < 2) return null;
-    const pts = vals.map((v, i) => [3 + (i * (w - 6)) / (vals.length - 1), h - 3 - (v / 100) * (h - 6)]);
+    const pts = vals.map((v, i) => [
+      3 + (i * (w - 6)) / (vals.length - 1),
+      h - 3 - (v / 100) * (h - 6),
+    ]);
     const c = "var(--" + (tone || scoreTone(vals[vals.length - 1])) + ")";
-    return html`<svg width=${w} height=${h} viewBox=${"0 0 " + w + " " + h} aria-hidden="true" style=${{ flexShrink: 0 }}>
-      <polyline points=${pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ")} fill="none" stroke=${c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></polyline>
-      <circle cx=${pts[pts.length - 1][0].toFixed(1)} cy=${pts[pts.length - 1][1].toFixed(1)} r="2.6" fill=${c}></circle>
+    return html`<svg
+      width=${w}
+      height=${h}
+      viewBox=${"0 0 " + w + " " + h}
+      aria-hidden="true"
+      style=${{ flexShrink: 0 }}
+    >
+      <polyline
+        points=${pts
+          .map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1))
+          .join(" ")}
+        fill="none"
+        stroke=${c}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      ></polyline>
+      <circle
+        cx=${pts[pts.length - 1][0].toFixed(1)}
+        cy=${pts[pts.length - 1][1].toFixed(1)}
+        r="2.6"
+        fill=${c}
+      ></circle>
     </svg>`;
   }
-  const dayLabel = (at) => { const d = new Date(at), t = new Date(); return d.toDateString() === t.toDateString() ? "today" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); };
+  const dayLabel = (at) => {
+    const d = new Date(at),
+      t = new Date();
+    return d.toDateString() === t.toDateString()
+      ? "today"
+      : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
   function HistChart({ pts }) {
     if (!pts.length) return html`<p class="text-xs muted">No scores yet.</p>`;
-    const W = 300, H = 90, xs = pts.map((_, i) => (pts.length === 1 ? W / 2 : 18 + (i * (W - 36)) / (pts.length - 1))), y = (v) => H - 16 - (v / 100) * (H - 26);
+    const W = 300,
+      H = 90,
+      xs = pts.map((_, i) =>
+        pts.length === 1 ? W / 2 : 18 + (i * (W - 36)) / (pts.length - 1),
+      ),
+      y = (v) => H - 16 - (v / 100) * (H - 26);
     let lastDay = "";
-    return html`<svg viewBox=${"0 0 " + W + " " + H} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="Scores for this line over time">
-      <line x1="0" x2=${W} y1=${y(80).toFixed(1)} y2=${y(80).toFixed(1)} stroke="var(--good)" strokeDasharray="3 4" opacity="0.5"></line>
-      <text x=${W - 2} y=${(y(80) - 4).toFixed(1)} fill="var(--good)" fontSize="9" textAnchor="end">good</text>
-      ${pts.length > 1 && html`<polyline points=${pts.map((p, i) => xs[i].toFixed(1) + "," + y(p.s).toFixed(1)).join(" ")} fill="none" stroke="var(--line)" strokeWidth="1.5"></polyline>`}
-      ${pts.map((p, i) => p.kind === "run"
-        ? html`<circle key=${"p" + i} cx=${xs[i].toFixed(1)} cy=${y(p.s).toFixed(1)} r="4.5" fill="var(--accent)"></circle>`
-        : html`<circle key=${"p" + i} cx=${xs[i].toFixed(1)} cy=${y(p.s).toFixed(1)} r="3.5" fill="var(--surface)" stroke="var(--you)" strokeWidth="2"></circle>`)}
-      ${pts.map((p, i) => { const d = dayLabel(p.at); if (d === lastDay) return null; lastDay = d; return html`<text key=${"d" + i} x=${xs[i].toFixed(1)} y=${H - 2} fill="var(--muted)" fontSize="9" textAnchor="middle">${d}</text>`; })}
+    return html`<svg
+      viewBox=${"0 0 " + W + " " + H}
+      style=${{ width: "100%", height: "auto", display: "block" }}
+      role="img"
+      aria-label="Scores for this line over time"
+    >
+      <line
+        x1="0"
+        x2=${W}
+        y1=${y(80).toFixed(1)}
+        y2=${y(80).toFixed(1)}
+        stroke="var(--good)"
+        strokeDasharray="3 4"
+        opacity="0.5"
+      ></line>
+      <text
+        x=${W - 2}
+        y=${(y(80) - 4).toFixed(1)}
+        fill="var(--good)"
+        fontSize="9"
+        textAnchor="end"
+      >
+        good
+      </text>
+      ${pts.length > 1 &&
+      html`<polyline
+        points=${pts
+          .map((p, i) => xs[i].toFixed(1) + "," + y(p.s).toFixed(1))
+          .join(" ")}
+        fill="none"
+        stroke="var(--line)"
+        strokeWidth="1.5"
+      ></polyline>`}
+      ${pts.map((p, i) =>
+        p.kind === "run"
+          ? html`<circle
+              key=${"p" + i}
+              cx=${xs[i].toFixed(1)}
+              cy=${y(p.s).toFixed(1)}
+              r="4.5"
+              fill="var(--accent)"
+            ></circle>`
+          : html`<circle
+              key=${"p" + i}
+              cx=${xs[i].toFixed(1)}
+              cy=${y(p.s).toFixed(1)}
+              r="3.5"
+              fill="var(--surface)"
+              stroke="var(--you)"
+              strokeWidth="2"
+            ></circle>`,
+      )}
+      ${pts.map((p, i) => {
+        const d = dayLabel(p.at);
+        if (d === lastDay) return null;
+        lastDay = d;
+        return html`<text
+          key=${"d" + i}
+          x=${xs[i].toFixed(1)}
+          y=${H - 2}
+          fill="var(--muted)"
+          fontSize="9"
+          textAnchor="middle"
+          >${d}</text
+        >`;
+      })}
     </svg>`;
   }
   function SongTrend({ runs }) {
     const vals = runs.slice(-8);
-    if (vals.length < 2) return html`<p class="text-sm muted">Sing the whole song a couple of times (Karaoke works) to see your trend here.</p>`;
-    const W = 300, H = 110, lo = Math.max(0, Math.min(...vals.map((r) => r.score)) - 15), xs = vals.map((_, i) => 14 + (i * (W - 28)) / (vals.length - 1)), y = (v) => H - 18 - ((v - lo) / (100 - lo)) * (H - 30);
-    const line = vals.map((r, i) => xs[i].toFixed(1) + "," + y(r.score).toFixed(1)).join(" ");
-    return html`<svg viewBox=${"0 0 " + W + " " + H} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="Whole-song score over time">
-      <polygon points=${xs[0].toFixed(1) + "," + (H - 18) + " " + line + " " + xs[xs.length - 1].toFixed(1) + "," + (H - 18)} fill="var(--accent)" opacity="0.12"></polygon>
-      <polyline points=${line} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"></polyline>
-      ${vals.map((r, i) => html`<g key=${i}><circle cx=${xs[i].toFixed(1)} cy=${y(r.score).toFixed(1)} r="3.5" fill="var(--accent)"></circle>
-        <text x=${xs[i].toFixed(1)} y=${(y(r.score) - 8).toFixed(1)} fill="var(--fg)" fontSize="10" textAnchor="middle" fontFamily="var(--font-mono)">${r.score}</text>
-        <text x=${xs[i].toFixed(1)} y=${H - 3} fill="var(--muted)" fontSize="9" textAnchor="middle">${dayLabel(r.at)}</text></g>`)}
+    if (vals.length < 2)
+      return html`<p class="text-sm muted">
+        Sing the whole song a couple of times (Karaoke works) to see your trend
+        here.
+      </p>`;
+    const W = 300,
+      H = 110,
+      lo = Math.max(0, Math.min(...vals.map((r) => r.score)) - 15),
+      xs = vals.map((_, i) => 14 + (i * (W - 28)) / (vals.length - 1)),
+      y = (v) => H - 18 - ((v - lo) / (100 - lo)) * (H - 30);
+    const line = vals
+      .map((r, i) => xs[i].toFixed(1) + "," + y(r.score).toFixed(1))
+      .join(" ");
+    return html`<svg
+      viewBox=${"0 0 " + W + " " + H}
+      style=${{ width: "100%", height: "auto", display: "block" }}
+      role="img"
+      aria-label="Whole-song score over time"
+    >
+      <polygon
+        points=${xs[0].toFixed(1) +
+        "," +
+        (H - 18) +
+        " " +
+        line +
+        " " +
+        xs[xs.length - 1].toFixed(1) +
+        "," +
+        (H - 18)}
+        fill="var(--accent)"
+        opacity="0.12"
+      ></polygon>
+      <polyline
+        points=${line}
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      ></polyline>
+      ${vals.map(
+        (r, i) =>
+          html`<g key=${i}
+            ><circle
+              cx=${xs[i].toFixed(1)}
+              cy=${y(r.score).toFixed(1)}
+              r="3.5"
+              fill="var(--accent)"
+            ></circle>
+            <text
+              x=${xs[i].toFixed(1)}
+              y=${(y(r.score) - 8).toFixed(1)}
+              fill="var(--fg)"
+              fontSize="10"
+              textAnchor="middle"
+              fontFamily="var(--font-mono)"
+              >${r.score}</text
+            >
+            <text
+              x=${xs[i].toFixed(1)}
+              y=${H - 3}
+              fill="var(--muted)"
+              fontSize="9"
+              textAnchor="middle"
+              >${dayLabel(r.at)}</text
+            ></g
+          >`,
+      )}
     </svg>`;
   }
-  function AnalyzeView({ songName, notes, phrases, spans, run, runs, tries, canHear, onHearMe, onHearSong, onPractise, planDraft, onPlan }) {
+  function AnalyzeView({
+    songName,
+    notes,
+    phrases,
+    spans,
+    run,
+    runs,
+    tries,
+    canHear,
+    onHearMe,
+    onHearSong,
+    onPractise,
+    planDraft,
+    onPlan,
+  }) {
     const [view, setView] = useState("run");
     const [order, setOrder] = useState("weak");
     const [open, setOpen] = useState(null);
     const [dtab, setDtab] = useState("notes");
     useEffect(() => setOpen(null), [run]);
     useEffect(() => setDtab("notes"), [open]);
-    const textOf = (ph) => { let best = null, bo = 0; spans.forEach((l) => { const o = Math.min(l.end, ph.end) - Math.max(l.start, ph.start); if (o > bo) { bo = o; best = l; } }); return best ? best.text : ""; };
-    const items = phrases.map((ph, i) => ({ i, ph, text: textOf(ph), rec: run && run.lines ? run.lines[i] : null, hist: lineHistory(i, runs, tries) }));
+    const textOf = (ph) => {
+      let best = null,
+        bo = 0;
+      spans.forEach((l) => {
+        const o = Math.min(l.end, ph.end) - Math.max(l.start, ph.start);
+        if (o > bo) {
+          bo = o;
+          best = l;
+        }
+      });
+      return best ? best.text : "";
+    };
+    const items = phrases.map((ph, i) => ({
+      i,
+      ph,
+      text: textOf(ph),
+      rec: run && run.lines ? run.lines[i] : null,
+      hist: lineHistory(i, runs, tries),
+    }));
     const sungItems = items.filter((x) => x.rec);
-    const shown = order === "weak" ? [...sungItems].sort((a, b) => a.rec.score - b.rec.score) : sungItems;
-    const good = sungItems.filter((x) => x.rec.score >= 80).length, weak = sungItems.filter((x) => x.rec.score < 55).length;
-    const breathLines = sungItems.filter((x) => x.rec.bt && x.rec.bt.breaths.length).length, cutLines = sungItems.filter((x) => x.rec.bt && x.rec.bt.cut).length;
+    const shown =
+      order === "weak"
+        ? [...sungItems].sort((a, b) => a.rec.score - b.rec.score)
+        : sungItems;
+    const good = sungItems.filter((x) => x.rec.score >= 80).length,
+      weak = sungItems.filter((x) => x.rec.score < 55).length;
+    const breathLines = sungItems.filter(
+        (x) => x.rec.bt && x.rec.bt.breaths.length,
+      ).length,
+      cutLines = sungItems.filter((x) => x.rec.bt && x.rec.bt.cut).length;
     const prev = runs.length >= 2 ? runs[runs.length - 2] : null;
-    const diff = run && prev && run.at === runs[runs.length - 1].at ? run.score - prev.score : null;
+    const diff =
+      run && prev && run.at === runs[runs.length - 1].at
+        ? run.score - prev.score
+        : null;
     const latest = (x) => (x.hist.length ? x.hist[x.hist.length - 1].s : null);
-    const improved = items.filter((x) => x.hist.length >= 2 && latest(x) - x.hist[0].s >= 10).sort((a, b) => (latest(b) - b.hist[0].s) - (latest(a) - a.hist[0].s)).slice(0, 3);
-    const tricky = items.filter((x) => x.hist.length && latest(x) < 60).sort((a, b) => latest(a) - latest(b)).slice(0, 3);
-    const lineTries = Object.values(tries || {}).reduce((s, t) => s + (t && t.hist ? t.hist.length : t && t.last ? 1 : 0), 0);
-    const linesGood = items.filter((x) => latest(x) != null && latest(x) >= 80).length;
+    const improved = items
+      .filter((x) => x.hist.length >= 2 && latest(x) - x.hist[0].s >= 10)
+      .sort((a, b) => latest(b) - b.hist[0].s - (latest(a) - a.hist[0].s))
+      .slice(0, 3);
+    const tricky = items
+      .filter((x) => x.hist.length && latest(x) < 60)
+      .sort((a, b) => latest(a) - latest(b))
+      .slice(0, 3);
+    const lineTries = Object.values(tries || {}).reduce(
+      (s, t) => s + (t && t.hist ? t.hist.length : t && t.last ? 1 : 0),
+      0,
+    );
+    const linesGood = items.filter(
+      (x) => latest(x) != null && latest(x) >= 80,
+    ).length;
     const openItem = open != null ? items[open] : null;
     const openInfo = openItem && openItem.rec ? tryStats(openItem.rec) : null;
-    const runPts = openItem ? openItem.hist.filter((p) => p.kind === "run") : [], tryPts = openItem ? openItem.hist.filter((p) => p.kind === "try") : [];
+    const runPts = openItem
+        ? openItem.hist.filter((p) => p.kind === "run")
+        : [],
+      tryPts = openItem ? openItem.hist.filter((p) => p.kind === "try") : [];
     const avg = (a) => Math.round(a.reduce((s, p) => s + p.s, 0) / a.length);
-    const insight = openItem && runPts.length && tryPts.length >= 2 ? (avg(tryPts.slice(-3)) - runPts[runPts.length - 1].s >= 10
-      ? "Better when you practise it alone (" + avg(tryPts.slice(-3)) + "%) than in the full song (" + runPts[runPts.length - 1].s + "%). Try singing the line before it too, so you're ready when it comes."
-      : runPts[runPts.length - 1].s - avg(tryPts.slice(-3)) >= 10 ? "You sing it better in the full song than alone. The music around it helps you find the notes." : null) : null;
-    const prow = (x, a, b) => html`<button key=${x.i} onClick=${() => onPractise(x.ph)} class="flex items-center gap-3" style=${{ width: "100%", padding: "9px 0", borderTop: "1px solid var(--line)", background: "none", border: 0, borderTopStyle: "solid", borderTopWidth: 1, borderTopColor: "var(--line)", color: "var(--fg)", font: "inherit", textAlign: "left", cursor: "pointer" }}>
-      <span class="mono text-xs muted" style=${{ width: 20 }}>${String(x.i + 1).padStart(2, "0")}</span>
-      <span class="text-sm font-semibold" style=${{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>${x.text || "Phrase " + (x.i + 1)}</span>
-      <${Spark} vals=${x.hist.map((p) => p.s)} w=${56} h=${20} />
-      <span class="mono text-xs" style=${{ whiteSpace: "nowrap" }}><span class="muted">${a}</span> → <b style=${{ color: "var(--" + scoreTone(b) + ")" }}>${b}</b></span>
-    </button>`;
+    const insight =
+      openItem && runPts.length && tryPts.length >= 2
+        ? avg(tryPts.slice(-3)) - runPts[runPts.length - 1].s >= 10
+          ? "Better when you practise it alone (" +
+            avg(tryPts.slice(-3)) +
+            "%) than in the full song (" +
+            runPts[runPts.length - 1].s +
+            "%). Try singing the line before it too, so you're ready when it comes."
+          : runPts[runPts.length - 1].s - avg(tryPts.slice(-3)) >= 10
+            ? "You sing it better in the full song than alone. The music around it helps you find the notes."
+            : null
+        : null;
+    const prow = (x, a, b) =>
+      html`<button
+        key=${x.i}
+        onClick=${() => onPractise(x.ph)}
+        class="flex items-center gap-3"
+        style=${{
+          width: "100%",
+          padding: "9px 0",
+          borderTop: "1px solid var(--line)",
+          background: "none",
+          border: 0,
+          borderTopStyle: "solid",
+          borderTopWidth: 1,
+          borderTopColor: "var(--line)",
+          color: "var(--fg)",
+          font: "inherit",
+          textAlign: "left",
+          cursor: "pointer",
+        }}
+      >
+        <span class="mono text-xs muted" style=${{ width: 20 }}
+          >${String(x.i + 1).padStart(2, "0")}</span
+        >
+        <span
+          class="text-sm font-semibold"
+          style=${{
+            flex: 1,
+            minWidth: 0,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+          >${x.text || "Phrase " + (x.i + 1)}</span
+        >
+        <${Spark} vals=${x.hist.map((p) => p.s)} w=${56} h=${20} />
+        <span class="mono text-xs" style=${{ whiteSpace: "nowrap" }}
+          ><span class="muted">${a}</span> →
+          <b style=${{ color: "var(--" + scoreTone(b) + ")" }}>${b}</b></span
+        >
+      </button>`;
     return html`<div class="flex flex-col gap-3">
-      <div class="seg" role="group" aria-label="Analyze view" style=${{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-        <button aria-pressed=${view === "run" ? "true" : "false"} onClick=${() => setView("run")}>This run</button>
-        <button aria-pressed=${view === "progress" ? "true" : "false"} onClick=${() => setView("progress")}>Progress</button>
+      <div
+        class="seg"
+        role="group"
+        aria-label="Analyze view"
+        style=${{ display: "grid", gridTemplateColumns: "1fr 1fr" }}
+      >
+        <button
+          aria-pressed=${view === "run" ? "true" : "false"}
+          onClick=${() => setView("run")}
+        >
+          This run
+        </button>
+        <button
+          aria-pressed=${view === "progress" ? "true" : "false"}
+          onClick=${() => setView("progress")}
+        >
+          Progress
+        </button>
       </div>
-      ${view === "run" && (!run
-        ? html`<p class="text-sm muted">No whole-song run for this song yet. Sing it in Karaoke, or upload a recording above, and every line gets checked here.</p>`
+      ${view === "run" &&
+      (!run
+        ? html`<p class="text-sm muted">
+            No whole-song run for this song yet. Sing it in Karaoke, or upload a
+            recording above, and every line gets checked here.
+          </p>`
         : html`<${React.Fragment}>
-          <section class="panel p-4 flex items-center gap-3">
-            <span class="flex flex-col gap-1" style=${{ flex: 1, minWidth: 0 }}>
-              <span class="label">${(run.src || "Your run") + " · " + dayLabel(run.at)}</span>
-              <span class="display font-bold" style=${{ fontSize: 28, color: "var(--" + scoreTone(run.score) + ")" }}>${run.score}%${diff ? html` <span style=${{ fontSize: 14, color: diff > 0 ? "var(--good)" : "var(--muted)" }}>${diff > 0 ? "▲ " + diff : "▼ " + -diff}</span>` : ""}</span>
-              <span class="text-xs muted">${good} of ${sungItems.length} lines good${weak ? " · " + weak + " to work on" : ""}${sungItems.length < phrases.length ? " · " + (phrases.length - sungItems.length) + " not sung" : ""}</span>
-              ${(breathLines > 0 || cutLines > 0) && html`<span class="text-xs muted">${[breathLines ? breathLines + " line" + (breathLines > 1 ? "s" : "") + " with a mid-line breath" : "", cutLines ? cutLines + " ended short" : ""].filter(Boolean).join(" · ")}</span>`}
-            </span>
-            <${Spark} vals=${runs.map((r) => r.score)} w=${96} h=${40} />
-          </section>
-          ${planDraft && html`<button class="link-btn text-sm" style=${{ alignSelf: "flex-start", textDecoration: "none" }} onClick=${onPlan}>${planDraft.drills.length} drill${planDraft.drills.length > 1 ? "s" : ""} made from this run →</button>`}
-          <div class="flex items-center justify-between">
-            <span class="label">${order === "weak" ? "Work on these first" : "Every line"}</span>
-            <button class="link-btn text-xs" style=${{ textDecoration: "none", color: "var(--muted)" }} onClick=${() => setOrder(order === "weak" ? "song" : "weak")}>${order === "weak" ? "Weakest first ▾" : "Song order ▾"}</button>
-          </div>
-          ${shown.map((x) => { const info = tryStats(x.rec); return html`<section key=${x.i} class="panel" style=${{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, borderColor: x.rec.score < 55 ? "color-mix(in srgb, var(--bad) 40%, var(--line))" : undefined }}>
-            <div class="flex items-center gap-2 flex-wrap">
-              <span class="mono text-xs muted">${String(x.i + 1).padStart(2, "0")} · ${fmt(x.ph.start)}</span>
-              ${x.ph.tags.slice(0, 2).map((t) => html`<span key=${t} class="text-xs" style=${{ padding: "2px 8px", borderRadius: 999, background: "var(--surface-2)", color: "var(--muted)", fontWeight: 600 }}>${t}</span>`)}
-              <span class="display font-bold" style=${{ marginLeft: "auto", fontSize: 20, color: "var(--" + scoreTone(x.rec.score) + ")" }}>${x.rec.score}%</span>
+            <section class="panel p-4 flex items-center gap-3">
+              <span
+                class="flex flex-col gap-1"
+                style=${{ flex: 1, minWidth: 0 }}
+              >
+                <span class="label"
+                  >${(run.src || "Your run") + " · " + dayLabel(run.at)}</span
+                >
+                <span
+                  class="display font-bold"
+                  style=${{
+                    fontSize: 28,
+                    color: "var(--" + scoreTone(run.score) + ")",
+                  }}
+                  >${run.score}%${diff
+                    ? html` <span
+                        style=${{
+                          fontSize: 14,
+                          color: diff > 0 ? "var(--good)" : "var(--muted)",
+                        }}
+                        >${diff > 0 ? "▲ " + diff : "▼ " + -diff}</span
+                      >`
+                    : ""}</span
+                >
+                <span class="text-xs muted"
+                  >${good} of ${sungItems.length} lines
+                  good${weak
+                    ? " · " + weak + " to work on"
+                    : ""}${sungItems.length < phrases.length
+                    ? " · " + (phrases.length - sungItems.length) + " not sung"
+                    : ""}</span
+                >
+                ${(breathLines > 0 || cutLines > 0) &&
+                html`<span class="text-xs muted"
+                  >${[
+                    breathLines
+                      ? breathLines +
+                        " line" +
+                        (breathLines > 1 ? "s" : "") +
+                        " with a mid-line breath"
+                      : "",
+                    cutLines ? cutLines + " ended short" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}</span
+                >`}
+              </span>
+              <${Spark} vals=${runs.map((r) => r.score)} w=${96} h=${40} />
+            </section>
+            ${planDraft &&
+            html`<button
+              class="link-btn text-sm"
+              style=${{ alignSelf: "flex-start", textDecoration: "none" }}
+              onClick=${onPlan}
+            >
+              ${planDraft.drills.length}
+              drill${planDraft.drills.length > 1 ? "s" : ""} made from this run
+              →
+            </button>`}
+            <div class="flex items-center justify-between">
+              <span class="label"
+                >${order === "weak"
+                  ? "Work on these first"
+                  : "Every line"}</span
+              >
+              <button
+                class="link-btn text-xs"
+                style=${{ textDecoration: "none", color: "var(--muted)" }}
+                onClick=${() => setOrder(order === "weak" ? "song" : "weak")}
+              >
+                ${order === "weak" ? "Weakest first ▾" : "Song order ▾"}
+              </button>
             </div>
-            ${x.text && html`<b style=${{ fontSize: 15, lineHeight: 1.3 }}>${x.text}</b>`}
-            <div style=${{ padding: "6px 8px", borderRadius: 10, background: "var(--surface-2)", border: "1px solid var(--line)" }}><${TryChart} rec=${x.rec} notes=${notes} /></div>
-            <${BtTags} tags=${btInfo(x.rec, notes, x.text).tags} />
-            <div class="flex items-center gap-2"><span class="text-xs" style=${{ flex: 1 }}>${info.tip}</span><${Spark} vals=${x.hist.map((p) => p.s)} /></div>
-            <div class="flex items-center gap-2 flex-wrap">
-              <button class="btn" style=${{ padding: "5px 10px", fontSize: 12, color: "var(--you)" }} disabled=${!canHear} onClick=${() => onHearMe(x.rec)} title=${canHear ? "" : "The recording isn't kept after you leave"}>▶ Me</button>
-              <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => onHearSong(x.ph)}>▶ Song</button>
-              <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => setOpen(x.i)}>Details</button>
-              <button class="btn btn-primary" style=${{ padding: "5px 10px", fontSize: 12, marginLeft: "auto" }} onClick=${() => onPractise(x.ph)}>Practise this line →</button>
-            </div>
-          </section>`; })}
-          ${!canHear && html`<p class="text-xs muted">This is your last saved run. Recordings aren't kept after you leave, but the scores are.</p>`}
-        <//>`)}
-      ${view === "progress" && html`<${React.Fragment}>
+            ${shown.map((x) => {
+              const info = tryStats(x.rec);
+              return html`<section
+                key=${x.i}
+                class="panel"
+                style=${{
+                  padding: "12px 14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  borderColor:
+                    x.rec.score < 55
+                      ? "color-mix(in srgb, var(--bad) 40%, var(--line))"
+                      : undefined,
+                }}
+              >
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="mono text-xs muted"
+                    >${String(x.i + 1).padStart(2, "0")} ·
+                    ${fmt(x.ph.start)}</span
+                  >
+                  ${x.ph.tags.slice(0, 2).map(
+                    (t) =>
+                      html`<span
+                        key=${t}
+                        class="text-xs"
+                        style=${{
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          background: "var(--surface-2)",
+                          color: "var(--muted)",
+                          fontWeight: 600,
+                        }}
+                        >${t}</span
+                      >`,
+                  )}
+                  <span
+                    class="display font-bold"
+                    style=${{
+                      marginLeft: "auto",
+                      fontSize: 20,
+                      color: "var(--" + scoreTone(x.rec.score) + ")",
+                    }}
+                    >${x.rec.score}%</span
+                  >
+                </div>
+                ${x.text &&
+                html`<b style=${{ fontSize: 15, lineHeight: 1.3 }}
+                  >${x.text}</b
+                >`}
+                <div
+                  style=${{
+                    padding: "6px 8px",
+                    borderRadius: 10,
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--line)",
+                  }}
+                >
+                  <${TryChart} rec=${x.rec} notes=${notes} />
+                </div>
+                <${BtTags} tags=${btInfo(x.rec, notes, x.text).tags} />
+                <div class="flex items-center gap-2">
+                  <span class="text-xs" style=${{ flex: 1 }}>${info.tip}</span
+                  ><${Spark} vals=${x.hist.map((p) => p.s)} />
+                </div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <button
+                    class="btn"
+                    style=${{
+                      padding: "5px 10px",
+                      fontSize: 12,
+                      color: "var(--you)",
+                    }}
+                    disabled=${!canHear}
+                    onClick=${() => onHearMe(x.rec)}
+                    title=${canHear
+                      ? ""
+                      : "The recording isn't kept after you leave"}
+                  >
+                    ▶ Me
+                  </button>
+                  <button
+                    class="btn"
+                    style=${{ padding: "5px 10px", fontSize: 12 }}
+                    onClick=${() => onHearSong(x.ph)}
+                  >
+                    ▶ Song
+                  </button>
+                  <button
+                    class="btn"
+                    style=${{ padding: "5px 10px", fontSize: 12 }}
+                    onClick=${() => setOpen(x.i)}
+                  >
+                    Details
+                  </button>
+                  <button
+                    class="btn btn-primary"
+                    style=${{
+                      padding: "5px 10px",
+                      fontSize: 12,
+                      marginLeft: "auto",
+                    }}
+                    onClick=${() => onPractise(x.ph)}
+                  >
+                    Practise this line →
+                  </button>
+                </div>
+              </section>`;
+            })}
+            ${!canHear &&
+            html`<p class="text-xs muted">
+              This is your last saved run. Recordings aren't kept after you
+              leave, but the scores are.
+            </p>`}
+          <//>`)}
+      ${view === "progress" &&
+      html`<${React.Fragment}>
         <section class="panel p-4 flex flex-col gap-2">
-          <div class="flex items-center justify-between"><span class="label">Whole song</span>${runs.length >= 2 && html`<span class="text-xs font-semibold" style=${{ color: runs[runs.length - 1].score >= runs[0].score ? "var(--good)" : "var(--muted)" }}>${runs[runs.length - 1].score >= runs[0].score ? "▲ " : "▼ "}${Math.abs(runs[runs.length - 1].score - runs[0].score)} since your first run</span>`}</div>
+          <div class="flex items-center justify-between">
+            <span class="label">Whole song</span>${runs.length >= 2 &&
+            html`<span
+              class="text-xs font-semibold"
+              style=${{
+                color:
+                  runs[runs.length - 1].score >= runs[0].score
+                    ? "var(--good)"
+                    : "var(--muted)",
+              }}
+              >${runs[runs.length - 1].score >= runs[0].score
+                ? "▲ "
+                : "▼ "}${Math.abs(runs[runs.length - 1].score - runs[0].score)}
+              since your first run</span
+            >`}
+          </div>
           <${SongTrend} runs=${runs} />
           <div class="grid grid-cols-3 gap-2" style=${{ marginTop: 4 }}>
-            ${[["Runs", runs.length, ""], ["Line tries", lineTries, ""], ["Lines good", linesGood + "/" + phrases.length, "good"]].map(([l, v, t]) => html`<div key=${l} style=${{ padding: "8px 10px", borderRadius: 12, background: "var(--surface-2)" }}><div class="label" style=${{ fontSize: 10 }}>${l}</div><b class="display" style=${{ fontSize: 18, color: t ? "var(--" + t + ")" : undefined }}>${v}</b></div>`)}
+            ${[
+              ["Runs", runs.length, ""],
+              ["Line tries", lineTries, ""],
+              ["Lines good", linesGood + "/" + phrases.length, "good"],
+            ].map(
+              ([l, v, t]) =>
+                html`<div
+                  key=${l}
+                  style=${{
+                    padding: "8px 10px",
+                    borderRadius: 12,
+                    background: "var(--surface-2)",
+                  }}
+                >
+                  <div class="label" style=${{ fontSize: 10 }}>${l}</div>
+                  <b
+                    class="display"
+                    style=${{
+                      fontSize: 18,
+                      color: t ? "var(--" + t + ")" : undefined,
+                    }}
+                    >${v}</b
+                  >
+                </div>`,
+            )}
           </div>
         </section>
         <section class="panel" style=${{ padding: "12px 14px 4px" }}>
-          <div class="flex justify-between" style=${{ paddingBottom: 6 }}><span class="label">Most improved</span><span class="text-xs muted">first → now</span></div>
-          ${improved.length ? improved.map((x) => prow(x, x.hist[0].s, latest(x))) : html`<p class="text-xs muted" style=${{ paddingBottom: 10 }}>Lines that get 10+ points better show up here.</p>`}
+          <div class="flex justify-between" style=${{ paddingBottom: 6 }}>
+            <span class="label">Most improved</span
+            ><span class="text-xs muted">first → now</span>
+          </div>
+          ${improved.length
+            ? improved.map((x) => prow(x, x.hist[0].s, latest(x)))
+            : html`<p class="text-xs muted" style=${{ paddingBottom: 10 }}>
+                Lines that get 10+ points better show up here.
+              </p>`}
         </section>
         <section class="panel" style=${{ padding: "12px 14px 4px" }}>
-          <div class="flex justify-between" style=${{ paddingBottom: 6 }}><span class="label">Still tricky</span>${tricky.length > 0 && html`<button class="link-btn text-xs" style=${{ textDecoration: "none" }} onClick=${() => onPractise(tricky[0].ph)}>Practise ${tricky.length > 1 ? "the first one" : "it"} →</button>`}</div>
-          ${tricky.length ? tricky.map((x) => prow(x, x.hist[0].s, latest(x))) : html`<p class="text-xs muted" style=${{ paddingBottom: 10 }}>No lines under 60% right now. Nice.</p>`}
+          <div class="flex justify-between" style=${{ paddingBottom: 6 }}>
+            <span class="label">Still tricky</span>${tricky.length > 0 &&
+            html`<button
+              class="link-btn text-xs"
+              style=${{ textDecoration: "none" }}
+              onClick=${() => onPractise(tricky[0].ph)}
+            >
+              Practise ${tricky.length > 1 ? "the first one" : "it"} →
+            </button>`}
+          </div>
+          ${tricky.length
+            ? tricky.map((x) => prow(x, x.hist[0].s, latest(x)))
+            : html`<p class="text-xs muted" style=${{ paddingBottom: 10 }}>
+                No lines under 60% right now. Nice.
+              </p>`}
         </section>
       <//>`}
-      <${Sheet} open=${!!(openItem && openInfo)} title=${openItem ? (openItem.text ? "“" + openItem.text + "”" : "Phrase " + (openItem.i + 1)) : ""} onClose=${() => setOpen(null)}>
-        ${openItem && openInfo && html`<div class="flex flex-col gap-3">
-          <span class="text-sm muted">Line ${openItem.i + 1} · this run ${openItem.rec.score}%</span>
-          <div class="seg" role="group" aria-label="Details" style=${{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1fr" }}>
-            ${[["notes", "Notes"], ["bt", "Breath & timing"], ["time", "Over time"]].map(([k, l]) => html`<button key=${k} aria-pressed=${dtab === k ? "true" : "false"} onClick=${() => setDtab(k)}>${l}</button>`)}
+      <${Sheet}
+        open=${!!(openItem && openInfo)}
+        title=${openItem
+          ? openItem.text
+            ? "“" + openItem.text + "”"
+            : "Phrase " + (openItem.i + 1)
+          : ""}
+        onClose=${() => setOpen(null)}
+      >
+        ${openItem &&
+        openInfo &&
+        html`<div class="flex flex-col gap-3">
+          <span class="text-sm muted"
+            >Line ${openItem.i + 1} · this run ${openItem.rec.score}%</span
+          >
+          <div
+            class="seg"
+            role="group"
+            aria-label="Details"
+            style=${{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1fr" }}
+          >
+            ${[
+              ["notes", "Notes"],
+              ["bt", "Breath & timing"],
+              ["time", "Over time"],
+            ].map(
+              ([k, l]) =>
+                html`<button
+                  key=${k}
+                  aria-pressed=${dtab === k ? "true" : "false"}
+                  onClick=${() => setDtab(k)}
+                >
+                  ${l}
+                </button>`,
+            )}
           </div>
-          ${dtab === "bt" && html`<${BreathTimingView} rec=${openItem.rec} notes=${notes} text=${openItem.text} />`}
-          ${dtab === "notes" && html`<${React.Fragment}>
-          <div style=${{ padding: 10, borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
-            <${TryChart} rec=${openItem.rec} notes=${notes} />
-            <div class="flex gap-4 text-xs muted" style=${{ padding: "4px 4px 0" }}>
-              <span class="flex items-center gap-1"><span style=${{ width: 14, height: 6, borderRadius: 3, background: "var(--accent)", opacity: 0.6 }}></span>Song</span>
-              <span class="flex items-center gap-1"><span style=${{ width: 14, height: 3, borderRadius: 2, background: "var(--you)" }}></span>You</span>
+          ${dtab === "bt" &&
+          html`<${BreathTimingView}
+            rec=${openItem.rec}
+            notes=${notes}
+            text=${openItem.text}
+          />`}
+          ${dtab === "notes" &&
+          html`<${React.Fragment}>
+            <div
+              style=${{
+                padding: 10,
+                borderRadius: 14,
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+              }}
+            >
+              <${TryChart} rec=${openItem.rec} notes=${notes} />
+              <div
+                class="flex gap-4 text-xs muted"
+                style=${{ padding: "4px 4px 0" }}
+              >
+                <span class="flex items-center gap-1"
+                  ><span
+                    style=${{
+                      width: 14,
+                      height: 6,
+                      borderRadius: 3,
+                      background: "var(--accent)",
+                      opacity: 0.6,
+                    }}
+                  ></span
+                  >Song</span
+                >
+                <span class="flex items-center gap-1"
+                  ><span
+                    style=${{
+                      width: 14,
+                      height: 3,
+                      borderRadius: 2,
+                      background: "var(--you)",
+                    }}
+                  ></span
+                  >You</span
+                >
+              </div>
             </div>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            ${openInfo.stats.map((st) => html`<div key=${st.label} style=${{ padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)" }}>
-              <div class="label" style=${{ fontSize: 10 }}>${st.label}</div>
-              <div class="display font-bold" style=${{ fontSize: 18, color: "var(--" + st.tone + ")" }}>${st.value}</div>
-              <div class="text-xs muted">${st.note}</div>
-            </div>`)}
-          </div>
-          <div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)" }}><span aria-hidden="true">🎯</span><span><b>Tip:</b> ${openInfo.tip}</span></div>
+            <div class="grid grid-cols-2 gap-2">
+              ${openInfo.stats.map(
+                (st) =>
+                  html`<div
+                    key=${st.label}
+                    style=${{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      background: "var(--surface-2)",
+                    }}
+                  >
+                    <div class="label" style=${{ fontSize: 10 }}>
+                      ${st.label}
+                    </div>
+                    <div
+                      class="display font-bold"
+                      style=${{ fontSize: 18, color: "var(--" + st.tone + ")" }}
+                    >
+                      ${st.value}
+                    </div>
+                    <div class="text-xs muted">${st.note}</div>
+                  </div>`,
+              )}
+            </div>
+            <div
+              class="flex items-start gap-2 text-sm"
+              style=${{
+                padding: "12px 14px",
+                borderRadius: 14,
+                background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+                border:
+                  "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
+              }}
+            >
+              <span aria-hidden="true">🎯</span
+              ><span><b>Tip:</b> ${openInfo.tip}</span>
+            </div>
           <//>`}
-          ${dtab === "time" && html`<div class="flex flex-col gap-2" style=${{ padding: "12px 14px", borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
-            <div class="flex items-center justify-between flex-wrap gap-2"><span class="label">This line over time</span><span class="text-xs muted"><span style=${{ color: "var(--accent)" }}>●</span> whole-song runs  <span style=${{ color: "var(--you)" }}>○</span> practice tries</span></div>
+          ${dtab === "time" &&
+          html`<div
+            class="flex flex-col gap-2"
+            style=${{
+              padding: "12px 14px",
+              borderRadius: 14,
+              background: "var(--surface-2)",
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <span class="label">This line over time</span
+              ><span class="text-xs muted"
+                ><span style=${{ color: "var(--accent)" }}>●</span> whole-song
+                runs <span style=${{ color: "var(--you)" }}>○</span> practice
+                tries</span
+              >
+            </div>
             <${HistChart} pts=${openItem.hist} />
             ${insight && html`<span class="text-xs">${insight}</span>`}
           </div>`}
           <div class="grid grid-cols-2 gap-2">
-            <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} disabled=${!canHear} onClick=${() => onHearMe(openItem.rec)}>▶ Hear me</button>
-            <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => { setOpen(null); onPractise(openItem.ph); }}>Practise this line →</button>
+            <button
+              class="btn"
+              style=${{ justifyContent: "center", minHeight: 46 }}
+              disabled=${!canHear}
+              onClick=${() => onHearMe(openItem.rec)}
+            >
+              ▶ Hear me
+            </button>
+            <button
+              class="btn btn-primary"
+              style=${{ justifyContent: "center", minHeight: 46 }}
+              onClick=${() => {
+                setOpen(null);
+                onPractise(openItem.ph);
+              }}
+            >
+              Practise this line →
+            </button>
           </div>
         </div>`}
       <//>
     </div>`;
   }
 
-  function Analyst({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, incomingTake, lastTake, onUseTake, onPractice, onGo, inst, onPickInst, sync, keyWarn }) {
+  function Analyst({
+    themeKey,
+    active,
+    orig,
+    onPickOrig,
+    lyrics,
+    updateLyrics,
+    incomingTake,
+    lastTake,
+    onUseTake,
+    onPractice,
+    onGo,
+    inst,
+    onPickInst,
+    sync,
+    keyWarn,
+  }) {
     const [sub, setSub] = useState("overview");
     const [optOpen, setOptOpen] = useState(false);
     const [take, setTake] = useState(null);
     const [off, setOff] = useState(0);
     const [octaveFree, setOctaveFree] = useState(true);
-    const [warp, setWarp] = useState(() => loadJSON("pitchstaff.warp.v1", false));
+    const [warp, setWarp] = useState(() =>
+      loadJSON("pitchstaff.warp.v1", false),
+    );
     useEffect(() => saveJSON("pitchstaff.warp.v1", warp), [warp]);
     const [keyFree, setKeyFree] = useState(false); // judge against the song's own key, like Practice does
     const [ks, setKs] = useState(0);
-    const [plain, setPlain] = useState(() => { try { return localStorage.getItem("pitchstaff.plain") !== "0"; } catch (e) { return true; } });
-    const choosePlain = (v) => { setPlain(v); try { localStorage.setItem("pitchstaff.plain", v ? "1" : "0"); } catch (e) {} };
-    const [mix, setMix] = useState(() => { try { const v = JSON.parse(localStorage.getItem(MIX_KEY) || "null"); if (v && typeof v.o === "number") return { m: 0, ...v }; } catch (e) {} return { o: 0.8, g: 0, t: 0.9, m: 0 }; });
+    const [plain, setPlain] = useState(() => {
+      try {
+        return localStorage.getItem("pitchstaff.plain") !== "0";
+      } catch (e) {
+        return true;
+      }
+    });
+    const choosePlain = (v) => {
+      setPlain(v);
+      try {
+        localStorage.setItem("pitchstaff.plain", v ? "1" : "0");
+      } catch (e) {}
+    };
+    const [mix, setMix] = useState(() => {
+      try {
+        const v = JSON.parse(localStorage.getItem(MIX_KEY) || "null");
+        if (v && typeof v.o === "number") return { m: 0, ...v };
+      } catch (e) {}
+      return { o: 0.8, g: 0, t: 0.9, m: 0 };
+    });
     const mixRef = useRef(mix);
     const [loop, setLoop] = useState(null);
     const loopRef = useRef(null);
@@ -1366,41 +3022,108 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [sessions, setSessions] = useState(loadSessions);
     const [saved, setSaved] = useState(false);
     const [confirmClear, setConfirmClear] = useState(false);
-    const play = useRef({ ctx: null, origSrc: null, takeSrc: null, startCtx: 0, t0: 0, takeT0: 0, takeStart: 0, raf: 0, lastCt: 0 });
+    const play = useRef({
+      ctx: null,
+      origSrc: null,
+      takeSrc: null,
+      startCtx: 0,
+      t0: 0,
+      takeT0: 0,
+      takeStart: 0,
+      raf: 0,
+      lastCt: 0,
+    });
     const jobs = useRef({ orig: 0, take: 0 });
 
-    useEffect(() => { try { localStorage.setItem(SESS_KEY, JSON.stringify(sessions)); } catch (e) {} }, [sessions]);
+    useEffect(() => {
+      try {
+        localStorage.setItem(SESS_KEY, JSON.stringify(sessions));
+      } catch (e) {}
+    }, [sessions]);
 
     const stopPlay = useCallback(() => {
       const p = play.current;
       cancelAnimationFrame(p.raf);
-      [p.origSrc, p.takeSrc, p.musicSrc, ...(p.guide || [])].forEach((s) => { if (s) { s.onended = null; try { s.stop(); } catch (e) {} } });
-      [p.gO, p.gG, p.gT, p.gM].forEach((g) => { if (g) { try { g.disconnect(); } catch (e) {} } });
-      p.origSrc = null; p.takeSrc = null; p.musicSrc = null; p.guide = []; p.gO = p.gG = p.gT = p.gM = null;
+      [p.origSrc, p.takeSrc, p.musicSrc, ...(p.guide || [])].forEach((s) => {
+        if (s) {
+          s.onended = null;
+          try {
+            s.stop();
+          } catch (e) {}
+        }
+      });
+      [p.gO, p.gG, p.gT, p.gM].forEach((g) => {
+        if (g) {
+          try {
+            g.disconnect();
+          } catch (e) {}
+        }
+      });
+      p.origSrc = null;
+      p.takeSrc = null;
+      p.musicSrc = null;
+      p.guide = [];
+      p.gO = p.gG = p.gT = p.gM = null;
       setPlaying(false);
     }, []);
-    useEffect(() => () => { stopPlay(); if (play.current.ctx) play.current.ctx.close().catch(() => {}); }, [stopPlay]);
+    useEffect(
+      () => () => {
+        stopPlay();
+        if (play.current.ctx) play.current.ctx.close().catch(() => {});
+      },
+      [stopPlay],
+    );
 
-    const pick = useCallback(async (which, file) => {
-      const setter = setTake;
-      const job = ++jobs.current[which];
-      stopPlay(); setCursor(null); setSaved(false);
-      setter({ name: file.name, busy: true, progress: 0 });
-      let buffer, data;
-      try { buffer = await decodeFile(file); }
-      catch (e) { if (jobs.current[which] === job) setter({ name: file.name, error: "That file couldn't be read as audio. Try an MP3, M4A or WAV." }); return; }
-      data = await trackPitch(buffer, (pr) => { if (jobs.current[which] === job) setter((s) => (s ? { ...s, progress: pr } : s)); }, () => jobs.current[which] !== job);
-      if (!data || jobs.current[which] !== job) return;
-      setter({ name: file.name, buffer, data });
-    }, [stopPlay]);
+    const pick = useCallback(
+      async (which, file) => {
+        const setter = setTake;
+        const job = ++jobs.current[which];
+        stopPlay();
+        setCursor(null);
+        setSaved(false);
+        setter({ name: file.name, busy: true, progress: 0 });
+        let buffer, data;
+        try {
+          buffer = await decodeFile(file);
+        } catch (e) {
+          if (jobs.current[which] === job)
+            setter({
+              name: file.name,
+              error:
+                "That file couldn't be read as audio. Try an MP3, M4A or WAV.",
+            });
+          return;
+        }
+        data = await trackPitch(
+          buffer,
+          (pr) => {
+            if (jobs.current[which] === job)
+              setter((s) => (s ? { ...s, progress: pr } : s));
+          },
+          () => jobs.current[which] !== job,
+        );
+        if (!data || jobs.current[which] !== job) return;
+        setter({ name: file.name, buffer, data });
+      },
+      [stopPlay],
+    );
     // a take recorded in Karaoke arrives already as audio
     useEffect(() => {
       if (!incomingTake) return;
       const job = ++jobs.current.take;
-      stopPlay(); setCursor(null); setSaved(false);
+      stopPlay();
+      setCursor(null);
+      setSaved(false);
       setTake({ name: incomingTake.name, busy: true, progress: 0 });
       (async () => {
-        const data = await trackPitch(incomingTake.buffer, (pr) => { if (jobs.current.take === job) setTake((s) => (s ? { ...s, progress: pr } : s)); }, () => jobs.current.take !== job);
+        const data = await trackPitch(
+          incomingTake.buffer,
+          (pr) => {
+            if (jobs.current.take === job)
+              setTake((s) => (s ? { ...s, progress: pr } : s));
+          },
+          () => jobs.current.take !== job,
+        );
         if (!data || jobs.current.take !== job) return;
         setTake({ name: incomingTake.name, buffer: incomingTake.buffer, data });
       })();
@@ -1412,24 +3135,57 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const realign = useCallback(() => {
       if (!ready) return;
       const r = detectKeyAndOffset(orig.data, take.data, keyFree);
-      setKs(r.ks); setOff(r.off);
+      setKs(r.ks);
+      setOff(r.off);
     }, [ready, orig, take, keyFree]);
-    useEffect(() => { realign(); }, [realign]);
-    useEffect(() => { loopRef.current = null; setLoop(null); }, [orig, take]);
-    useEffect(() => { stopPlay(); setCursor(null); setSaved(false); }, [orig, stopPlay]);
-    useEffect(() => { if (!active) stopPlay(); }, [active, stopPlay]);
+    useEffect(() => {
+      realign();
+    }, [realign]);
+    useEffect(() => {
+      loopRef.current = null;
+      setLoop(null);
+    }, [orig, take]);
+    useEffect(() => {
+      stopPlay();
+      setCursor(null);
+      setSaved(false);
+    }, [orig, stopPlay]);
+    useEffect(() => {
+      if (!active) stopPlay();
+    }, [active, stopPlay]);
 
     const alignment = useMemo(() => {
       if (!ready) return null;
       const w = warp ? warpTake(orig.data, take.data, off, ks) : null;
       return { map: w || fixedMap(orig.data.grid.length, off), warped: !!w };
     }, [ready, orig, take, warp, off, ks]);
-    const result = useMemo(() => (alignment ? compare(orig.data, take.data, alignment.map, octaveFree, alignment.warped, off, ks) : null), [alignment, octaveFree, ks]);
+    const result = useMemo(
+      () =>
+        alignment
+          ? compare(
+              orig.data,
+              take.data,
+              alignment.map,
+              octaveFree,
+              alignment.warped,
+              off,
+              ks,
+            )
+          : null,
+      [alignment, octaveFree, ks],
+    );
     const phraseStarts = useMemo(() => {
       if (!ready) return [];
-      const a = orig.data.grid, out = [];
+      const a = orig.data.grid,
+        out = [];
       let sil = 99;
-      for (let k = 0; k < a.length; k++) { if (a[k] !== a[k]) sil++; else { if (sil >= 12) out.push(k * GRID); sil = 0; } }
+      for (let k = 0; k < a.length; k++) {
+        if (a[k] !== a[k]) sil++;
+        else {
+          if (sil >= 12) out.push(k * GRID);
+          sil = 0;
+        }
+      }
       return out;
     }, [ready, orig]);
     useEffect(() => setSaved(false), [off, octaveFree, warp, ks]);
@@ -1437,52 +3193,94 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const startPlay = (t) => {
       if (!result) return;
       stopPlay();
-      const p = play.current, mx = mixRef.current, loop = loopRef.current;
-      if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
+      const p = play.current,
+        mx = mixRef.current,
+        loop = loopRef.current;
+      if (!p.ctx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        p.ctx = new Ctx();
+      }
       const ctx = p.ctx;
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
       const hasMusic = !!(inst && inst.buffer);
-      const map = result.map, takeOnly = mx.o === 0 && mx.g === 0 && !(hasMusic && (mx.m || 0) > 0);
-      let end = takeOnly ? invTime(map, take.data.duration) : orig.data.duration;
+      const map = result.map,
+        takeOnly = mx.o === 0 && mx.g === 0 && !(hasMusic && (mx.m || 0) > 0);
+      let end = takeOnly
+        ? invTime(map, take.data.duration)
+        : orig.data.duration;
       if (loop) {
         end = Math.min(end, loop.b);
         if (t < loop.a - 0.5 || t >= loop.b) t = loop.a - 0.3;
       }
       if (t >= end - 0.05 || t < 0) t = loop ? Math.max(0, loop.a - 0.3) : 0;
       const now = ctx.currentTime + 0.05;
-      const bus = (v) => { const g = ctx.createGain(); g.gain.value = v; g.connect(ctx.destination); return g; };
-      p.gO = bus(mx.o); p.gG = bus(mx.g); p.gT = bus(mx.t); p.gM = bus(mx.m || 0);
+      const bus = (v) => {
+        const g = ctx.createGain();
+        g.gain.value = v;
+        g.connect(ctx.destination);
+        return g;
+      };
+      p.gO = bus(mx.o);
+      p.gG = bus(mx.g);
+      p.gT = bus(mx.t);
+      p.gM = bus(mx.m || 0);
       const make = (buf, at, when, dest) => {
-        const src = ctx.createBufferSource(); src.buffer = buf; src.connect(dest);
-        if (at >= 0) src.start(when, at); else src.start(when - at, 0);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(dest);
+        if (at >= 0) src.start(when, at);
+        else src.start(when - at, 0);
         return src;
       };
       const startTake = (at, when) => {
-        if (p.takeSrc) { try { p.takeSrc.stop(); } catch (e) {} }
+        if (p.takeSrc) {
+          try {
+            p.takeSrc.stop();
+          } catch (e) {}
+        }
         p.takeSrc = make(take.buffer, at, when, p.gT);
-        p.takeT0 = at; p.takeStart = when;
+        p.takeT0 = at;
+        p.takeStart = when;
       };
       if (!takeOnly) {
         p.origSrc = make(orig.buffer, t, now, p.gO);
-        if (hasMusic) p.musicSrc = make(inst.buffer, t + (sync || 0), now, p.gM);
-        p.guide = scheduleGuide(ctx, p.gG, orig.data.notes, t, end, now, result.shift);
+        if (hasMusic)
+          p.musicSrc = make(inst.buffer, t + (sync || 0), now, p.gM);
+        p.guide = scheduleGuide(
+          ctx,
+          p.gG,
+          orig.data.notes,
+          t,
+          end,
+          now,
+          result.shift,
+        );
       }
       startTake(mapTime(map, t), now);
-      p.startCtx = now; p.t0 = t; p.lastCt = t; p.takeOnly = takeOnly;
+      p.startCtx = now;
+      p.t0 = t;
+      p.lastCt = t;
+      p.takeOnly = takeOnly;
       setPlaying(true);
       const tick = () => {
         const ct = takeOnly
           ? invTime(map, p.takeT0 + Math.max(0, ctx.currentTime - p.takeStart))
           : p.t0 + Math.max(0, ctx.currentTime - p.startCtx);
         if (ct >= end) {
-          if (loopRef.current) { startPlay(Math.max(0, loopRef.current.a - 0.3)); return; }
-          stopPlay(); setCursor(end); return;
+          if (loopRef.current) {
+            startPlay(Math.max(0, loopRef.current.a - 0.3));
+            return;
+          }
+          stopPlay();
+          setCursor(end);
+          return;
         }
         // keep your take in step with the original: re-sync at each phrase start
         if (!takeOnly && result.dev) {
           for (const ps of phraseStarts) {
             if (ps > p.lastCt && ps <= ct) {
-              const exp = mapTime(map, ct), act = p.takeT0 + (ctx.currentTime - p.takeStart);
+              const exp = mapTime(map, ct),
+                act = p.takeT0 + (ctx.currentTime - p.takeStart);
               if (Math.abs(exp - act) > 0.08) startTake(exp, ctx.currentTime);
               break;
             }
@@ -1494,143 +3292,432 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       };
       tick();
     };
-    const seek = (t) => { setCursor(t); if (playing) startPlay(t); };
+    const seek = (t) => {
+      setCursor(t);
+      if (playing) startPlay(t);
+    };
     const setVol = (key, v) => {
       const next = { ...mixRef.current, [key]: v };
       const wasTakeOnly = play.current.takeOnly;
-      mixRef.current = next; setMix(next);
-      try { localStorage.setItem(MIX_KEY, JSON.stringify(next)); } catch (e) {}
-      const p = play.current, node = { o: p.gO, g: p.gG, t: p.gT, m: p.gM }[key];
+      mixRef.current = next;
+      setMix(next);
+      try {
+        localStorage.setItem(MIX_KEY, JSON.stringify(next));
+      } catch (e) {}
+      const p = play.current,
+        node = { o: p.gO, g: p.gG, t: p.gT, m: p.gM }[key];
       if (node && p.ctx) node.gain.setTargetAtTime(v, p.ctx.currentTime, 0.02);
       const hasMusic = !!(inst && inst.buffer);
-      if (playing && (next.o === 0 && next.g === 0 && !(hasMusic && (next.m || 0) > 0)) !== wasTakeOnly) startPlay(cursor || 0);
+      if (
+        playing &&
+        (next.o === 0 && next.g === 0 && !(hasMusic && (next.m || 0) > 0)) !==
+          wasTakeOnly
+      )
+        startPlay(cursor || 0);
     };
     const startLoop = (a, b) => {
       const lp = { a: Math.max(0, a), b };
-      loopRef.current = lp; setLoop(lp);
+      loopRef.current = lp;
+      setLoop(lp);
       setCursor(Math.max(0, a - 0.3));
       startPlay(Math.max(0, a - 0.3));
     };
-    const clearLoop = () => { loopRef.current = null; setLoop(null); };
-    const nudge = (frames) => { setOff((o) => o + frames); if (playing) stopPlay(); };
+    const clearLoop = () => {
+      loopRef.current = null;
+      setLoop(null);
+    };
+    const nudge = (frames) => {
+      setOff((o) => o + frames);
+      if (playing) stopPlay();
+    };
 
     const saveAttempt = () => {
       if (!result) return;
-      setSessions((s) => [{ id: Date.now(), t: Date.now(), song: orig.name, take: take.name, score: result.score, inTune: result.inTune, tendency: result.tendency, timing: result.timing, drift: result.drift, coverage: result.coverage }, ...s].slice(0, 200));
+      setSessions((s) =>
+        [
+          {
+            id: Date.now(),
+            t: Date.now(),
+            song: orig.name,
+            take: take.name,
+            score: result.score,
+            inTune: result.inTune,
+            tendency: result.tendency,
+            timing: result.timing,
+            drift: result.drift,
+            coverage: result.coverage,
+          },
+          ...s,
+        ].slice(0, 200),
+      );
       setSaved(true);
     };
 
-    const spans = useMemo(() => (orig && orig.data ? lyricSpans(lyrics, orig.data.duration) : []), [lyrics, orig]);
-    const curLine = cursor != null ? spans.findIndex((l) => cursor >= l.start && cursor < l.end) : -1;
-    const nextLine = cursor != null ? spans.find((l) => l.start > (cursor || 0)) : spans[0];
-    const linesIn = (a, b) => spans.filter((l) => l.start < b && l.end > a).map((l) => l.text);
-    const planDraft = useMemo(() => (result && orig && orig.data ? makePlan(result.rows, orig.data.notes, spans, buildPhrases(orig.data.notes, spans, orig.data.grid), "take") : null), [result, spans]);
+    const spans = useMemo(
+      () => (orig && orig.data ? lyricSpans(lyrics, orig.data.duration) : []),
+      [lyrics, orig],
+    );
+    const curLine =
+      cursor != null
+        ? spans.findIndex((l) => cursor >= l.start && cursor < l.end)
+        : -1;
+    const nextLine =
+      cursor != null ? spans.find((l) => l.start > (cursor || 0)) : spans[0];
+    const linesIn = (a, b) =>
+      spans.filter((l) => l.start < b && l.end > a).map((l) => l.text);
+    const planDraft = useMemo(
+      () =>
+        result && orig && orig.data
+          ? makePlan(
+              result.rows,
+              orig.data.notes,
+              spans,
+              buildPhrases(orig.data.notes, spans, orig.data.grid),
+              "take",
+            )
+          : null,
+      [result, spans],
+    );
     // ---- line-by-line runs ----
     const songName = orig && orig.data ? orig.name : null;
-    const phrasesA = useMemo(() => (orig && orig.data ? buildPhrases(orig.data.notes, spans, orig.data.grid) : []), [orig, spans]);
-    const liveRun = useMemo(() => (ready && alignment ? analyzeRun(orig.data, phrasesA, take.data, alignment.map) : null), [ready, alignment, phrasesA]);
+    const phrasesA = useMemo(
+      () =>
+        orig && orig.data
+          ? buildPhrases(orig.data.notes, spans, orig.data.grid)
+          : [],
+      [orig, spans],
+    );
+    const liveRun = useMemo(
+      () =>
+        ready && alignment
+          ? analyzeRun(orig.data, phrasesA, take.data, alignment.map)
+          : null,
+      [ready, alignment, phrasesA],
+    );
     const [runs, setRuns] = useState([]);
     const [lastRun, setLastRun] = useState(null);
     const [triesA, setTriesA] = useState({});
     const [runMeta, setRunMeta] = useState(null);
-    useEffect(() => { setRuns(loadRuns(songName)); setLastRun(loadLastRun(songName)); setTriesA(loadTries(songName)); }, [songName, active]);
+    useEffect(() => {
+      setRuns(loadRuns(songName));
+      setLastRun(loadLastRun(songName));
+      setTriesA(loadTries(songName));
+    }, [songName, active]);
     const savedRunFor = useRef(null);
     useEffect(() => {
       if (!liveRun || !songName || !take || !take.data) return;
       const key = songName + "|" + take.name + "|" + take.data.duration;
       if (savedRunFor.current === key) return;
       savedRunFor.current = key;
-      const meta = { at: Date.now(), src: /^Karaoke take/.test(take.name) ? "Karaoke run" : "Your recording" };
+      const meta = {
+        at: Date.now(),
+        src: /^Karaoke take/.test(take.name) ? "Karaoke run" : "Your recording",
+      };
       const lines = {};
-      liveRun.lines.forEach((r, i) => { if (r) lines[i] = r.score; });
+      liveRun.lines.forEach((r, i) => {
+        if (r) lines[i] = r.score;
+      });
       if (!Object.keys(lines).length) return;
       setRuns(addRun(songName, { ...meta, score: liveRun.score, lines }));
       const full = { ...meta, score: liveRun.score, lines: liveRun.lines };
-      saveLastRun(songName, full); setLastRun(full); setRunMeta(meta);
+      saveLastRun(songName, full);
+      setLastRun(full);
+      setRunMeta(meta);
     }, [liveRun, songName]);
-    const shownRun = liveRun && runMeta ? { ...runMeta, score: liveRun.score, lines: liveRun.lines } : lastRun;
+    const shownRun =
+      liveRun && runMeta
+        ? { ...runMeta, score: liveRun.score, lines: liveRun.lines }
+        : lastRun;
     const playClip = (buffer, a, b) => {
       if (!buffer) return;
       stopPlay();
       const p = play.current;
-      if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
+      if (!p.ctx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        p.ctx = new Ctx();
+      }
       if (p.ctx.state === "suspended") p.ctx.resume().catch(() => {});
-      const src = p.ctx.createBufferSource(); src.buffer = buffer; src.connect(p.ctx.destination);
-      const st = Math.max(0, a); src.start(0, st, Math.max(0.2, Math.min(b, buffer.duration) - st));
-      p.origSrc = src; setPlaying(true); src.onended = () => { if (p.origSrc === src) { p.origSrc = null; setPlaying(false); } };
+      const src = p.ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(p.ctx.destination);
+      const st = Math.max(0, a);
+      src.start(0, st, Math.max(0.2, Math.min(b, buffer.duration) - st));
+      p.origSrc = src;
+      setPlaying(true);
+      src.onended = () => {
+        if (p.origSrc === src) {
+          p.origSrc = null;
+          setPlaying(false);
+        }
+      };
     };
     const hasInst = !!(inst && inst.buffer);
-    const listenMode = mix.t > 0 && mix.o === 0 && !(mix.m > 0) ? "me" : mix.t === 0 ? "song" : "both";
+    const listenMode =
+      mix.t > 0 && mix.o === 0 && !(mix.m > 0)
+        ? "me"
+        : mix.t === 0
+          ? "song"
+          : "both";
     const chooseListen = (k) => {
-      const next = k === "me" ? { o: 0, g: 0, t: 1, m: 0 } : k === "song" ? { o: 0.85, g: 0, t: 0, m: hasInst ? 0.8 : 0 } : { o: hasInst ? 0 : 0.45, g: 0, t: 1, m: hasInst ? 0.7 : 0 };
-      mixRef.current = next; setMix(next);
-      try { localStorage.setItem(MIX_KEY, JSON.stringify(next)); } catch (e) {}
+      const next =
+        k === "me"
+          ? { o: 0, g: 0, t: 1, m: 0 }
+          : k === "song"
+            ? { o: 0.85, g: 0, t: 0, m: hasInst ? 0.8 : 0 }
+            : { o: hasInst ? 0 : 0.45, g: 0, t: 1, m: hasInst ? 0.7 : 0 };
+      mixRef.current = next;
+      setMix(next);
+      try {
+        localStorage.setItem(MIX_KEY, JSON.stringify(next));
+      } catch (e) {}
       if (playing) startPlay(cursor || 0);
     };
 
     const offSec = off * GRID;
     const past = orig ? sessions.filter((s) => s.song === orig.name) : sessions;
     const bestScore = past.reduce((m, s) => Math.max(m, s.score), -1);
-    const curNote = result && cursor != null ? result.rows.find((r) => cursor >= r.n.pos && cursor < r.n.end) : null;
-    const tech = useMemo(() => (result ? technique(orig.data, take.data, result) : []), [result]);
+    const curNote =
+      result && cursor != null
+        ? result.rows.find((r) => cursor >= r.n.pos && cursor < r.n.end)
+        : null;
+    const tech = useMemo(
+      () => (result ? technique(orig.data, take.data, result) : []),
+      [result],
+    );
 
-    const subs = [["overview", "Overview"], ["chart", "Chart"], ["notes", "Notes"], ["technique", "Technique"], ["history", "History"]];
-    const takeIsFromKaraoke = take && take.name && /^Karaoke take/.test(take.name);
+    const subs = [
+      ["overview", "Overview"],
+      ["chart", "Chart"],
+      ["notes", "Notes"],
+      ["technique", "Technique"],
+      ["history", "History"],
+    ];
+    const takeIsFromKaraoke =
+      take && take.name && /^Karaoke take/.test(take.name);
     return html`<div class="flex flex-col gap-4">
       ${!(take && (take.data || take.busy))
         ? html`<section class="flex flex-col gap-3">
             <div class="empty-hero">
               <h2 class="display text-2xl font-bold">Check a whole-song run</h2>
-              <p class="muted text-sm">Use your last Karaoke take or upload a recording of you singing this song. Every line gets checked, weakest first.</p>
+              <p class="muted text-sm">
+                Use your last Karaoke take or upload a recording of you singing
+                this song. Every line gets checked, weakest first.
+              </p>
             </div>
-            ${lastTake && html`<button class="file-row" style=${{ cursor: "pointer", textAlign: "left", color: "var(--fg)", font: "inherit" }} onClick=${() => onUseTake && onUseTake(lastTake)}>
+            ${lastTake &&
+            html`<button
+              class="file-row"
+              style=${{
+                cursor: "pointer",
+                textAlign: "left",
+                color: "var(--fg)",
+                font: "inherit",
+              }}
+              onClick=${() => onUseTake && onUseTake(lastTake)}
+            >
               <span class="song-ico"><${Icon} name="mic" /></span>
-              <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><span class="font-semibold">Use my last Karaoke take</span><span class="text-xs muted">${lastTake.name.replace(/^Karaoke take · /, "Recorded ")}</span></span>
-              <span class="btn btn-primary" style=${{ padding: "6px 14px", fontSize: 13 }}>Use</span>
+              <span class="flex flex-col min-w-0" style=${{ flex: 1 }}
+                ><span class="font-semibold">Use my last Karaoke take</span
+                ><span class="text-xs muted"
+                  >${lastTake.name.replace(
+                    /^Karaoke take · /,
+                    "Recorded ",
+                  )}</span
+                ></span
+              >
+              <span
+                class="btn btn-primary"
+                style=${{ padding: "6px 14px", fontSize: 13 }}
+                >Use</span
+              >
             </button>`}
             <div class="grid gap-4">
-        <${UploadSlot} id="take-file" step=${lastTake ? "or" : "1"} title="Upload a recording" hint="A recording of you singing the same part, like a Voice Memo. Record somewhere quiet, ideally with headphones so the music isn't picked up." slot=${take} onPick=${(f) => pick("take", f)} />
+              <${UploadSlot}
+                id="take-file"
+                step=${lastTake ? "or" : "1"}
+                title="Upload a recording"
+                hint="A recording of you singing the same part, like a Voice Memo. Record somewhere quiet, ideally with headphones so the music isn't picked up."
+                slot=${take}
+                onPick=${(f) => pick("take", f)}
+              />
             </div>
-            ${!lastTake && html`<p class="text-xs muted">Tip: sing in Karaoke with headphones and your take comes straight here.</p>`}
+            ${!lastTake &&
+            html`<p class="text-xs muted">
+              Tip: sing in Karaoke with headphones and your take comes straight
+              here.
+            </p>`}
           </section>`
         : html`<div class="flex items-center gap-3">
             <span class="song-ico"><${Icon} name="mic" /></span>
             <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
-              <span class="font-semibold text-sm" style=${{ overflowWrap: "anywhere" }}>${take.name}</span>
-              <span class="text-xs muted">${take.busy ? "Analyzing " + Math.round((take.progress || 0) * 100) + "%" : result && result.range && !result.range.whole ? "Sung " + fmt(result.range.start) + "–" + fmt(result.range.end) : "Your singing"}</span>
+              <span
+                class="font-semibold text-sm"
+                style=${{ overflowWrap: "anywhere" }}
+                >${take.name}</span
+              >
+              <span class="text-xs muted"
+                >${take.busy
+                  ? "Analyzing " + Math.round((take.progress || 0) * 100) + "%"
+                  : result && result.range && !result.range.whole
+                    ? "Sung " +
+                      fmt(result.range.start) +
+                      "–" +
+                      fmt(result.range.end)
+                    : "Your singing"}</span
+              >
             </span>
-            <button class="btn" style=${{ padding: "7px 14px", fontSize: 13 }} onClick=${() => { stopPlay(); setTake(null); }}>Change take</button>
+            <button
+              class="btn"
+              style=${{ padding: "7px 14px", fontSize: 13 }}
+              onClick=${() => {
+                stopPlay();
+                setTake(null);
+              }}
+            >
+              Change take
+            </button>
           </div>`}
-
-      ${ready && result && html`<section class="flex flex-col gap-2">
+      ${ready &&
+      result &&
+      html`<section class="flex flex-col gap-2">
         <div class="flex items-center justify-between gap-2 flex-wrap">
           <span class="label">Whole take</span>
           <div class="seg" role="group" aria-label="Listen to">
-            ${[["me", "Me"], ["song", "Song"], ["both", "Both"]].map(([k, l]) => html`<button key=${k} aria-pressed=${listenMode === k ? "true" : "false"} onClick=${() => chooseListen(k)}>${l}</button>`)}
+            ${[
+              ["me", "Me"],
+              ["song", "Song"],
+              ["both", "Both"],
+            ].map(
+              ([k, l]) =>
+                html`<button
+                  key=${k}
+                  aria-pressed=${listenMode === k ? "true" : "false"}
+                  onClick=${() => chooseListen(k)}
+                >
+                  ${l}
+                </button>`,
+            )}
           </div>
         </div>
-        <${RollChart} orig=${orig.data} take=${take.data} result=${result} cursor=${cursor} onSeek=${seek} themeKey=${themeKey} lyrics=${spans} loop=${loop} />
+        <${RollChart}
+          orig=${orig.data}
+          take=${take.data}
+          result=${result}
+          cursor=${cursor}
+          onSeek=${seek}
+          themeKey=${themeKey}
+          lyrics=${spans}
+          loop=${loop}
+        />
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs muted">
-          <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 6, borderRadius: 3, background: "var(--fg)", opacity: 0.3 }}></span>Song</span>
-          <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--good)" }}></span>You, right</span>
-          <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--warn)" }}></span>A bit off ↑↓</span>
-          <span class="flex items-center gap-1"><span style=${{ display: "inline-block", width: 16, height: 3, background: "var(--bad)" }}></span>Other note (yours in red)</span>
+          <span class="flex items-center gap-1"
+            ><span
+              style=${{
+                display: "inline-block",
+                width: 16,
+                height: 6,
+                borderRadius: 3,
+                background: "var(--fg)",
+                opacity: 0.3,
+              }}
+            ></span
+            >Song</span
+          >
+          <span class="flex items-center gap-1"
+            ><span
+              style=${{
+                display: "inline-block",
+                width: 16,
+                height: 3,
+                background: "var(--good)",
+              }}
+            ></span
+            >You, right</span
+          >
+          <span class="flex items-center gap-1"
+            ><span
+              style=${{
+                display: "inline-block",
+                width: 16,
+                height: 3,
+                background: "var(--warn)",
+              }}
+            ></span
+            >A bit off ↑↓</span
+          >
+          <span class="flex items-center gap-1"
+            ><span
+              style=${{
+                display: "inline-block",
+                width: 16,
+                height: 3,
+                background: "var(--bad)",
+              }}
+            ></span
+            >Other note (yours in red)</span
+          >
           <span>Tap the chart to jump there.</span>
         </div>
         <div class="playbar">
-          <button class="round-btn primary" onClick=${() => (playing ? stopPlay() : startPlay(cursor || 0))} aria-label=${playing ? "Pause" : "Play"}><${Icon} name=${playing ? "pause" : "play"} /></button>
+          <button
+            class="round-btn primary"
+            onClick=${() => (playing ? stopPlay() : startPlay(cursor || 0))}
+            aria-label=${playing ? "Pause" : "Play"}
+          >
+            <${Icon} name=${playing ? "pause" : "play"} />
+          </button>
           <span class="flex flex-col gap-1 min-w-0" style=${{ flex: 1 }}>
-            <input id="an-seek" type="range" min="0" max=${orig.data.duration} step="0.1" value=${cursor || 0} onChange=${(e) => seek(parseFloat(e.target.value))} aria-label="Position in the song" />
-            <span class="flex justify-between gap-2 mono text-xs muted"><span>${fmt(cursor || 0)} / ${fmt(orig.data.duration)}</span><span>${listenMode === "me" ? "Just me" : listenMode === "song" ? "The song" : "Me + the song"}</span></span>
+            <input
+              id="an-seek"
+              type="range"
+              min="0"
+              max=${orig.data.duration}
+              step="0.1"
+              value=${cursor || 0}
+              onChange=${(e) => seek(parseFloat(e.target.value))}
+              aria-label="Position in the song"
+            />
+            <span class="flex justify-between gap-2 mono text-xs muted"
+              ><span>${fmt(cursor || 0)} / ${fmt(orig.data.duration)}</span
+              ><span
+                >${listenMode === "me"
+                  ? "Just me"
+                  : listenMode === "song"
+                    ? "The song"
+                    : "Me + the song"}</span
+              ></span
+            >
           </span>
         </div>
       </section>`}
-      ${orig && orig.data && html`<${AnalyzeView} songName=${songName} notes=${orig.data.notes} phrases=${phrasesA} spans=${spans} run=${shownRun} runs=${runs} tries=${triesA}
-        canHear=${!!(liveRun && runMeta && take && take.buffer)} onHearMe=${(rec) => take && rec.clip && playClip(take.buffer, rec.clip[0], rec.clip[1])} onHearSong=${(ph) => playClip(orig.buffer, ph.start - 0.3, ph.end + 0.3)}
-        onPractise=${(ph) => { stopPlay(); onPractice && onPractice(ph.start, ph.end, true); }} planDraft=${liveRun ? planDraft : null} onPlan=${() => { stopPlay(); savePlan(orig.name, planDraft); onGo && onGo("learn"); }} />`}
+      ${orig &&
+      orig.data &&
+      html`<${AnalyzeView}
+        songName=${songName}
+        notes=${orig.data.notes}
+        phrases=${phrasesA}
+        spans=${spans}
+        run=${shownRun}
+        runs=${runs}
+        tries=${triesA}
+        canHear=${!!(liveRun && runMeta && take && take.buffer)}
+        onHearMe=${(rec) =>
+          take && rec.clip && playClip(take.buffer, rec.clip[0], rec.clip[1])}
+        onHearSong=${(ph) =>
+          playClip(orig.buffer, ph.start - 0.3, ph.end + 0.3)}
+        onPractise=${(ph) => {
+          stopPlay();
+          onPractice && onPractice(ph.start, ph.end, true);
+        }}
+        planDraft=${liveRun ? planDraft : null}
+        onPlan=${() => {
+          stopPlay();
+          savePlan(orig.name, planDraft);
+          onGo && onGo("learn");
+        }}
+      />`}
     </div>`;
   }
-
 
   /* ---------- shared song pieces ---------- */
   // Lyrics from another version of the song (or a lyric video with a longer intro) can be early or
@@ -1640,39 +3727,96 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const ts = lines.filter((l) => l.text).map((l) => l.t);
     if (ts.length < 4 || notes.length < 8) return null;
     const on = [];
-    notes.forEach((n, i) => { if (!i || n.pos - notes[i - 1].end > 0.3) on.push(n.pos); });
+    notes.forEach((n, i) => {
+      if (!i || n.pos - notes[i - 1].end > 0.3) on.push(n.pos);
+    });
     if (on.length < 4) return null;
-    const near = (t) => { let lo = 0, hi = on.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (on[m] < t) lo = m + 1; else hi = m; } return Math.min(Math.abs(on[lo] - t), lo ? Math.abs(on[lo - 1] - t) : Infinity); };
-    const score = (off) => ts.reduce((a, t) => { const d = near(t + off + 0.45); return a + Math.exp(-(d * d) / 0.08); }, 0) / ts.length;
-    let best = 0, bs = -1;
-    for (let off = -25; off <= 25.001; off += 0.05) { const s = score(off); if (s > bs) { bs = s; best = off; } }
-    for (let off = best - 0.05; off <= best + 0.05; off += 0.01) { const s = score(off); if (s > bs) { bs = s; best = off; } }
+    const near = (t) => {
+      let lo = 0,
+        hi = on.length - 1;
+      while (lo < hi) {
+        const m = (lo + hi) >> 1;
+        if (on[m] < t) lo = m + 1;
+        else hi = m;
+      }
+      return Math.min(
+        Math.abs(on[lo] - t),
+        lo ? Math.abs(on[lo - 1] - t) : Infinity,
+      );
+    };
+    const score = (off) =>
+      ts.reduce((a, t) => {
+        const d = near(t + off + 0.45);
+        return a + Math.exp(-(d * d) / 0.08);
+      }, 0) / ts.length;
+    let best = 0,
+      bs = -1;
+    for (let off = -25; off <= 25.001; off += 0.05) {
+      const s = score(off);
+      if (s > bs) {
+        bs = s;
+        best = off;
+      }
+    }
+    for (let off = best - 0.05; off <= best + 0.05; off += 0.01) {
+      const s = score(off);
+      if (s > bs) {
+        bs = s;
+        best = off;
+      }
+    }
     const s0 = score(0);
-    return { off: Math.round(best * 100) / 100, score: bs, base: s0, sure: bs >= 0.5 && bs >= s0 + 0.15 };
+    return {
+      off: Math.round(best * 100) / 100,
+      score: bs,
+      base: s0,
+      sure: bs >= 0.5 && bs >= s0 + 0.15,
+    };
   }
   // a search phrase from a file name: drop the extension, brackets and video/upload words
   function cleanSongName(name) {
     let t = (name || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
     t = t.replace(/\([^)]*\)|\[[^\]]*\]|\{[^}]*\}/g, " ");
-    t = t.replace(/\b(official|lyrics?|lyric video|video|audio|hd|hq|4k|1080p|720p|mp3pm|mp3|karaoke|acapella|a cappella|vocals?|voice only|instrumental|music|letra|remaster(ed)?|sung by|my take|mixed|e major|\d+bpm|\d+hz)\b/gi, " ");
-    return t.replace(/&/g, " ").replace(/\s+-\s+/g, " - ").replace(/[^\p{L}\p{N}'\- ]+/gu, " ").replace(/\s+/g, " ").replace(/(^[\s-]+|[\s-]+$)/g, "").trim();
+    t = t.replace(
+      /\b(official|lyrics?|lyric video|video|audio|hd|hq|4k|1080p|720p|mp3pm|mp3|karaoke|acapella|a cappella|vocals?|voice only|instrumental|music|letra|remaster(ed)?|sung by|my take|mixed|e major|\d+bpm|\d+hz)\b/gi,
+      " ",
+    );
+    return t
+      .replace(/&/g, " ")
+      .replace(/\s+-\s+/g, " - ")
+      .replace(/[^\p{L}\p{N}'\- ]+/gu, " ")
+      .replace(/\s+/g, " ")
+      .replace(/(^[\s-]+|[\s-]+$)/g, "")
+      .trim();
   }
   async function findLyrics(query, dur) {
     const tries = [query];
-    const parts = query.split(" - ").map((x) => x.trim()).filter(Boolean);
-    if (parts.length > 1) tries.push(parts.join(" "), parts.slice(1).join(" "), parts[0]);
+    const parts = query
+      .split(" - ")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (parts.length > 1)
+      tries.push(parts.join(" "), parts.slice(1).join(" "), parts[0]);
     const words = query.replace(/ - /g, " ").split(" ");
-    for (let k = words.length - 1; k >= 2; k--) tries.push(words.slice(0, k).join(" "));
+    for (let k = words.length - 1; k >= 2; k--)
+      tries.push(words.slice(0, k).join(" "));
     const seen = new Set();
     for (const q of tries) {
-      const key = q.toLowerCase(); if (!q || seen.has(key)) continue; seen.add(key);
-      const res = await fetch("https://lrclib.net/api/search?q=" + encodeURIComponent(q));
+      const key = q.toLowerCase();
+      if (!q || seen.has(key)) continue;
+      seen.add(key);
+      const res = await fetch(
+        "https://lrclib.net/api/search?q=" + encodeURIComponent(q),
+      );
       if (!res.ok) throw new Error("lrclib " + res.status);
       const list = (await res.json()).filter((x) => x && !x.instrumental);
       if (!list.length) continue;
       const synced = list.filter((x) => x.syncedLyrics);
       const rank = (x) => (dur && x.duration ? Math.abs(x.duration - dur) : 30);
-      return { synced: synced.sort((a, b) => rank(a) - rank(b)).slice(0, 5), plainOnly: !synced.length };
+      return {
+        synced: synced.sort((a, b) => rank(a) - rank(b)).slice(0, 5),
+        plainOnly: !synced.length,
+      };
     }
     return { synced: [], plainOnly: false };
   }
@@ -1682,94 +3826,330 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [err, setErr] = useState("");
     const ref = useRef(null);
     const origName = orig && orig.data ? orig.name : null;
-    useEffect(() => { setErr(""); setLineMsg(""); setFind(null); }, [origName]);
+    useEffect(() => {
+      setErr("");
+      setLineMsg("");
+      setFind(null);
+    }, [origName]);
     const dur = orig && orig.data ? orig.data.duration : 0;
     const runFind = async (q) => {
       if (!q) return;
       setFind({ q, busy: true });
       try {
         const r = await findLyrics(q, dur);
-        setFind({ q, results: r.synced, msg: r.synced.length ? "" : r.plainOnly ? "Found lyrics, but without timing. Tono needs timed lyrics. Try another search or upload a file." : "No timed lyrics found. Try fewer words, like just the title, or upload a file." });
-      } catch (e) { setFind({ q, results: [], msg: "Couldn't reach the lyrics library. Check your connection, or upload a lyrics file." }); }
+        setFind({
+          q,
+          results: r.synced,
+          msg: r.synced.length
+            ? ""
+            : r.plainOnly
+              ? "Found lyrics, but without timing. Tono needs timed lyrics. Try another search or upload a file."
+              : "No timed lyrics found. Try fewer words, like just the title, or upload a file.",
+        });
+      } catch (e) {
+        setFind({
+          q,
+          results: [],
+          msg: "Couldn't reach the lyrics library. Check your connection, or upload a lyrics file.",
+        });
+      }
     };
     // search once by itself when a new song has no lyrics yet
-    useEffect(() => { if (origName && !lyrics) runFind(cleanSongName(origName)); }, [origName]);
+    useEffect(() => {
+      if (origName && !lyrics) runFind(cleanSongName(origName));
+    }, [origName]);
     const useFound = (x) => {
       const lines = parseLrc(x.syncedLyrics || "");
-      if (!lines.filter((l) => l.text).length) { setErr("Those lyrics couldn't be read."); return; }
-      const sh = orig && orig.data ? bestLyricShift(lines, orig.data.notes) : null;
+      if (!lines.filter((l) => l.text).length) {
+        setErr("Those lyrics couldn't be read.");
+        return;
+      }
+      const sh =
+        orig && orig.data ? bestLyricShift(lines, orig.data.notes) : null;
       const offset = sh && sh.sure ? sh.off : 0;
-      updateLyrics({ name: x.trackName + " · " + x.artistName, lines, offset, from: "lrclib" });
+      updateLyrics({
+        name: x.trackName + " · " + x.artistName,
+        lines,
+        offset,
+        from: "lrclib",
+      });
       setFind(null);
-      setLineMsg(offset ? "Lined up with the singing (shifted " + signed(offset.toFixed(2)) + " s). Nudge below if it's still off." : "Added. Check the timing in Practice; nudge below if it's off.");
+      setLineMsg(
+        offset
+          ? "Lined up with the singing (shifted " +
+              signed(offset.toFixed(2)) +
+              " s). Nudge below if it's still off."
+          : "Added. Check the timing in Practice; nudge below if it's off.",
+      );
     };
     const lineUp = () => {
       if (!lyrics || !orig || !orig.data) return;
       const sh = bestLyricShift(lyrics.lines, orig.data.notes);
-      if (sh && Math.abs(sh.off - lyrics.offset) < 0.2) setLineMsg("These lyrics already line up with the singing.");
-      else if (sh && sh.sure) { updateLyrics({ ...lyrics, offset: sh.off }); setLineMsg("Lined up with the singing (shift " + signed(sh.off.toFixed(2)) + " s)."); }
-      else setLineMsg("Couldn't find a clear match. These lyrics may be from a different version. Use the shift buttons.");
+      if (sh && Math.abs(sh.off - lyrics.offset) < 0.2)
+        setLineMsg("These lyrics already line up with the singing.");
+      else if (sh && sh.sure) {
+        updateLyrics({ ...lyrics, offset: sh.off });
+        setLineMsg(
+          "Lined up with the singing (shift " +
+            signed(sh.off.toFixed(2)) +
+            " s).",
+        );
+      } else
+        setLineMsg(
+          "Couldn't find a clear match. These lyrics may be from a different version. Use the shift buttons.",
+        );
     };
     const pickLyrics = async (file) => {
       setErr("");
       let text = "";
-      try { text = await file.text(); } catch (e) { setErr("That file couldn't be read."); return; }
+      try {
+        text = await file.text();
+      } catch (e) {
+        setErr("That file couldn't be read.");
+        return;
+      }
       if (/^\s*#(TITLE|ARTIST|BPM|GAP|MP3|AUDIO|VERSION)\s*:/im.test(text)) {
         const us = parseUltraStar(text);
-        if (!us || !us.lines.length) { setErr("This looks like an UltraStar file, but no notes were found in it."); return; }
-        updateLyrics({ name: file.name, lines: us.lines, offset: 0, us: us.notes.map((n) => [n.midi, Math.round(n.pos * 1000) / 1000, Math.round(n.end * 1000) / 1000, { silence: 0, dip: 1, pitch: 2 }[n.cut]]) });
+        if (!us || !us.lines.length) {
+          setErr(
+            "This looks like an UltraStar file, but no notes were found in it.",
+          );
+          return;
+        }
+        updateLyrics({
+          name: file.name,
+          lines: us.lines,
+          offset: 0,
+          us: us.notes.map((n) => [
+            n.midi,
+            Math.round(n.pos * 1000) / 1000,
+            Math.round(n.end * 1000) / 1000,
+            { silence: 0, dip: 1, pitch: 2 }[n.cut],
+          ]),
+        });
         return;
       }
       const lines = parseLrc(text);
-      if (!lines.filter((l) => l.text).length) { setErr("No timed lines found. Use an .lrc file (lines like [00:12.30] followed by the words) or an UltraStar .txt file."); return; }
+      if (!lines.filter((l) => l.text).length) {
+        setErr(
+          "No timed lines found. Use an .lrc file (lines like [00:12.30] followed by the words) or an UltraStar .txt file.",
+        );
+        return;
+      }
       updateLyrics({ name: file.name, lines, offset: 0 });
     };
     const [expMsg, setExpMsg] = useState("");
     const exportUs = async () => {
       if (!orig || !orig.data) return;
       const spans = lyricSpans(lyrics, orig.data.duration);
-      const base = (orig.name || "song").replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]+/g, "").trim() || "song";
+      const base =
+        (orig.name || "song")
+          .replace(/\.[^.]+$/, "")
+          .replace(/[\\/:*?"<>|]+/g, "")
+          .trim() || "song";
       const parts = base.split(/\s+-\s+/);
-      const txt = toUltraStar({ title: parts.length > 1 ? parts.slice(1).join(" - ") : base, artist: parts.length > 1 ? parts[0] : "", audio: orig.name, instrumental: musicName, notes: orig.data.notes, spans });
-      try { await saveBlob(new Blob([txt], { type: "text/plain" }), base + ".txt"); setExpMsg("Saved."); }
-      catch (e) { setExpMsg(e && e.code === "declined" ? "Save cancelled." : "Saving isn't available here."); }
+      const txt = toUltraStar({
+        title: parts.length > 1 ? parts.slice(1).join(" - ") : base,
+        artist: parts.length > 1 ? parts[0] : "",
+        audio: orig.name,
+        instrumental: musicName,
+        notes: orig.data.notes,
+        spans,
+      });
+      try {
+        await saveBlob(new Blob([txt], { type: "text/plain" }), base + ".txt");
+        setExpMsg("Saved.");
+      } catch (e) {
+        setExpMsg(
+          e && e.code === "declined"
+            ? "Save cancelled."
+            : "Saving isn't available here.",
+        );
+      }
     };
     const btn = { padding: "5px 10px", fontSize: 13 };
     return html`<div class="panel p-4 flex flex-wrap items-center gap-3">
       <div class="flex-1 min-w-0" style=${{ minWidth: 200 }}>
         <span class="label">Optional</span>
-        <h3 class="display text-lg font-bold">Timed lyrics (.lrc or UltraStar .txt)</h3>
+        <h3 class="display text-lg font-bold">
+          Timed lyrics (.lrc or UltraStar .txt)
+        </h3>
         ${lyrics
-          ? html`<p class="text-sm" style=${{ overflowWrap: "anywhere" }}><b>${lyrics.name}</b> <span class="muted mono text-xs">· ${count} lines${lyrics.us ? " · exact notes from the chart" : ""} · saved for this song</span></p>`
-          : html`<p class="muted text-sm">${origName ? hint : "Upload the song first, then add its lyrics file."}</p>`}
-        ${err && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${err}</p>`}
-        ${lyrics && orig && orig.data && html`<p class="text-xs muted" style=${{ marginTop: 4 }}><button class="link-btn" onClick=${exportUs}>Save as UltraStar file</button>${expMsg ? " · " + expMsg : " · plays in UltraStar and other karaoke games"}</p>`}
-        ${lyrics && orig && orig.data && !lyrics.us && html`<p class="text-xs muted" style=${{ marginTop: 4 }}><button class="link-btn" onClick=${lineUp}>Line up with the singing</button>${lineMsg ? " · " + lineMsg : ""}</p>`}
+          ? html`<p class="text-sm" style=${{ overflowWrap: "anywhere" }}>
+              <b>${lyrics.name}</b>
+              <span class="muted mono text-xs"
+                >· ${count}
+                lines${lyrics.us ? " · exact notes from the chart" : ""} · saved
+                for this song</span
+              >
+            </p>`
+          : html`<p class="muted text-sm">
+              ${origName
+                ? hint
+                : "Upload the song first, then add its lyrics file."}
+            </p>`}
+        ${err &&
+        html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${err}</p>`}
+        ${lyrics &&
+        orig &&
+        orig.data &&
+        html`<p class="text-xs muted" style=${{ marginTop: 4 }}>
+          <button class="link-btn" onClick=${exportUs}>
+            Save as UltraStar file</button
+          >${expMsg
+            ? " · " + expMsg
+            : " · plays in UltraStar and other karaoke games"}
+        </p>`}
+        ${lyrics &&
+        orig &&
+        orig.data &&
+        !lyrics.us &&
+        html`<p class="text-xs muted" style=${{ marginTop: 4 }}>
+          <button class="link-btn" onClick=${lineUp}>
+            Line up with the singing</button
+          >${lineMsg ? " · " + lineMsg : ""}
+        </p>`}
       </div>
-      ${lyrics && html`<div class="flex items-center gap-2">
-        <button class="btn" style=${btn} onClick=${() => updateLyrics({ ...lyrics, offset: Math.round((lyrics.offset - 0.25) * 100) / 100 })}>−0.25 s</button>
-        <span class="mono text-xs" style=${{ minWidth: 92, textAlign: "center" }}>${lyrics.offset === 0 ? "No shift" : "Shift " + signed(lyrics.offset.toFixed(2)) + " s"}</span>
-        <button class="btn" style=${btn} onClick=${() => updateLyrics({ ...lyrics, offset: Math.round((lyrics.offset + 0.25) * 100) / 100 })}>+0.25 s</button>
-        <button class="btn btn-ghost" style=${btn} onClick=${() => updateLyrics(null)}>Remove</button>
+      ${lyrics &&
+      html`<div class="flex items-center gap-2">
+        <button
+          class="btn"
+          style=${btn}
+          onClick=${() =>
+            updateLyrics({
+              ...lyrics,
+              offset: Math.round((lyrics.offset - 0.25) * 100) / 100,
+            })}
+        >
+          −0.25 s
+        </button>
+        <span
+          class="mono text-xs"
+          style=${{ minWidth: 92, textAlign: "center" }}
+          >${lyrics.offset === 0
+            ? "No shift"
+            : "Shift " + signed(lyrics.offset.toFixed(2)) + " s"}</span
+        >
+        <button
+          class="btn"
+          style=${btn}
+          onClick=${() =>
+            updateLyrics({
+              ...lyrics,
+              offset: Math.round((lyrics.offset + 0.25) * 100) / 100,
+            })}
+        >
+          +0.25 s
+        </button>
+        <button
+          class="btn btn-ghost"
+          style=${btn}
+          onClick=${() => updateLyrics(null)}
+        >
+          Remove
+        </button>
       </div>`}
-      <button class=${"btn" + (lyrics ? "" : " btn-primary")} disabled=${!origName} onClick=${() => runFind(find ? find.q : cleanSongName(origName))}>Find lyrics</button>
-      <button class="btn" disabled=${!origName} onClick=${() => ref.current && ref.current.click()}>${lyrics ? "Replace with a file" : "Upload a file"}</button>
-      ${find && html`<div class="flex flex-col gap-2" style=${{ flexBasis: "100%" }}>
-        <form class="flex gap-2" onSubmit=${(e) => { e.preventDefault(); runFind(e.target.elements.q.value.trim()); }}>
-          <input name="q" class="input" aria-label="Search lyrics" defaultValue=${find.q} key=${find.q} style=${{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--fg)" }} />
-          <button class="btn" type="submit" disabled=${find.busy}>${find.busy ? "Searching…" : "Search"}</button>
+      <button
+        class=${"btn" + (lyrics ? "" : " btn-primary")}
+        disabled=${!origName}
+        onClick=${() => runFind(find ? find.q : cleanSongName(origName))}
+      >
+        Find lyrics
+      </button>
+      <button
+        class="btn"
+        disabled=${!origName}
+        onClick=${() => ref.current && ref.current.click()}
+      >
+        ${lyrics ? "Replace with a file" : "Upload a file"}
+      </button>
+      ${find &&
+      html`<div class="flex flex-col gap-2" style=${{ flexBasis: "100%" }}>
+        <form
+          class="flex gap-2"
+          onSubmit=${(e) => {
+            e.preventDefault();
+            runFind(e.target.elements.q.value.trim());
+          }}
+        >
+          <input
+            name="q"
+            class="input"
+            aria-label="Search lyrics"
+            defaultValue=${find.q}
+            key=${find.q}
+            style=${{
+              flex: 1,
+              minWidth: 0,
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: "1px solid var(--line)",
+              background: "var(--surface-2)",
+              color: "var(--fg)",
+            }}
+          />
+          <button class="btn" type="submit" disabled=${find.busy}>
+            ${find.busy ? "Searching…" : "Search"}
+          </button>
         </form>
         ${find.msg && html`<p class="text-xs muted">${find.msg}</p>`}
-        ${(find.results || []).map((x) => { const d = dur && x.duration ? x.duration - dur : null; return html`<div key=${x.id} class="file-row" style=${{ padding: "8px 12px" }}>
-          <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
-            <span class="text-sm font-semibold" style=${{ overflowWrap: "anywhere" }}>${x.trackName}</span>
-            <span class="text-xs muted" style=${{ overflowWrap: "anywhere" }}>${x.artistName}${x.duration ? " · " + fmt(x.duration) : ""}${d == null ? "" : Math.abs(d) <= 3 ? " · same length as your song" : " · " + Math.round(Math.abs(d)) + " s " + (d > 0 ? "longer" : "shorter")}</span>
-          </span>
-          <button class="btn" style=${{ padding: "5px 12px", fontSize: 13 }} onClick=${() => useFound(x)}>Use</button>
-        </div>`; })}
-        ${!find.busy && html`<p class="text-xs muted">Timed lyrics from <a href="https://lrclib.net" target="_blank" rel="noopener" style=${{ color: "var(--accent)" }}>LRCLIB</a>, a free community library.</p>`}
+        ${(find.results || []).map((x) => {
+          const d = dur && x.duration ? x.duration - dur : null;
+          return html`<div
+            key=${x.id}
+            class="file-row"
+            style=${{ padding: "8px 12px" }}
+          >
+            <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
+              <span
+                class="text-sm font-semibold"
+                style=${{ overflowWrap: "anywhere" }}
+                >${x.trackName}</span
+              >
+              <span class="text-xs muted" style=${{ overflowWrap: "anywhere" }}
+                >${x.artistName}${x.duration
+                  ? " · " + fmt(x.duration)
+                  : ""}${d == null
+                  ? ""
+                  : Math.abs(d) <= 3
+                    ? " · same length as your song"
+                    : " · " +
+                      Math.round(Math.abs(d)) +
+                      " s " +
+                      (d > 0 ? "longer" : "shorter")}</span
+              >
+            </span>
+            <button
+              class="btn"
+              style=${{ padding: "5px 12px", fontSize: 13 }}
+              onClick=${() => useFound(x)}
+            >
+              Use
+            </button>
+          </div>`;
+        })}
+        ${!find.busy &&
+        html`<p class="text-xs muted">
+          Timed lyrics from
+          <a
+            href="https://lrclib.net"
+            target="_blank"
+            rel="noopener"
+            style=${{ color: "var(--accent)" }}
+            >LRCLIB</a
+          >, a free community library.
+        </p>`}
       </div>`}
-      <input ref=${ref} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) pickLyrics(f); }} />
+      <input
+        ref=${ref}
+        type="file"
+        class="hidden"
+        onChange=${(e) => {
+          const f = e.target.files && e.target.files[0];
+          e.target.value = "";
+          if (f) pickLyrics(f);
+        }}
+      />
     </div>`;
   }
 
@@ -1778,49 +4158,84 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   // Breath and timing for one line: breaths taken where the song keeps going, a last note cut short,
   // and rushing or dragging (notes drifting earlier or later through the line).
   function breathTiming(ph, rows, her, map, len, speed) {
-    const b = her.grid, L = her.loud, inB = (j) => j >= 0 && j < b.length;
+    const b = her.grid,
+      L = her.loud,
+      inB = (j) => j >= 0 && j < b.length;
     const vl = [];
     if (L) for (let j = 0; j < b.length; j++) if (b[j] === b[j]) vl.push(L[j]);
     const thr = vl.length ? median(vl) - 18 : -60;
     const quiet = (j) => inB(j) && b[j] !== b[j] && (!L || L[j] < thr);
-    const kOf = (t) => Math.max(0, Math.min(len - 1, Math.round((t - ph.start) / speed / GRID)));
+    const kOf = (t) =>
+      Math.max(0, Math.min(len - 1, Math.round((t - ph.start) / speed / GRID)));
     const breaths = [];
     for (let i = 0; i + 1 < rows.length; i++) {
-      const n = rows[i].n, m = rows[i + 1].n;
+      const n = rows[i].n,
+        m = rows[i + 1].n;
       if (m.pos - n.end >= 0.15) continue; // the song has a gap here, so a breath is fine
-      const reach = Math.min(15, Math.round((m.end - m.pos) / speed / GRID / 2));
-      const j0 = map[Math.max(0, kOf(n.end) - 3)], j1 = map[Math.min(len - 1, kOf(m.pos) + Math.max(3, reach))];
-      let run = 0, best = 0;
-      for (let j = j0; j <= j1; j++) { if (quiet(j)) { run++; best = Math.max(best, run); } else run = 0; }
-      if (best >= 8) breaths.push({ i, t: n.end, len: Math.round(best * GRID * 100) / 100 });
+      const reach = Math.min(
+        15,
+        Math.round((m.end - m.pos) / speed / GRID / 2),
+      );
+      const j0 = map[Math.max(0, kOf(n.end) - 3)],
+        j1 = map[Math.min(len - 1, kOf(m.pos) + Math.max(3, reach))];
+      let run = 0,
+        best = 0;
+      for (let j = j0; j <= j1; j++) {
+        if (quiet(j)) {
+          run++;
+          best = Math.max(best, run);
+        } else run = 0;
+      }
+      if (best >= 8)
+        breaths.push({ i, t: n.end, len: Math.round(best * GRID * 100) / 100 });
     }
     let cut = null;
-    const lastI = rows.length - 1, last = rows[lastI];
+    const lastI = rows.length - 1,
+      last = rows[lastI];
     if (last && last.n.end - last.n.pos >= 0.35) {
       // follow your voice from where the last note starts until it stops (gaps of a few frames allowed)
-      const k0 = kOf(last.n.pos), want = Math.round((last.n.end - last.n.pos) / speed / GRID);
-      let jS = map[k0], jl = -1, gap = 0;
+      const k0 = kOf(last.n.pos),
+        want = Math.round((last.n.end - last.n.pos) / speed / GRID);
+      let jS = map[k0],
+        jl = -1,
+        gap = 0;
       for (let j = jS - 3; j <= jS + want + 10 && inB(j); j++) {
-        if (b[j] === b[j]) { jl = j; gap = 0; } else if (jl >= 0 && ++gap > 4) break;
+        if (b[j] === b[j]) {
+          jl = j;
+          gap = 0;
+        } else if (jl >= 0 && ++gap > 4) break;
       }
-      const short = jl < 0 ? last.n.end - last.n.pos : Math.max(0, (jS + want - jl) * GRID * speed);
-      if (short >= 0.25) cut = { i: lastI, s: Math.round(short * 10) / 10, t: last.n.end };
+      const short =
+        jl < 0
+          ? last.n.end - last.n.pos
+          : Math.max(0, (jS + want - jl) * GRID * speed);
+      if (short >= 0.25)
+        cut = { i: lastI, s: Math.round(short * 10) / 10, t: last.n.end };
     }
-    const dts = rows.slice(1).filter((r) => !r.missed && r.ok && r.dt != null).map((r) => r.dt); // a late first note is "came in late", not rushing
+    const dts = rows
+      .slice(1)
+      .filter((r) => !r.missed && r.ok && r.dt != null)
+      .map((r) => r.dt); // a late first note is "came in late", not rushing
     let pace = "steady";
     if (dts.length >= 6) {
-      const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length, d = avg(dts.slice(-3)) - avg(dts.slice(0, 3));
-      if (d <= -0.15) pace = "rushed"; else if (d >= 0.15) pace = "dragged";
+      const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length,
+        d = avg(dts.slice(-3)) - avg(dts.slice(0, 3));
+      if (d <= -0.15) pace = "rushed";
+      else if (d >= 0.15) pace = "dragged";
     }
     return { breaths, cut, pace };
   }
   function scorePhrase(ph, her, speed, tr) {
     const len = Math.ceil((ph.end - ph.start) / speed / GRID) + 1;
-    const grid = new Float32Array(len).fill(NaN), loud = new Float32Array(len).fill(-100);
+    const grid = new Float32Array(len).fill(NaN),
+      loud = new Float32Array(len).fill(-100);
     for (let k = 0; k < len; k++) {
       const st = ph.start + k * GRID * speed;
       const n = ph.notes.find((x) => st >= x.pos && st < x.end);
-      if (n) { grid[k] = n.midi + tr; loud[k] = -10; }
+      if (n) {
+        grid[k] = n.midi + tr;
+        loud[k] = -10;
+      }
     }
     const tgt = { grid, loud, notes: [], duration: len * GRID };
     let kd = detectKeyAndOffset(tgt, her, true);
@@ -1830,52 +4245,109 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     if (!map) map = fixedMap(len, kd.off);
     const b = her.grid;
     const rows = ph.notes.map((n) => {
-      const k0 = Math.round((n.pos - ph.start) / speed / GRID), k1 = Math.max(k0 + 1, Math.round((n.end - ph.start) / speed / GRID));
-      const cut = Math.floor((k1 - k0) * 0.2), i0 = k0 + cut, i1 = Math.max(i0 + 1, k1 - cut);
-      const ds = [], raw = [], lv = [];
+      const k0 = Math.round((n.pos - ph.start) / speed / GRID),
+        k1 = Math.max(k0 + 1, Math.round((n.end - ph.start) / speed / GRID));
+      const cut = Math.floor((k1 - k0) * 0.2),
+        i0 = k0 + cut,
+        i1 = Math.max(i0 + 1, k1 - cut);
+      const ds = [],
+        raw = [],
+        lv = [];
       for (let k = i0; k < i1 && k < len; k++) {
         const j = map[k];
-        let best = NaN, bd = Infinity;
+        let best = NaN,
+          bd = Infinity;
         for (let q = j - 2; q <= j + 2; q++) {
           if (q < 0 || q >= b.length || b[q] !== b[q]) continue;
           const d = foldOct(b[q] - (n.midi + tr) - kd.ks);
-          if (Math.abs(d) < bd) { bd = Math.abs(d); best = q; }
+          if (Math.abs(d) < bd) {
+            bd = Math.abs(d);
+            best = q;
+          }
         }
-        if (best === best) { ds.push(foldOct(b[best] - (n.midi + tr) - kd.ks)); raw.push(b[best]); lv.push(her.loud ? her.loud[best] : 0); }
+        if (best === best) {
+          ds.push(foldOct(b[best] - (n.midi + tr) - kd.ks));
+          raw.push(b[best]);
+          lv.push(her.loud ? her.loud[best] : 0);
+        }
       }
       // timing: how far this note's start sits from the line's own average timing (+ late, - early)
-      let dt = len >= 60 && k0 < len ? Math.round((map[k0] - k0 - kd.off) * GRID * speed * 100) / 100 : 0;
+      let dt =
+        len >= 60 && k0 < len
+          ? Math.round((map[k0] - k0 - kd.off) * GRID * speed * 100) / 100
+          : 0;
       if (Math.abs(dt) > 0.6) dt = null; // not a believable timing difference: probably matched the wrong spot
-      if (ds.length < Math.max(1, 0.3 * (i1 - i0))) return { n, missed: true, ok: false, dt };
+      if (ds.length < Math.max(1, 0.3 * (i1 - i0)))
+        return { n, missed: true, ok: false, dt };
       // loud/soft drift on long notes: did the pitch sink as you got softer, or rise as you pushed?
       let dr = null;
-      if ((n.end - n.pos) >= 0.5 && ds.length >= 12 && her.loud) {
-        const t3 = Math.floor(ds.length / 3), avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
-        const dL = avg(lv.slice(-t3)) - avg(lv.slice(0, t3)), dP = (avg(ds.slice(-t3)) - avg(ds.slice(0, t3))) * 100;
-        if (dL <= -6 && dP <= -30) dr = { dir: "flat", with: "softer", c: Math.round(dP) };
-        else if (dL >= 6 && dP >= 30) dr = { dir: "sharp", with: "louder", c: Math.round(dP) };
+      if (n.end - n.pos >= 0.5 && ds.length >= 12 && her.loud) {
+        const t3 = Math.floor(ds.length / 3),
+          avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+        const dL = avg(lv.slice(-t3)) - avg(lv.slice(0, t3)),
+          dP = (avg(ds.slice(-t3)) - avg(ds.slice(0, t3))) * 100;
+        if (dL <= -6 && dP <= -30)
+          dr = { dir: "flat", with: "softer", c: Math.round(dP) };
+        else if (dL >= 6 && dP >= 30)
+          dr = { dir: "sharp", with: "louder", c: Math.round(dP) };
       }
       const cents = Math.round(median(ds) * 100);
       // did you slide up into it? look at the first moments of the note
       const head = [];
       for (let k = k0; k < Math.min(k0 + 6, len); k++) {
         const j = map[k];
-        let bd = Infinity, v = NaN;
-        for (let q = j - 2; q <= j + 2; q++) { if (q < 0 || q >= b.length || b[q] !== b[q]) continue; const d = foldOct(b[q] - (n.midi + tr) - kd.ks); if (Math.abs(d) < bd) { bd = Math.abs(d); v = d; } }
+        let bd = Infinity,
+          v = NaN;
+        for (let q = j - 2; q <= j + 2; q++) {
+          if (q < 0 || q >= b.length || b[q] !== b[q]) continue;
+          const d = foldOct(b[q] - (n.midi + tr) - kd.ks);
+          if (Math.abs(d) < bd) {
+            bd = Math.abs(d);
+            v = d;
+          }
+        }
         if (v === v) head.push(v);
       }
       const sc = head.length >= 2 && head[0] <= -0.6 && median(ds) > -0.4;
       let sd = null;
-      if (k1 - k0 >= 25 && ds.length > 8) { const mu = ds.reduce((a, x) => a + x, 0) / ds.length; sd = Math.round(Math.sqrt(ds.reduce((a, x) => a + (x - mu) * (x - mu), 0) / ds.length) * 100); }
-      return { n, missed: false, cents, ok: Math.abs(cents) <= 50, sung: Math.round(median(raw)), sc, sd, dt, dr };
+      if (k1 - k0 >= 25 && ds.length > 8) {
+        const mu = ds.reduce((a, x) => a + x, 0) / ds.length;
+        sd = Math.round(
+          Math.sqrt(
+            ds.reduce((a, x) => a + (x - mu) * (x - mu), 0) / ds.length,
+          ) * 100,
+        );
+      }
+      return {
+        n,
+        missed: false,
+        cents,
+        ok: Math.abs(cents) <= 50,
+        sung: Math.round(median(raw)),
+        sc,
+        sd,
+        dt,
+        dr,
+      };
     });
     // your pitch over the phrase, in the song's key, for drawing
     const trace = [];
     for (let k = 0; k < len; k += 2) {
-      if (grid[k] !== grid[k]) { trace.push(null); continue; }
+      if (grid[k] !== grid[k]) {
+        trace.push(null);
+        continue;
+      }
       const j = map[k];
-      let bd = Infinity, v = NaN;
-      for (let q = j - 2; q <= j + 2; q++) { if (q < 0 || q >= b.length || b[q] !== b[q]) continue; const d = foldOct(b[q] - grid[k] - kd.ks); if (Math.abs(d) < bd) { bd = Math.abs(d); v = d; } }
+      let bd = Infinity,
+        v = NaN;
+      for (let q = j - 2; q <= j + 2; q++) {
+        if (q < 0 || q >= b.length || b[q] !== b[q]) continue;
+        const d = foldOct(b[q] - grid[k] - kd.ks);
+        if (Math.abs(d) < bd) {
+          bd = Math.abs(d);
+          v = d;
+        }
+      }
       trace.push(v === v ? Math.round((grid[k] - tr + v) * 100) / 100 : null);
     }
     const sung = rows.filter((r) => !r.missed && Math.abs(r.cents) <= 150);
@@ -1892,46 +4364,119 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   }
 
   /* ---------- learn mode ---------- */
-  const KEY_MAJ = ["C", "D♭", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
-  const KEY_MIN = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "G♯", "A", "B♭", "B"];
-  const SOLFEGE = ["Do", "Di", "Re", "Ri", "Mi", "Fa", "Fi", "Sol", "Si", "La", "Li", "Ti"];
-  const PROF_MAJ = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
-  const PROF_MIN = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+  const KEY_MAJ = [
+    "C",
+    "D♭",
+    "D",
+    "E♭",
+    "E",
+    "F",
+    "F♯",
+    "G",
+    "A♭",
+    "A",
+    "B♭",
+    "B",
+  ];
+  const KEY_MIN = [
+    "C",
+    "C♯",
+    "D",
+    "E♭",
+    "E",
+    "F",
+    "F♯",
+    "G",
+    "G♯",
+    "A",
+    "B♭",
+    "B",
+  ];
+  const SOLFEGE = [
+    "Do",
+    "Di",
+    "Re",
+    "Ri",
+    "Mi",
+    "Fa",
+    "Fi",
+    "Sol",
+    "Si",
+    "La",
+    "Li",
+    "Ti",
+  ];
+  const PROF_MAJ = [
+    6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
+  ];
+  const PROF_MIN = [
+    6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17,
+  ];
 
   // likely key from note durations (Krumhansl–Schmuckler profiles)
   function estimateKey(notes) {
     const h = new Array(12).fill(0);
-    notes.forEach((n) => { h[((n.midi % 12) + 12) % 12] += n.end - n.pos; });
+    notes.forEach((n) => {
+      h[((n.midi % 12) + 12) % 12] += n.end - n.pos;
+    });
     const corr = (prof, r) => {
-      const xs = h, ys = prof.map((_, i) => prof[(i - r + 12) % 12]);
-      const mx = mean(xs), my = mean(ys);
-      let a = 0, b = 0, c = 0;
-      for (let i = 0; i < 12; i++) { a += (xs[i] - mx) * (ys[i] - my); b += (xs[i] - mx) ** 2; c += (ys[i] - my) ** 2; }
+      const xs = h,
+        ys = prof.map((_, i) => prof[(i - r + 12) % 12]);
+      const mx = mean(xs),
+        my = mean(ys);
+      let a = 0,
+        b = 0,
+        c = 0;
+      for (let i = 0; i < 12; i++) {
+        a += (xs[i] - mx) * (ys[i] - my);
+        b += (xs[i] - mx) ** 2;
+        c += (ys[i] - my) ** 2;
+      }
       return b && c ? a / Math.sqrt(b * c) : 0;
     };
     let best = { r: 0, minor: false, c: -2 };
     for (let r = 0; r < 12; r++) {
-      const cM = corr(PROF_MAJ, r), cm = corr(PROF_MIN, r);
+      const cM = corr(PROF_MAJ, r),
+        cm = corr(PROF_MIN, r);
       if (cM > best.c) best = { r, minor: false, c: cM };
       if (cm > best.c) best = { r, minor: true, c: cm };
     }
-    return { tonic: best.r, minor: best.minor, conf: best.c, doPc: (best.r + (best.minor ? 3 : 0)) % 12 };
+    return {
+      tonic: best.r,
+      minor: best.minor,
+      conf: best.c,
+      doPc: (best.r + (best.minor ? 3 : 0)) % 12,
+    };
   }
-  const keyName = (k, tr) => { const pc = (((k.tonic + tr) % 12) + 12) % 12; return (k.minor ? KEY_MIN[pc] : KEY_MAJ[pc]) + (k.minor ? " minor" : " major"); };
+  const keyName = (k, tr) => {
+    const pc = (((k.tonic + tr) % 12) + 12) % 12;
+    return (
+      (k.minor ? KEY_MIN[pc] : KEY_MAJ[pc]) + (k.minor ? " minor" : " major")
+    );
+  };
 
   // With timed lyrics, each lyric line is one phrase, its edges moved to where the singing really
   // starts and stops. Without lyrics, phrases are cut where the melody pauses.
   function lyricGroups(notes, spans, grid) {
     const lines = spans.filter((l) => l.text);
     if (!lines.length) return null;
-    const voiced = (t) => { if (!grid) return false; const k = Math.round(t / GRID); return k >= 0 && k < grid.length && grid[k] === grid[k]; };
+    const voiced = (t) => {
+      if (!grid) return false;
+      const k = Math.round(t / GRID);
+      return k >= 0 && k < grid.length && grid[k] === grid[k];
+    };
     const out = [];
     lines.forEach((l, i) => {
-      const g = notes.filter((n) => n.pos >= l.start - 0.08 && n.pos < l.end - 0.02);
+      const g = notes.filter(
+        (n) => n.pos >= l.start - 0.08 && n.pos < l.end - 0.02,
+      );
       if (!g.length) return;
-      const next = lines[i + 1] ? lines[i + 1].start : Infinity, prevEnd = out.length ? out[out.length - 1].end : 0;
-      let a = g[0].pos, b = g[g.length - 1].end;
-      while (a - GRID > Math.max(prevEnd, l.start - 0.3) && voiced(a - GRID)) a -= GRID;
+      const next = lines[i + 1] ? lines[i + 1].start : Infinity,
+        prevEnd = out.length ? out[out.length - 1].end : 0;
+      let a = g[0].pos,
+        b = g[g.length - 1].end;
+      while (a - GRID > Math.max(prevEnd, l.start - 0.3) && voiced(a - GRID))
+        a -= GRID;
       while (b + GRID < next - 0.05 && voiced(b)) b += GRID;
       out.push({ g, start: a, end: b });
     });
@@ -1950,31 +4495,60 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     groups.forEach((g) => {
       const len = g[g.length - 1].end - g[0].pos;
       const prev = merged[merged.length - 1];
-      if (prev && (g.length < 2 || len < 0.8) && g[0].pos - prev[prev.length - 1].end < 1.2) prev.push(...g);
+      if (
+        prev &&
+        (g.length < 2 || len < 0.8) &&
+        g[0].pos - prev[prev.length - 1].end < 1.2
+      )
+        prev.push(...g);
       else merged.push(g.slice());
     });
     const out = [];
     const split = (g) => {
       const len = g[g.length - 1].end - g[0].pos;
-      if (len <= 12 || g.length < 4) { out.push(g); return; }
-      let bi = 1, bg = -1;
-      for (let i = 1; i < g.length; i++) { const gap = g[i].pos - g[i - 1].end; if (gap > bg) { bg = gap; bi = i; } }
-      split(g.slice(0, bi)); split(g.slice(bi));
+      if (len <= 12 || g.length < 4) {
+        out.push(g);
+        return;
+      }
+      let bi = 1,
+        bg = -1;
+      for (let i = 1; i < g.length; i++) {
+        const gap = g[i].pos - g[i - 1].end;
+        if (gap > bg) {
+          bg = gap;
+          bi = i;
+        }
+      }
+      split(g.slice(0, bi));
+      split(g.slice(bi));
     };
     merged.forEach(split);
-    return phraseTags(notes, out.map((g) => ({ g, start: g[0].pos, end: g[g.length - 1].end })));
+    return phraseTags(
+      notes,
+      out.map((g) => ({ g, start: g[0].pos, end: g[g.length - 1].end })),
+    );
   }
   function phraseTags(notes, groups) {
-    let hi = -Infinity, lo = Infinity;
-    notes.forEach((n) => { hi = Math.max(hi, n.midi); lo = Math.min(lo, n.midi); });
+    let hi = -Infinity,
+      lo = Infinity;
+    notes.forEach((n) => {
+      hi = Math.max(hi, n.midi);
+      lo = Math.min(lo, n.midi);
+    });
     const wide = hi - lo >= 7;
     return groups.map(({ g, start, end }, i) => {
       const tags = [];
       let jump = 0;
-      for (let j = 1; j < g.length; j++) if (g[j].pos - g[j - 1].end < 0.35) jump = Math.max(jump, Math.abs(g[j].midi - g[j - 1].midi));
+      for (let j = 1; j < g.length; j++)
+        if (g[j].pos - g[j - 1].end < 0.35)
+          jump = Math.max(jump, Math.abs(g[j].midi - g[j - 1].midi));
       if (jump >= 5) tags.push("Big jump");
       let fast = false;
-      for (let j = 0; j < g.length && !fast; j++) { let c = 0; for (let q = j; q < g.length && g[q].pos < g[j].pos + 1; q++) c++; if (c >= 5) fast = true; }
+      for (let j = 0; j < g.length && !fast; j++) {
+        let c = 0;
+        for (let q = j; q < g.length && g[q].pos < g[j].pos + 1; q++) c++;
+        if (c >= 5) fast = true;
+      }
       if (fast) tags.push("Fast run");
       if (wide && g.some((n) => n.midi >= hi - 1)) tags.push("High note");
       if (wide && g.some((n) => n.midi <= lo + 1)) tags.push("Low note");
@@ -1985,17 +4559,47 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
 
   const LEARNED_KEY = "pitchstaff.learned.v1";
 
-  function MelodyMap({ data, notes, tr, nameOf, phrases, lyrics, loop, cursor, curIdx, onTapNote, onSeek, themeKey, overlay, height, marks }) {
-    const canvasRef = useRef(null), boxRef = useRef(null);
+  function MelodyMap({
+    data,
+    notes,
+    tr,
+    nameOf,
+    phrases,
+    lyrics,
+    loop,
+    cursor,
+    curIdx,
+    onTapNote,
+    onSeek,
+    themeKey,
+    overlay,
+    height,
+    marks,
+  }) {
+    const canvasRef = useRef(null),
+      boxRef = useRef(null);
     const dur = data.duration;
     const pps = Math.min(70, 15000 / Math.max(1, dur));
-    const W = Math.ceil(dur * pps), H = height || 260;
+    const W = Math.ceil(dur * pps),
+      H = height || 260;
     const range = useMemo(() => {
-      let lo = Infinity, hi = -Infinity;
-      notes.forEach((n) => { lo = Math.min(lo, n.midi + tr); hi = Math.max(hi, n.midi + tr); });
-      if (!isFinite(lo)) { lo = 60; hi = 72; }
-      lo -= 2; hi += 2;
-      if (hi - lo < 14) { const m = (hi + lo) / 2; lo = Math.floor(m - 7); hi = Math.ceil(m + 7); }
+      let lo = Infinity,
+        hi = -Infinity;
+      notes.forEach((n) => {
+        lo = Math.min(lo, n.midi + tr);
+        hi = Math.max(hi, n.midi + tr);
+      });
+      if (!isFinite(lo)) {
+        lo = 60;
+        hi = 72;
+      }
+      lo -= 2;
+      hi += 2;
+      if (hi - lo < 14) {
+        const m = (hi + lo) / 2;
+        lo = Math.floor(m - 7);
+        hi = Math.ceil(m + 7);
+      }
       return { lo, hi };
     }, [notes, tr]);
     const rowH = (H - 30) / (range.hi - range.lo + 1);
@@ -2005,56 +4609,100 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const cv = canvasRef.current;
       if (!cv) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      cv.width = W * dpr; cv.height = H * dpr;
-      cv.style.width = W + "px"; cv.style.height = H + "px";
+      cv.width = W * dpr;
+      cv.height = H * dpr;
+      cv.style.width = W + "px";
+      cv.style.height = H + "px";
       const g = cv.getContext("2d");
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, W, H);
-      const col = { line: cssVar("--line"), muted: cssVar("--muted"), fg: cssVar("--fg"), bg: cssVar("--surface-2"), accent: cssVar("--accent") };
+      const col = {
+        line: cssVar("--line"),
+        muted: cssVar("--muted"),
+        fg: cssVar("--fg"),
+        bg: cssVar("--surface-2"),
+        accent: cssVar("--accent"),
+      };
       const mono = "10px " + cssVar("--font-mono");
       // alternate phrase shading
       g.fillStyle = col.fg;
-      phrases.forEach((p, i) => { if (i % 2) { g.globalAlpha = 0.04; g.fillRect(p.start * pps, 0, (p.end - p.start) * pps, H); } });
+      phrases.forEach((p, i) => {
+        if (i % 2) {
+          g.globalAlpha = 0.04;
+          g.fillRect(p.start * pps, 0, (p.end - p.start) * pps, H);
+        }
+      });
       g.globalAlpha = 1;
       // pitch rows, C labels
       for (let m = range.lo; m <= range.hi; m++) {
-        const y = yOf(m), isC = ((m % 12) + 12) % 12 === 0;
-        g.strokeStyle = isC ? col.muted : col.line; g.globalAlpha = isC ? 0.5 : 0.35; g.lineWidth = 1;
-        g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
-        if (isC) { g.globalAlpha = 0.9; g.fillStyle = col.muted; g.font = mono; for (let x = 4; x < W; x += 8 * pps) g.fillText("C" + (Math.floor(m / 12) - 1), x, y - 3); }
+        const y = yOf(m),
+          isC = ((m % 12) + 12) % 12 === 0;
+        g.strokeStyle = isC ? col.muted : col.line;
+        g.globalAlpha = isC ? 0.5 : 0.35;
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(0, y);
+        g.lineTo(W, y);
+        g.stroke();
+        if (isC) {
+          g.globalAlpha = 0.9;
+          g.fillStyle = col.muted;
+          g.font = mono;
+          for (let x = 4; x < W; x += 8 * pps)
+            g.fillText("C" + (Math.floor(m / 12) - 1), x, y - 3);
+        }
       }
       g.globalAlpha = 1;
-      g.fillStyle = col.muted; g.font = mono;
+      g.fillStyle = col.muted;
+      g.font = mono;
       for (let s = 0; s < dur; s += 5) g.fillText(fmt(s), s * pps + 3, H - 3);
       // the singer's real pitch line, faint
-      g.strokeStyle = col.fg; g.globalAlpha = 0.18; g.lineWidth = 1.5;
+      g.strokeStyle = col.fg;
+      g.globalAlpha = 0.18;
+      g.lineWidth = 1.5;
       g.beginPath();
       let pen = false;
       const a = data.grid;
       for (let k = 0; k < a.length; k++) {
         const v = a[k];
-        if (v !== v) { pen = false; continue; }
+        if (v !== v) {
+          pen = false;
+          continue;
+        }
         if (pen && Math.abs(v - a[k - 1]) > 1.5) pen = false;
-        const x = k * GRID * pps, y = yOf(v + tr);
-        if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+        const x = k * GRID * pps,
+          y = yOf(v + tr);
+        if (!pen) {
+          g.moveTo(x, y);
+          pen = true;
+        } else g.lineTo(x, y);
       }
       g.stroke();
       g.globalAlpha = 1;
       // note bars with names
       const bh = Math.max(7, Math.min(18, rowH * 0.85));
-      g.font = "600 10px " + cssVar("--font-mono"); g.textBaseline = "middle";
+      g.font = "600 10px " + cssVar("--font-mono");
+      g.textBaseline = "middle";
       notes.forEach((n, i) => {
         // a note running straight into another on the same pitch gets a clear gap, so the two read as two notes
-        const nx = notes[i + 1], joined = nx && nx.midi === n.midi && nx.pos - n.end < 0.06;
-        const x = n.pos * pps, w = Math.max(3, (n.end - n.pos) * pps - (joined ? 5 : 1.5)), y = yOf(n.midi + tr);
-        g.fillStyle = col.fg; g.globalAlpha = 0.78;
+        const nx = notes[i + 1],
+          joined = nx && nx.midi === n.midi && nx.pos - n.end < 0.06;
+        const x = n.pos * pps,
+          w = Math.max(3, (n.end - n.pos) * pps - (joined ? 5 : 1.5)),
+          y = yOf(n.midi + tr);
+        g.fillStyle = col.fg;
+        g.globalAlpha = 0.78;
         const r = Math.min(4, bh / 2, w / 2);
         g.beginPath();
-        if (g.roundRect) g.roundRect(x, y - bh / 2, w, bh, r); else g.rect(x, y - bh / 2, w, bh);
+        if (g.roundRect) g.roundRect(x, y - bh / 2, w, bh, r);
+        else g.rect(x, y - bh / 2, w, bh);
         g.fill();
         g.globalAlpha = 1;
         const label = nameOf(n.midi);
-        if (w >= label.length * 6.5 + 6 && bh >= 10) { g.fillStyle = col.bg; g.fillText(label, x + 4, y + 0.5); }
+        if (w >= label.length * 6.5 + 6 && bh >= 10) {
+          g.fillStyle = col.bg;
+          g.fillText(label, x + 4, y + 0.5);
+        }
       });
     }, [data, notes, tr, nameOf, phrases, range, W, pps, themeKey]);
 
@@ -2062,43 +4710,182 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const box = boxRef.current;
       if (!box || cursor == null) return;
       const x = cursor * pps;
-      if (x < box.scrollLeft + 30 || x > box.scrollLeft + box.clientWidth - 60) box.scrollLeft = Math.max(0, x - 60);
+      if (x < box.scrollLeft + 30 || x > box.scrollLeft + box.clientWidth - 60)
+        box.scrollLeft = Math.max(0, x - 60);
     }, [cursor, pps]);
 
     const cur = curIdx >= 0 ? notes[curIdx] : null;
     const bh = Math.max(7, Math.min(18, rowH * 0.85));
     const tap = (e) => {
       const r = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - r.left, y = e.clientY - r.top, t = x / pps;
-      const hit = notes.find((n) => t >= n.pos - 0.05 && t <= n.end + 0.05 && Math.abs(y - yOf(n.midi + tr)) <= Math.max(10, bh));
-      if (hit) onTapNote(hit); else onSeek(Math.max(0, t));
+      const x = e.clientX - r.left,
+        y = e.clientY - r.top,
+        t = x / pps;
+      const hit = notes.find(
+        (n) =>
+          t >= n.pos - 0.05 &&
+          t <= n.end + 0.05 &&
+          Math.abs(y - yOf(n.midi + tr)) <= Math.max(10, bh),
+      );
+      if (hit) onTapNote(hit);
+      else onSeek(Math.max(0, t));
     };
-    return html`<div ref=${boxRef} style=${{ overflowX: "auto", position: "relative", borderRadius: 10, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+    return html`<div
+      ref=${boxRef}
+      style=${{
+        overflowX: "auto",
+        position: "relative",
+        borderRadius: 10,
+        background: "var(--surface-2)",
+        border: "1px solid var(--line)",
+      }}
+    >
       <div style=${{ position: "relative", width: W }}>
-        ${lyrics.length > 0 && html`<div class="lyr-band">
-          ${lyrics.map((l, i) => html`<div key=${i} class=${"lyr" + (cursor != null && cursor >= l.start && cursor < l.end ? " on" : "")}
-            style=${{ left: l.start * pps, width: Math.max(8, (l.end - l.start) * pps - 2) }} title=${l.text} onClick=${() => onSeek(l.start)}>${l.text}</div>`)}
+        ${lyrics.length > 0 &&
+        html`<div class="lyr-band">
+          ${lyrics.map(
+            (l, i) =>
+              html`<div
+                key=${i}
+                class=${"lyr" +
+                (cursor != null && cursor >= l.start && cursor < l.end
+                  ? " on"
+                  : "")}
+                style=${{
+                  left: l.start * pps,
+                  width: Math.max(8, (l.end - l.start) * pps - 2),
+                }}
+                title=${l.text}
+                onClick=${() => onSeek(l.start)}
+              >
+                ${l.text}
+              </div>`,
+          )}
         </div>`}
         <div style=${{ position: "relative", height: H }}>
-          <canvas ref=${canvasRef} style=${{ display: "block", cursor: "pointer" }} onClick=${tap}></canvas>
-          ${overlay && overlay.points.length > 1 && html`<svg width=${W} height=${H} style=${{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }} aria-hidden="true">
+          <canvas
+            ref=${canvasRef}
+            style=${{ display: "block", cursor: "pointer" }}
+            onClick=${tap}
+          ></canvas>
+          ${overlay &&
+          overlay.points.length > 1 &&
+          html`<svg
+            width=${W}
+            height=${H}
+            style=${{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              pointerEvents: "none",
+            }}
+            aria-hidden="true"
+          >
             ${(() => {
-              const segs = []; let cur = [];
+              const segs = [];
+              let cur = [];
               overlay.points.forEach((pt) => {
-                if (pt.m !== pt.m) { if (cur.length > 1) segs.push(cur); cur = []; return; }
-                cur.push(((overlay.start + pt.t * overlay.speed) * pps).toFixed(1) + "," + yOf(pt.m - overlay.oct).toFixed(1));
+                if (pt.m !== pt.m) {
+                  if (cur.length > 1) segs.push(cur);
+                  cur = [];
+                  return;
+                }
+                cur.push(
+                  ((overlay.start + pt.t * overlay.speed) * pps).toFixed(1) +
+                    "," +
+                    yOf(pt.m - overlay.oct).toFixed(1),
+                );
               });
               if (cur.length > 1) segs.push(cur);
-              return segs.map((sg, i) => html`<polyline key=${i} points=${sg.join(" ")} fill="none" stroke="var(--you)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />`);
+              return segs.map(
+                (sg, i) =>
+                  html`<polyline
+                    key=${i}
+                    points=${sg.join(" ")}
+                    fill="none"
+                    stroke="var(--you)"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />`,
+              );
             })()}
           </svg>`}
-          ${marks && marks.map((mk) => html`<div key=${"mk" + mk.i} style=${{ position: "absolute", left: mk.pos * pps, width: Math.max(3, (mk.end - mk.pos) * pps - 1.5), top: yOf(mk.midi + tr) + bh / 2 + 1, height: 3, borderRadius: 2, background: mk.ok ? "var(--good)" : "var(--bad)", pointerEvents: "none" }}></div>`)}
-          ${cur && html`<div style=${{ position: "absolute", left: cur.pos * pps - 2, top: yOf(cur.midi + tr) - bh / 2 - 2, width: Math.max(3, (cur.end - cur.pos) * pps - 1.5) + 4, height: bh + 4, borderRadius: 6, background: "var(--accent)", boxShadow: "0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent)", pointerEvents: "none", display: "flex", alignItems: "center", paddingLeft: 6, overflow: "hidden" }}>
-            <span class="mono" style=${{ fontSize: 10, fontWeight: 600, color: "var(--accent-ink)", whiteSpace: "nowrap" }}>${nameOf(cur.midi)}</span>
+          ${marks &&
+          marks.map(
+            (mk) =>
+              html`<div
+                key=${"mk" + mk.i}
+                style=${{
+                  position: "absolute",
+                  left: mk.pos * pps,
+                  width: Math.max(3, (mk.end - mk.pos) * pps - 1.5),
+                  top: yOf(mk.midi + tr) + bh / 2 + 1,
+                  height: 3,
+                  borderRadius: 2,
+                  background: mk.ok ? "var(--good)" : "var(--bad)",
+                  pointerEvents: "none",
+                }}
+              ></div>`,
+          )}
+          ${cur &&
+          html`<div
+            style=${{
+              position: "absolute",
+              left: cur.pos * pps - 2,
+              top: yOf(cur.midi + tr) - bh / 2 - 2,
+              width: Math.max(3, (cur.end - cur.pos) * pps - 1.5) + 4,
+              height: bh + 4,
+              borderRadius: 6,
+              background: "var(--accent)",
+              boxShadow:
+                "0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent)",
+              pointerEvents: "none",
+              display: "flex",
+              alignItems: "center",
+              paddingLeft: 6,
+              overflow: "hidden",
+            }}
+          >
+            <span
+              class="mono"
+              style=${{
+                fontSize: 10,
+                fontWeight: 600,
+                color: "var(--accent-ink)",
+                whiteSpace: "nowrap",
+              }}
+              >${nameOf(cur.midi)}</span
+            >
           </div>`}
         </div>
-        ${loop && html`<div style=${{ position: "absolute", top: 0, bottom: 0, left: loop.a * pps, width: (loop.b - loop.a) * pps, background: "color-mix(in srgb, var(--accent) 12%, transparent)", borderLeft: "1px solid var(--accent)", borderRight: "1px solid var(--accent)", pointerEvents: "none" }}></div>`}
-        ${cursor != null && html`<div style=${{ position: "absolute", top: 0, bottom: 0, left: cursor * pps, width: 2, marginLeft: -1, background: "var(--accent)", pointerEvents: "none" }}></div>`}
+        ${loop &&
+        html`<div
+          style=${{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: loop.a * pps,
+            width: (loop.b - loop.a) * pps,
+            background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+            borderLeft: "1px solid var(--accent)",
+            borderRight: "1px solid var(--accent)",
+            pointerEvents: "none",
+          }}
+        ></div>`}
+        ${cursor != null &&
+        html`<div
+          style=${{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: cursor * pps,
+            width: 2,
+            marginLeft: -1,
+            background: "var(--accent)",
+            pointerEvents: "none",
+          }}
+        ></div>`}
       </div>
     </div>`;
   }
@@ -2106,196 +4893,873 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   // ---- your tries per phrase (Repeat after me), saved per song ----
   const TRIES_KEY = "pitchstaff.tries.v2"; // v2: phrases follow lyric lines
   const loadTries = (song) => (song ? loadJSON(TRIES_KEY, {})[song] || {} : {});
-  const saveTries = (song, t) => { if (!song) return; const all = loadJSON(TRIES_KEY, {}); all[song] = t; saveJSON(TRIES_KEY, all); };
+  const saveTries = (song, t) => {
+    if (!song) return;
+    const all = loadJSON(TRIES_KEY, {});
+    all[song] = t;
+    saveJSON(TRIES_KEY, all);
+  };
   function tryStats(rec) {
-    const rows = rec.rows, n = rows.length;
+    const rows = rec.rows,
+      n = rows.length;
     const right = rows.filter((r) => r.c != null && Math.abs(r.c) <= 50).length;
-    const high = rows.filter((r) => r.c != null && r.c > 50).length, low = rows.filter((r) => r.c != null && r.c < -50).length, miss = rows.filter((r) => r.c == null).length;
-    const near = rows.filter((r) => r.c != null && Math.abs(r.c) <= 150).map((r) => r.c);
-    const lean = near.length ? Math.round(near.reduce((a, b) => a + b, 0) / near.length) : 0;
+    const high = rows.filter((r) => r.c != null && r.c > 50).length,
+      low = rows.filter((r) => r.c != null && r.c < -50).length,
+      miss = rows.filter((r) => r.c == null).length;
+    const near = rows
+      .filter((r) => r.c != null && Math.abs(r.c) <= 150)
+      .map((r) => r.c);
+    const lean = near.length
+      ? Math.round(near.reduce((a, b) => a + b, 0) / near.length)
+      : 0;
     const scoops = rows.filter((r) => r.sc);
     const sds = rows.map((r) => r.sd).filter((x) => x != null);
     const sd = sds.length ? sds.reduce((a, b) => a + b, 0) / sds.length : null;
     const nm2 = (m) => pretty(midiInfo(m).label);
     const parts = [];
-    if (high) parts.push(high + " too high"); if (low) parts.push(low + " too low"); if (miss) parts.push(miss + " not heard");
+    if (high) parts.push(high + " too high");
+    if (low) parts.push(low + " too low");
+    if (miss) parts.push(miss + " not heard");
     const stats = [
-      { label: "Notes right", value: right + " of " + n, note: parts.join(", ") || "every note landed", tone: right / n >= 0.8 ? "good" : right / n >= 0.5 ? "warn" : "bad" },
-      { label: "High or low", value: Math.abs(lean) < 10 ? "Right on" : Math.abs(lean) < 30 ? (lean < 0 ? "A bit flat" : "A bit sharp") : lean < 0 ? "Flat" : "Sharp", note: Math.abs(lean) < 10 ? "centred on the notes" : "about " + Math.abs(lean) + "¢ " + (lean < 0 ? "low" : "high") + " overall", tone: Math.abs(lean) < 15 ? "good" : Math.abs(lean) < 30 ? "warn" : "bad" },
-      { label: "Landing", value: scoops.length ? "Scooped " + scoops.length : "Clean", note: scoops.length ? "slid up into " + [...new Set(scoops.map((r) => nm2(r.m)))].slice(0, 2).join(" and ") : "hit notes straight away", tone: scoops.length ? "warn" : "good" },
-      { label: "Steady", value: sd == null ? "—" : sd < 12 ? "Good" : sd < 20 ? "OK" : "Wobbly", note: sd == null ? "no long notes here" : sd < 12 ? "held notes stayed put" : "long notes wavered", tone: sd == null ? "muted" : sd < 12 ? "good" : sd < 20 ? "warn" : "bad" },
+      {
+        label: "Notes right",
+        value: right + " of " + n,
+        note: parts.join(", ") || "every note landed",
+        tone: right / n >= 0.8 ? "good" : right / n >= 0.5 ? "warn" : "bad",
+      },
+      {
+        label: "High or low",
+        value:
+          Math.abs(lean) < 10
+            ? "Right on"
+            : Math.abs(lean) < 30
+              ? lean < 0
+                ? "A bit flat"
+                : "A bit sharp"
+              : lean < 0
+                ? "Flat"
+                : "Sharp",
+        note:
+          Math.abs(lean) < 10
+            ? "centred on the notes"
+            : "about " +
+              Math.abs(lean) +
+              "¢ " +
+              (lean < 0 ? "low" : "high") +
+              " overall",
+        tone:
+          Math.abs(lean) < 15 ? "good" : Math.abs(lean) < 30 ? "warn" : "bad",
+      },
+      {
+        label: "Landing",
+        value: scoops.length ? "Scooped " + scoops.length : "Clean",
+        note: scoops.length
+          ? "slid up into " +
+            [...new Set(scoops.map((r) => nm2(r.m)))].slice(0, 2).join(" and ")
+          : "hit notes straight away",
+        tone: scoops.length ? "warn" : "good",
+      },
+      {
+        label: "Steady",
+        value: sd == null ? "—" : sd < 12 ? "Good" : sd < 20 ? "OK" : "Wobbly",
+        note:
+          sd == null
+            ? "no long notes here"
+            : sd < 12
+              ? "held notes stayed put"
+              : "long notes wavered",
+        tone:
+          sd == null ? "muted" : sd < 12 ? "good" : sd < 20 ? "warn" : "bad",
+      },
     ];
     let worst = null;
-    rows.forEach((r, i) => { const v = r.c == null ? 999 : Math.abs(r.c); if (v > 50 && (!worst || v > worst.v)) worst = { i, v, r }; });
+    rows.forEach((r, i) => {
+      const v = r.c == null ? 999 : Math.abs(r.c);
+      if (v > 50 && (!worst || v > worst.v)) worst = { i, v, r };
+    });
     let tip;
-    if (worst && worst.r.c != null) tip = "On " + nm2(worst.r.m) + " you sang " + nm2(worst.r.m + Math.round(worst.r.c / 100)) + ". Play the line, then hum that note before you sing it.";
-    else if (worst) tip = "Tono couldn't hear " + nm2(worst.r.m) + ". Sing every note out, even the short ones.";
-    else if (scoops.length) tip = "You came in low and slid up to " + nm2(scoops[0].m) + ". Hear it first, then start right on it.";
-    else if (Math.abs(lean) >= 25) tip = lean < 0 ? "You sat a little flat. Keep your breath moving and aim slightly higher." : "You sat a little sharp. Relax your throat and aim slightly lower.";
-    else if (sd != null && sd >= 20) tip = "Long notes wavered. Take a fuller breath and keep the same vowel the whole way.";
+    if (worst && worst.r.c != null)
+      tip =
+        "On " +
+        nm2(worst.r.m) +
+        " you sang " +
+        nm2(worst.r.m + Math.round(worst.r.c / 100)) +
+        ". Play the line, then hum that note before you sing it.";
+    else if (worst)
+      tip =
+        "Tono couldn't hear " +
+        nm2(worst.r.m) +
+        ". Sing every note out, even the short ones.";
+    else if (scoops.length)
+      tip =
+        "You came in low and slid up to " +
+        nm2(scoops[0].m) +
+        ". Hear it first, then start right on it.";
+    else if (Math.abs(lean) >= 25)
+      tip =
+        lean < 0
+          ? "You sat a little flat. Keep your breath moving and aim slightly higher."
+          : "You sat a little sharp. Relax your throat and aim slightly lower.";
+    else if (sd != null && sd >= 20)
+      tip =
+        "Long notes wavered. Take a fuller breath and keep the same vowel the whole way.";
     else tip = "Clean line! Try it without the guide next.";
     return { stats, tip, worst };
   }
   // words and advice for a line's breath and timing
   function btInfo(rec, notes, text) {
     const bt = rec.bt || { breaths: [], cut: null, pace: "steady" };
-    const ph = rec.rows.map((r) => notes.find((n) => Math.abs(n.pos - r.p) < 0.002) || { pos: r.p, end: r.p + 0.2, midi: r.m });
+    const ph = rec.rows.map(
+      (r) =>
+        notes.find((n) => Math.abs(n.pos - r.p) < 0.002) || {
+          pos: r.p,
+          end: r.p + 0.2,
+          midi: r.m,
+        },
+    );
     const wtn = text ? wordsToNotes(text, ph, looksTagalog([{ text }])) : null;
-    const wordOf = (i) => { const e = wtn && wtn.find((x) => x.idx.includes(i)); return e ? "“" + e.w.replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, "") + "”" : "note " + (i + 1); };
-    const late = rec.late, s1 = (v) => Math.abs(v).toFixed(1).replace(/^0/, "0") + " s";
+    const wordOf = (i) => {
+      const e = wtn && wtn.find((x) => x.idx.includes(i));
+      return e
+        ? "“" + e.w.replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, "") + "”"
+        : "note " + (i + 1);
+    };
+    const late = rec.late,
+      s1 = (v) => Math.abs(v).toFixed(1).replace(/^0/, "0") + " s";
     let worst = null;
-    rec.rows.forEach((r, i) => { if (r.c != null && Math.abs(r.c) <= 50 && r.dt != null && Math.abs(r.dt) >= 0.12 && (!worst || Math.abs(r.dt) > Math.abs(worst.dt))) worst = { i, dt: r.dt }; });
-    const timing = late != null
-      ? Math.abs(late) < 0.1 ? { label: "Timing", value: "On time", tone: "good", note: worst ? wordOf(worst.i) + " came " + s1(worst.dt) + (worst.dt > 0 ? " late" : " early") : "came in with the song" }
-        : { label: "Timing", value: late > 0 ? (late > 0.3 ? "Late" : "A bit late") : late < -0.3 ? "Early" : "A bit early", tone: Math.abs(late) > 0.3 ? "bad" : "warn", note: "about " + s1(late) + (late > 0 ? " behind" : " ahead") + (worst ? ", worst on " + wordOf(worst.i) : "") }
-      : worst ? { label: "Timing", value: "Uneven", tone: "warn", note: wordOf(worst.i) + " came " + s1(worst.dt) + (worst.dt > 0 ? " late" : " early") } : { label: "Timing", value: "Even", tone: "good", note: "notes came in evenly" };
-    const pace = { label: "Pace", value: bt.pace === "rushed" ? "Rushed" : bt.pace === "dragged" ? "Dragged" : "Steady", tone: bt.pace === "steady" ? "good" : "warn", note: bt.pace === "rushed" ? "notes got earlier through the line" : bt.pace === "dragged" ? "notes got later through the line" : "didn't rush or drag" };
-    const breath = bt.breaths.length ? { label: "Breath", value: bt.breaths.length > 1 ? bt.breaths.length + " extra breaths" : "Mid-line breath", tone: "warn", note: "you breathed after " + bt.breaths.slice(0, 2).map((x) => wordOf(x.i)).join(" and ") } : { label: "Breath", value: "Good", tone: "good", note: "no extra breaths" };
-    const end = bt.cut ? { label: "Line end", value: "Cut short", tone: "bad", note: "last note " + bt.cut.s.toFixed(1) + " s early" } : { label: "Line end", value: "Held", tone: "good", note: "held to the end" };
+    rec.rows.forEach((r, i) => {
+      if (
+        r.c != null &&
+        Math.abs(r.c) <= 50 &&
+        r.dt != null &&
+        Math.abs(r.dt) >= 0.12 &&
+        (!worst || Math.abs(r.dt) > Math.abs(worst.dt))
+      )
+        worst = { i, dt: r.dt };
+    });
+    const timing =
+      late != null
+        ? Math.abs(late) < 0.1
+          ? {
+              label: "Timing",
+              value: "On time",
+              tone: "good",
+              note: worst
+                ? wordOf(worst.i) +
+                  " came " +
+                  s1(worst.dt) +
+                  (worst.dt > 0 ? " late" : " early")
+                : "came in with the song",
+            }
+          : {
+              label: "Timing",
+              value:
+                late > 0
+                  ? late > 0.3
+                    ? "Late"
+                    : "A bit late"
+                  : late < -0.3
+                    ? "Early"
+                    : "A bit early",
+              tone: Math.abs(late) > 0.3 ? "bad" : "warn",
+              note:
+                "about " +
+                s1(late) +
+                (late > 0 ? " behind" : " ahead") +
+                (worst ? ", worst on " + wordOf(worst.i) : ""),
+            }
+        : worst
+          ? {
+              label: "Timing",
+              value: "Uneven",
+              tone: "warn",
+              note:
+                wordOf(worst.i) +
+                " came " +
+                s1(worst.dt) +
+                (worst.dt > 0 ? " late" : " early"),
+            }
+          : {
+              label: "Timing",
+              value: "Even",
+              tone: "good",
+              note: "notes came in evenly",
+            };
+    const pace = {
+      label: "Pace",
+      value:
+        bt.pace === "rushed"
+          ? "Rushed"
+          : bt.pace === "dragged"
+            ? "Dragged"
+            : "Steady",
+      tone: bt.pace === "steady" ? "good" : "warn",
+      note:
+        bt.pace === "rushed"
+          ? "notes got earlier through the line"
+          : bt.pace === "dragged"
+            ? "notes got later through the line"
+            : "didn't rush or drag",
+    };
+    const breath = bt.breaths.length
+      ? {
+          label: "Breath",
+          value:
+            bt.breaths.length > 1
+              ? bt.breaths.length + " extra breaths"
+              : "Mid-line breath",
+          tone: "warn",
+          note:
+            "you breathed after " +
+            bt.breaths
+              .slice(0, 2)
+              .map((x) => wordOf(x.i))
+              .join(" and "),
+        }
+      : {
+          label: "Breath",
+          value: "Good",
+          tone: "good",
+          note: "no extra breaths",
+        };
+    const end = bt.cut
+      ? {
+          label: "Line end",
+          value: "Cut short",
+          tone: "bad",
+          note: "last note " + bt.cut.s.toFixed(1) + " s early",
+        }
+      : {
+          label: "Line end",
+          value: "Held",
+          tone: "good",
+          note: "held to the end",
+        };
     const dri = rec.rows.findIndex((r) => r.dr);
-    const drift = dri >= 0 ? "You went a little " + rec.rows[dri].dr.dir + " as you got " + rec.rows[dri].dr.with + " on " + wordOf(dri) + "." + (rec.rows[dri].dr.dir === "flat" ? " Keep the breath moving to the very end of the note." : " Ease off a little; pushing makes the pitch climb.") : null;
-    const tip = bt.cut && bt.breaths.length ? "Take a full breath before the line so you don't need one after " + wordOf(bt.breaths[0].i) + ", and hold " + wordOf(bt.cut.i) + " for its whole length."
-      : bt.cut ? "Hold " + wordOf(bt.cut.i) + " for its whole length. Plan your breath before the line so there's air left at the end."
-      : bt.breaths.length ? "Breathe before the line so you don't need one after " + wordOf(bt.breaths[0].i) + ". Sip the air: steady, not all at once."
-      : late != null && late > 0.15 ? "Come in right with the song. Breathe a beat early so you're ready on the first word."
-      : late != null && late < -0.15 ? "You jumped in early. Wait for the beat, then start."
-      : bt.pace === "rushed" ? "Don't rush: tap the beat and let each note take its full time."
-      : bt.pace === "dragged" ? "Keep it moving: you fell behind towards the end. Think ahead to the next word."
-      : "Breath and timing look good on this line.";
+    const drift =
+      dri >= 0
+        ? "You went a little " +
+          rec.rows[dri].dr.dir +
+          " as you got " +
+          rec.rows[dri].dr.with +
+          " on " +
+          wordOf(dri) +
+          "." +
+          (rec.rows[dri].dr.dir === "flat"
+            ? " Keep the breath moving to the very end of the note."
+            : " Ease off a little; pushing makes the pitch climb.")
+        : null;
+    const tip =
+      bt.cut && bt.breaths.length
+        ? "Take a full breath before the line so you don't need one after " +
+          wordOf(bt.breaths[0].i) +
+          ", and hold " +
+          wordOf(bt.cut.i) +
+          " for its whole length."
+        : bt.cut
+          ? "Hold " +
+            wordOf(bt.cut.i) +
+            " for its whole length. Plan your breath before the line so there's air left at the end."
+          : bt.breaths.length
+            ? "Breathe before the line so you don't need one after " +
+              wordOf(bt.breaths[0].i) +
+              ". Sip the air: steady, not all at once."
+            : late != null && late > 0.15
+              ? "Come in right with the song. Breathe a beat early so you're ready on the first word."
+              : late != null && late < -0.15
+                ? "You jumped in early. Wait for the beat, then start."
+                : bt.pace === "rushed"
+                  ? "Don't rush: tap the beat and let each note take its full time."
+                  : bt.pace === "dragged"
+                    ? "Keep it moving: you fell behind towards the end. Think ahead to the next word."
+                    : "Breath and timing look good on this line.";
     const tags = [];
-    if (late != null) tags.push(Math.abs(late) < 0.15 ? ["⏱ on time", "good"] : ["⏱ " + s1(late) + (late > 0 ? " late" : " early"), Math.abs(late) > 0.3 ? "bad" : "warn"]);
-    if (bt.pace !== "steady") tags.push([bt.pace === "rushed" ? "🏃 rushed" : "🐢 dragged", "warn"]);
+    if (late != null)
+      tags.push(
+        Math.abs(late) < 0.15
+          ? ["⏱ on time", "good"]
+          : [
+              "⏱ " + s1(late) + (late > 0 ? " late" : " early"),
+              Math.abs(late) > 0.3 ? "bad" : "warn",
+            ],
+      );
+    if (bt.pace !== "steady")
+      tags.push([bt.pace === "rushed" ? "🏃 rushed" : "🐢 dragged", "warn"]);
     if (bt.breaths.length) tags.push(["💨 breath mid-line", "warn"]);
     if (bt.cut) tags.push(["✂ last note short", "bad"]);
     return { stats: [timing, pace, breath, end], drift, tip, tags };
   }
-  function BtTags({ tags }) {
-    if (!tags.length) return null;
-    return html`<div class="flex flex-wrap gap-1">${tags.map(([t, tone]) => html`<span key=${t} class="text-xs" style=${{ padding: "2px 8px", borderRadius: 999, fontWeight: 700, background: "color-mix(in srgb, var(--" + tone + ") 14%, transparent)", color: "var(--" + tone + ")" }}>${t}</span>`)}</div>`;
-  }
+ <BtTags />
   function BreathTimingView({ rec, notes, text }) {
     const info = btInfo(rec, notes, text);
     return html`<div class="flex flex-col gap-3">
-      <div style=${{ padding: 10, borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
+      <div
+        style=${{
+          padding: 10,
+          borderRadius: 14,
+          background: "var(--surface-2)",
+          border: "1px solid var(--line)",
+        }}
+      >
         <${TryChart} rec=${rec} notes=${notes} bt=${true} />
-        <div class="flex flex-wrap gap-3 text-xs muted" style=${{ padding: "4px 4px 0" }}>
-          <span class="flex items-center gap-1"><span style=${{ width: 14, height: 6, borderRadius: 3, background: "var(--accent)", opacity: 0.6 }}></span>Song</span>
-          <span class="flex items-center gap-1"><span style=${{ width: 14, height: 3, borderRadius: 2, background: "var(--you)" }}></span>You</span>
+        <div
+          class="flex flex-wrap gap-3 text-xs muted"
+          style=${{ padding: "4px 4px 0" }}
+        >
+          <span class="flex items-center gap-1"
+            ><span
+              style=${{
+                width: 14,
+                height: 6,
+                borderRadius: 3,
+                background: "var(--accent)",
+                opacity: 0.6,
+              }}
+            ></span
+            >Song</span
+          >
+          <span class="flex items-center gap-1"
+            ><span
+              style=${{
+                width: 14,
+                height: 3,
+                borderRadius: 2,
+                background: "var(--you)",
+              }}
+            ></span
+            >You</span
+          >
           <span>Bars at the bottom: early ↓ / late ↑ for each note</span>
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2">
-        ${info.stats.map((st) => html`<div key=${st.label} style=${{ padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)" }}>
-          <div class="label" style=${{ fontSize: 10 }}>${st.label}</div>
-          <div class="display font-bold" style=${{ fontSize: 17, color: "var(--" + st.tone + ")" }}>${st.value}</div>
-          <div class="text-xs muted">${st.note}</div>
-        </div>`)}
+        ${info.stats.map(
+          (st) =>
+            html`<div
+              key=${st.label}
+              style=${{
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "var(--surface-2)",
+              }}
+            >
+              <div class="label" style=${{ fontSize: 10 }}>${st.label}</div>
+              <div
+                class="display font-bold"
+                style=${{ fontSize: 17, color: "var(--" + st.tone + ")" }}
+              >
+                ${st.value}
+              </div>
+              <div class="text-xs muted">${st.note}</div>
+            </div>`,
+        )}
       </div>
-      ${info.drift && html`<div class="flex items-start gap-2 text-sm" style=${{ padding: "11px 13px", borderRadius: 14, background: "color-mix(in srgb, var(--warn) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--warn) 30%, transparent)" }}><span aria-hidden="true">🔉</span><span><b>Loud / soft:</b> ${info.drift}</span></div>`}
-      <div class="flex items-start gap-2 text-sm" style=${{ padding: "11px 13px", borderRadius: 14, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)" }}><span aria-hidden="true">🎯</span><span><b>Tip:</b> ${info.tip}</span></div>
+      ${info.drift &&
+      html`<div
+        class="flex items-start gap-2 text-sm"
+        style=${{
+          padding: "11px 13px",
+          borderRadius: 14,
+          background: "color-mix(in srgb, var(--warn) 8%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--warn) 30%, transparent)",
+        }}
+      >
+        <span aria-hidden="true">🔉</span
+        ><span><b>Loud / soft:</b> ${info.drift}</span>
+      </div>`}
+      <div
+        class="flex items-start gap-2 text-sm"
+        style=${{
+          padding: "11px 13px",
+          borderRadius: 14,
+          background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+          border:
+            "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
+        }}
+      >
+        <span aria-hidden="true">🎯</span><span><b>Tip:</b> ${info.tip}</span>
+      </div>
     </div>`;
   }
   function TryChart({ rec, notes, bt }) {
-    const ph = rec.rows.map((r) => notes.find((n) => Math.abs(n.pos - r.p) < 0.002)).filter(Boolean);
+    const ph = rec.rows
+      .map((r) => notes.find((n) => Math.abs(n.pos - r.p) < 0.002))
+      .filter(Boolean);
     if (!ph.length) return null;
-    const t0 = ph[0].pos, t1 = Math.max(t0 + 0.5, ph[ph.length - 1].end), sp = rec.speed || 1, st = rec.start != null ? rec.start : t0;
-    let lo = Infinity, hi = -Infinity;
-    ph.forEach((n) => { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); });
-    (rec.trace || []).forEach((v) => { if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
-    lo -= 1; hi += 1;
-    const W = 300, H = 140, HB = bt ? H + 30 : H, x = (t) => 6 + ((t - t0) / (t1 - t0)) * (W - 12), y = (m) => H - 16 - ((m - lo) / (hi - lo)) * (H - 34);
-    const segs = []; let cur = [];
-    (rec.trace || []).forEach((v, k) => { const t = st + k * 2 * GRID * sp; if (v == null || t < t0 - 0.05 || t > t1 + 0.05) { if (cur.length > 1) segs.push(cur); cur = []; } else cur.push(x(t).toFixed(1) + "," + y(v).toFixed(1)); });
+    const t0 = ph[0].pos,
+      t1 = Math.max(t0 + 0.5, ph[ph.length - 1].end),
+      sp = rec.speed || 1,
+      st = rec.start != null ? rec.start : t0;
+    let lo = Infinity,
+      hi = -Infinity;
+    ph.forEach((n) => {
+      lo = Math.min(lo, n.midi);
+      hi = Math.max(hi, n.midi);
+    });
+    (rec.trace || []).forEach((v) => {
+      if (v != null) {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+    });
+    lo -= 1;
+    hi += 1;
+    const W = 300,
+      H = 140,
+      HB = bt ? H + 30 : H,
+      x = (t) => 6 + ((t - t0) / (t1 - t0)) * (W - 12),
+      y = (m) => H - 16 - ((m - lo) / (hi - lo)) * (H - 34);
+    const segs = [];
+    let cur = [];
+    (rec.trace || []).forEach((v, k) => {
+      const t = st + k * 2 * GRID * sp;
+      if (v == null || t < t0 - 0.05 || t > t1 + 0.05) {
+        if (cur.length > 1) segs.push(cur);
+        cur = [];
+      } else cur.push(x(t).toFixed(1) + "," + y(v).toFixed(1));
+    });
     if (cur.length > 1) segs.push(cur);
-    const marks = rec.rows.map((r, i) => (r.sc && ph[i] ? ph[i] : null)).filter(Boolean);
-    const B = rec.bt || { breaths: [], cut: null }, base = H + 15;
-    return html`<svg viewBox=${"0 0 " + W + " " + HB} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="Your voice drawn over the song's notes">
-      ${bt && html`<g>
+    const marks = rec.rows
+      .map((r, i) => (r.sc && ph[i] ? ph[i] : null))
+      .filter(Boolean);
+    const B = rec.bt || { breaths: [], cut: null },
+      base = H + 15;
+    return html`<svg
+      viewBox=${"0 0 " + W + " " + HB}
+      style=${{ width: "100%", height: "auto", display: "block" }}
+      role="img"
+      aria-label="Your voice drawn over the song's notes"
+    >
+      ${bt &&
+      html`<g>
         <line x1="0" x2=${W} y1=${base} y2=${base} stroke="var(--line)"></line>
-        <text x=${W - 1} y=${base - 9} fill="var(--muted)" fontSize="8" textAnchor="end">late ↑</text><text x=${W - 1} y=${base + 14} fill="var(--muted)" fontSize="8" textAnchor="end">early ↓</text>
-        ${rec.rows.map((r, i) => { const n = ph[i]; if (!n || r.c == null || Math.abs(r.c) > 50 || r.dt == null) return null; const v = Math.max(-0.3, Math.min(0.3, r.dt)), h = Math.max(1.5, (Math.abs(v) / 0.3) * 13), a = Math.abs(r.dt);
-          return html`<rect key=${"t" + i} x=${(x(n.pos) + 1).toFixed(1)} y=${(v > 0 ? base - h : base).toFixed(1)} width=${Math.max(3, Math.min(14, x(n.end) - x(n.pos) - 2)).toFixed(1)} height=${h.toFixed(1)} rx="2" fill=${"var(--" + (a < 0.08 ? "good" : a < 0.18 ? "warn" : "bad") + ")"} opacity="0.85"></rect>`; })}
-        ${B.breaths.map((b, i) => html`<g key=${"b" + i}><line x1=${x(b.t).toFixed(1)} x2=${x(b.t).toFixed(1)} y1="12" y2=${H - 4} stroke="var(--warn)" strokeDasharray="3 3"></line><text x=${x(b.t).toFixed(1)} y="9" fill="var(--warn)" fontSize="9" textAnchor="middle">breath</text></g>`)}
-        ${B.cut && ph[B.cut.i] && html`<g><line x1=${x(Math.max(t0, B.cut.t - B.cut.s)).toFixed(1)} x2=${x(B.cut.t).toFixed(1)} y1=${(y(ph[B.cut.i].midi) + 9).toFixed(1)} y2=${(y(ph[B.cut.i].midi) + 9).toFixed(1)} stroke="var(--bad)" strokeWidth="2.5" strokeLinecap="round"></line><text x=${Math.min(W - 2, x(B.cut.t)).toFixed(1)} y=${Math.min(H - 2, y(ph[B.cut.i].midi) + 21).toFixed(1)} fill="var(--bad)" fontSize="9" textAnchor="end">cut short</text></g>`}
+        <text
+          x=${W - 1}
+          y=${base - 9}
+          fill="var(--muted)"
+          fontSize="8"
+          textAnchor="end"
+          >late ↑</text
+        ><text
+          x=${W - 1}
+          y=${base + 14}
+          fill="var(--muted)"
+          fontSize="8"
+          textAnchor="end"
+          >early ↓</text
+        >
+        ${rec.rows.map((r, i) => {
+          const n = ph[i];
+          if (!n || r.c == null || Math.abs(r.c) > 50 || r.dt == null)
+            return null;
+          const v = Math.max(-0.3, Math.min(0.3, r.dt)),
+            h = Math.max(1.5, (Math.abs(v) / 0.3) * 13),
+            a = Math.abs(r.dt);
+          return html`<rect
+            key=${"t" + i}
+            x=${(x(n.pos) + 1).toFixed(1)}
+            y=${(v > 0 ? base - h : base).toFixed(1)}
+            width=${Math.max(3, Math.min(14, x(n.end) - x(n.pos) - 2)).toFixed(
+              1,
+            )}
+            height=${h.toFixed(1)}
+            rx="2"
+            fill=${"var(--" +
+            (a < 0.08 ? "good" : a < 0.18 ? "warn" : "bad") +
+            ")"}
+            opacity="0.85"
+          ></rect>`;
+        })}
+        ${B.breaths.map(
+          (b, i) =>
+            html`<g key=${"b" + i}
+              ><line
+                x1=${x(b.t).toFixed(1)}
+                x2=${x(b.t).toFixed(1)}
+                y1="12"
+                y2=${H - 4}
+                stroke="var(--warn)"
+                strokeDasharray="3 3"
+              ></line
+              ><text
+                x=${x(b.t).toFixed(1)}
+                y="9"
+                fill="var(--warn)"
+                fontSize="9"
+                textAnchor="middle"
+                >breath</text
+              ></g
+            >`,
+        )}
+        ${B.cut &&
+        ph[B.cut.i] &&
+        html`<g
+          ><line
+            x1=${x(Math.max(t0, B.cut.t - B.cut.s)).toFixed(1)}
+            x2=${x(B.cut.t).toFixed(1)}
+            y1=${(y(ph[B.cut.i].midi) + 9).toFixed(1)}
+            y2=${(y(ph[B.cut.i].midi) + 9).toFixed(1)}
+            stroke="var(--bad)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          ></line
+          ><text
+            x=${Math.min(W - 2, x(B.cut.t)).toFixed(1)}
+            y=${Math.min(H - 2, y(ph[B.cut.i].midi) + 21).toFixed(1)}
+            fill="var(--bad)"
+            fontSize="9"
+            textAnchor="end"
+            >cut short</text
+          ></g
+        >`}
       </g>`}
-      ${ph.map((n, i) => html`<rect key=${"n" + i} x=${x(n.pos).toFixed(1)} y=${(y(n.midi) - 4).toFixed(1)} width=${Math.max(4, x(n.end) - x(n.pos) - 2).toFixed(1)} height="8" rx="4" fill="var(--accent)" opacity="0.55"></rect>`)}
-      ${segs.map((pts, i) => html`<polyline key=${"s" + i} points=${pts.join(" ")} fill="none" stroke="var(--you)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"></polyline>`)}
-      ${(() => { let lastX = -99; const nm = (m) => pretty(NAMES[((m % 12) + 12) % 12]); return ph.map((n, i) => {
-        const r = rec.rows[i], lab = nm(n.midi), lx = x(n.pos) + 1;
-        if (lx < lastX + 14) return null;
-        lastX = lx + lab.length * 5.5;
-        const off = r && r.c != null && Math.abs(r.c) > 50 ? n.midi + Math.round(r.c / 100) : null;
-        const warn = r && r.c != null && Math.abs(r.c) > 25 && Math.abs(r.c) <= 50;
-        return html`<g key=${"l" + i} fontFamily="var(--font-mono)" fontSize="9" fontWeight="600">
-          <text x=${lx.toFixed(1)} y=${(y(n.midi) - 6).toFixed(1)} fill="var(--fg)" opacity="0.75">${lab}${warn ? "" : ""}</text>
-          ${warn && html`<text x=${(lx + lab.length * 5.5 + 1).toFixed(1)} y=${(y(n.midi) - 6).toFixed(1)} fill="var(--warn)">${r.c > 0 ? "↑" : "↓"}</text>`}
-          ${off != null && html`<text x=${lx.toFixed(1)} y=${Math.min(H - 2, y(off) + 13).toFixed(1)} fill="var(--bad)">${nm(off)}</text>`}
-          ${r && r.c == null && html`<text x=${lx.toFixed(1)} y=${Math.min(H - 2, y(n.midi) + 14).toFixed(1)} fill="var(--muted)">–</text>`}
-        </g>`;
-      }); })()}
-      ${marks.map((n, i) => html`<circle key=${"m" + i} cx=${(x(n.pos) + 4).toFixed(1)} cy=${(y(n.midi) + 6).toFixed(1)} r="9" fill="none" stroke="var(--bad)" strokeWidth="2" strokeDasharray="3 3"></circle>`)}
+      ${ph.map(
+        (n, i) =>
+          html`<rect
+            key=${"n" + i}
+            x=${x(n.pos).toFixed(1)}
+            y=${(y(n.midi) - 4).toFixed(1)}
+            width=${Math.max(4, x(n.end) - x(n.pos) - 2).toFixed(1)}
+            height="8"
+            rx="4"
+            fill="var(--accent)"
+            opacity="0.55"
+          ></rect>`,
+      )}
+      ${segs.map(
+        (pts, i) =>
+          html`<polyline
+            key=${"s" + i}
+            points=${pts.join(" ")}
+            fill="none"
+            stroke="var(--you)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          ></polyline>`,
+      )}
+      ${(() => {
+        let lastX = -99;
+        const nm = (m) => pretty(NAMES[((m % 12) + 12) % 12]);
+        return ph.map((n, i) => {
+          const r = rec.rows[i],
+            lab = nm(n.midi),
+            lx = x(n.pos) + 1;
+          if (lx < lastX + 14) return null;
+          lastX = lx + lab.length * 5.5;
+          const off =
+            r && r.c != null && Math.abs(r.c) > 50
+              ? n.midi + Math.round(r.c / 100)
+              : null;
+          const warn =
+            r && r.c != null && Math.abs(r.c) > 25 && Math.abs(r.c) <= 50;
+          return html`<g
+            key=${"l" + i}
+            fontFamily="var(--font-mono)"
+            fontSize="9"
+            fontWeight="600"
+          >
+            <text
+              x=${lx.toFixed(1)}
+              y=${(y(n.midi) - 6).toFixed(1)}
+              fill="var(--fg)"
+              opacity="0.75"
+              >${lab}${warn ? "" : ""}</text
+            >
+            ${warn &&
+            html`<text
+              x=${(lx + lab.length * 5.5 + 1).toFixed(1)}
+              y=${(y(n.midi) - 6).toFixed(1)}
+              fill="var(--warn)"
+              >${r.c > 0 ? "↑" : "↓"}</text
+            >`}
+            ${off != null &&
+            html`<text
+              x=${lx.toFixed(1)}
+              y=${Math.min(H - 2, y(off) + 13).toFixed(1)}
+              fill="var(--bad)"
+              >${nm(off)}</text
+            >`}
+            ${r &&
+            r.c == null &&
+            html`<text
+              x=${lx.toFixed(1)}
+              y=${Math.min(H - 2, y(n.midi) + 14).toFixed(1)}
+              fill="var(--muted)"
+              >–</text
+            >`}
+          </g>`;
+        });
+      })()}
+      ${marks.map(
+        (n, i) =>
+          html`<circle
+            key=${"m" + i}
+            cx=${(x(n.pos) + 4).toFixed(1)}
+            cy=${(y(n.midi) + 6).toFixed(1)}
+            r="9"
+            fill="none"
+            stroke="var(--bad)"
+            strokeWidth="2"
+            strokeDasharray="3 3"
+          ></circle>`,
+      )}
     </svg>`;
   }
-  function TryPanel({ open, line, tries, notes, onClose, onHear, canHear, onDrill }) {
+  function TryPanel({
+    open,
+    line,
+    tries,
+    notes,
+    onClose,
+    onHear,
+    canHear,
+    onDrill,
+  }) {
     const [which, setWhich] = useState("last");
     const [ptab, setPtab] = useState("notes");
-    useEffect(() => { setWhich("last"); setPtab("notes"); }, [line]);
+    useEffect(() => {
+      setWhich("last");
+      setPtab("notes");
+    }, [line]);
     const rec = tries ? tries[which] || tries.last : null;
     const info = rec ? tryStats(rec) : null;
-    return html`<${Sheet} open=${open && !!rec} title=${line ? (line.text ? "“" + line.text + "”" : "Your try") : "Your try"} onClose=${onClose}>
-      ${rec && html`<div class="flex flex-col gap-3">
-        ${tries.best && tries.best !== tries.last && html`<div class="seg" role="group" aria-label="Which try" style=${{ alignSelf: "flex-start" }}>
-          <button aria-pressed=${which === "last" ? "true" : "false"} onClick=${() => setWhich("last")}>Last ${tries.last.score}%</button>
-          <button aria-pressed=${which === "best" ? "true" : "false"} onClick=${() => setWhich("best")}>Best ${tries.best.score}%</button>
+    return html`<${Sheet}
+      open=${open && !!rec}
+      title=${line
+        ? line.text
+          ? "“" + line.text + "”"
+          : "Your try"
+        : "Your try"}
+      onClose=${onClose}
+    >
+      ${rec &&
+      html`<div class="flex flex-col gap-3">
+        ${tries.best &&
+        tries.best !== tries.last &&
+        html`<div
+          class="seg"
+          role="group"
+          aria-label="Which try"
+          style=${{ alignSelf: "flex-start" }}
+        >
+          <button
+            aria-pressed=${which === "last" ? "true" : "false"}
+            onClick=${() => setWhich("last")}
+          >
+            Last ${tries.last.score}%
+          </button>
+          <button
+            aria-pressed=${which === "best" ? "true" : "false"}
+            onClick=${() => setWhich("best")}
+          >
+            Best ${tries.best.score}%
+          </button>
         </div>`}
-        ${(!tries.best || tries.best === tries.last) && html`<span class="text-sm muted">Score ${rec.score}%</span>`}
-        ${rec.bt && html`<div class="seg" role="group" aria-label="Details" style=${{ display: "grid", gridTemplateColumns: "1fr 1.4fr" }}>
-          <button aria-pressed=${ptab === "notes" ? "true" : "false"} onClick=${() => setPtab("notes")}>Notes</button>
-          <button aria-pressed=${ptab === "bt" ? "true" : "false"} onClick=${() => setPtab("bt")}>Breath & timing</button>
+        ${(!tries.best || tries.best === tries.last) &&
+        html`<span class="text-sm muted">Score ${rec.score}%</span>`}
+        ${rec.bt &&
+        html`<div
+          class="seg"
+          role="group"
+          aria-label="Details"
+          style=${{ display: "grid", gridTemplateColumns: "1fr 1.4fr" }}
+        >
+          <button
+            aria-pressed=${ptab === "notes" ? "true" : "false"}
+            onClick=${() => setPtab("notes")}
+          >
+            Notes
+          </button>
+          <button
+            aria-pressed=${ptab === "bt" ? "true" : "false"}
+            onClick=${() => setPtab("bt")}
+          >
+            Breath & timing
+          </button>
         </div>`}
-        ${ptab === "bt" && rec.bt ? html`<${BreathTimingView} rec=${rec} notes=${notes} text=${line && line.text} />` : html`<${React.Fragment}>
-        <div style=${{ padding: 10, borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)" }}>
-          <${TryChart} rec=${rec} notes=${notes} />
-          <div class="flex gap-4 text-xs muted" style=${{ padding: "4px 4px 0" }}>
-            <span class="flex items-center gap-1"><span style=${{ width: 14, height: 6, borderRadius: 3, background: "var(--accent)", opacity: 0.6 }}></span>Song</span>
-            <span class="flex items-center gap-1"><span style=${{ width: 14, height: 3, borderRadius: 2, background: "var(--you)" }}></span>You</span>
-            ${rec.rows.some((r) => r.sc) && html`<span class="flex items-center gap-1"><span style=${{ width: 10, height: 10, borderRadius: "50%", border: "2px dashed var(--bad)" }}></span>Slid into it</span>`}
-          </div>
-        </div>
+        ${ptab === "bt" && rec.bt
+          ? html`<${BreathTimingView}
+              rec=${rec}
+              notes=${notes}
+              text=${line && line.text}
+            />`
+          : html`<${React.Fragment}>
+              <div
+                style=${{
+                  padding: 10,
+                  borderRadius: 14,
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--line)",
+                }}
+              >
+                <${TryChart} rec=${rec} notes=${notes} />
+                <div
+                  class="flex gap-4 text-xs muted"
+                  style=${{ padding: "4px 4px 0" }}
+                >
+                  <span class="flex items-center gap-1"
+                    ><span
+                      style=${{
+                        width: 14,
+                        height: 6,
+                        borderRadius: 3,
+                        background: "var(--accent)",
+                        opacity: 0.6,
+                      }}
+                    ></span
+                    >Song</span
+                  >
+                  <span class="flex items-center gap-1"
+                    ><span
+                      style=${{
+                        width: 14,
+                        height: 3,
+                        borderRadius: 2,
+                        background: "var(--you)",
+                      }}
+                    ></span
+                    >You</span
+                  >
+                  ${rec.rows.some((r) => r.sc) &&
+                  html`<span class="flex items-center gap-1"
+                    ><span
+                      style=${{
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        border: "2px dashed var(--bad)",
+                      }}
+                    ></span
+                    >Slid into it</span
+                  >`}
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                ${info.stats.map(
+                  (st) =>
+                    html`<div
+                      key=${st.label}
+                      style=${{
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        background: "var(--surface-2)",
+                      }}
+                    >
+                      <div class="label" style=${{ fontSize: 10 }}>
+                        ${st.label}
+                      </div>
+                      <div
+                        class="display font-bold"
+                        style=${{
+                          fontSize: 18,
+                          color: "var(--" + st.tone + ")",
+                        }}
+                      >
+                        ${st.value}
+                      </div>
+                      <div class="text-xs muted">${st.note}</div>
+                    </div>`,
+                )}
+              </div>
+              <div
+                class="flex items-start gap-2 text-sm"
+                style=${{
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  background:
+                    "color-mix(in srgb, var(--accent) 8%, transparent)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
+                }}
+              >
+                <span aria-hidden="true">🎯</span
+                ><span><b>Tip:</b> ${info.tip}</span>
+              </div>
+            <//>`}
         <div class="grid grid-cols-2 gap-2">
-          ${info.stats.map((st) => html`<div key=${st.label} style=${{ padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)" }}>
-            <div class="label" style=${{ fontSize: 10 }}>${st.label}</div>
-            <div class="display font-bold" style=${{ fontSize: 18, color: "var(--" + st.tone + ")" }}>${st.value}</div>
-            <div class="text-xs muted">${st.note}</div>
-          </div>`)}
+          <button
+            class="btn"
+            style=${{ justifyContent: "center", minHeight: 46 }}
+            onClick=${onHear}
+            disabled=${!canHear}
+          >
+            ▶ Hear me
+          </button>
+          <button
+            class="btn btn-primary"
+            style=${{ justifyContent: "center", minHeight: 46 }}
+            onClick=${() => onDrill(rec, info)}
+          >
+            Drill this line
+          </button>
         </div>
-        <div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)" }}><span aria-hidden="true">🎯</span><span><b>Tip:</b> ${info.tip}</span></div>
-        <//>`}
-        <div class="grid grid-cols-2 gap-2">
-          <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${onHear} disabled=${!canHear}>▶ Hear me</button>
-          <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => onDrill(rec, info)}>Drill this line</button>
-        </div>
-        ${!canHear && html`<p class="text-xs muted" style=${{ margin: 0 }}>Recordings aren't kept after you leave, but your notes and scores are.</p>`}
+        ${!canHear &&
+        html`<p class="text-xs muted" style=${{ margin: 0 }}>
+          Recordings aren't kept after you leave, but your notes and scores are.
+        </p>`}
       </div>`}
     <//>`;
   }
 
   // ---- matching lyrics to notes: one syllable per note ----
-  const TL_WORDS = new Set(["ang", "ng", "sa", "mga", "ko", "mo", "na", "ay", "at", "ka", "ako", "ikaw", "hindi", "lang", "pa", "ba", "ito", "kung", "siya", "tayo", "natin", "kita", "di", "nga", "yo"]);
+  const TL_WORDS = new Set([
+    "ang",
+    "ng",
+    "sa",
+    "mga",
+    "ko",
+    "mo",
+    "na",
+    "ay",
+    "at",
+    "ka",
+    "ako",
+    "ikaw",
+    "hindi",
+    "lang",
+    "pa",
+    "ba",
+    "ito",
+    "kung",
+    "siya",
+    "tayo",
+    "natin",
+    "kita",
+    "di",
+    "nga",
+    "yo",
+  ]);
   function looksTagalog(lines) {
-    let n = 0, t = 0;
-    lines.forEach((l) => (l.text || "").toLowerCase().split(/[^a-zñ']+/).forEach((w) => { w = w.replace(/'/g, ""); if (!w) return; n++; if (TL_WORDS.has(w)) t++; }));
+    let n = 0,
+      t = 0;
+    lines.forEach((l) =>
+      (l.text || "")
+        .toLowerCase()
+        .split(/[^a-zñ']+/)
+        .forEach((w) => {
+          w = w.replace(/'/g, "");
+          if (!w) return;
+          n++;
+          if (TL_WORDS.has(w)) t++;
+        }),
+    );
     return n > 0 && t / n > 0.12;
   }
   function syllableCount(word, tl) {
     const w = word.toLowerCase().replace(/[^a-zñ]/g, "");
     if (!w) return 0;
-    if (tl) { if (w === "mga") return 2; const m = w.match(/[aeiou]/g); return Math.max(1, m ? m.length : 1); } // Tagalog: every vowel is a syllable
+    if (tl) {
+      if (w === "mga") return 2;
+      const m = w.match(/[aeiou]/g);
+      return Math.max(1, m ? m.length : 1);
+    } // Tagalog: every vowel is a syllable
     const m = w.replace(/(^|[aeiou])y(?=[aeiou])/g, "$1c").match(/[aeiouy]+/g);
     let c = m ? m.length : 1;
     if (c > 1 && /[^aeiou]e$/.test(w) && !/[^aeiou]le$/.test(w)) c--; // silent e
     if (c > 1 && /[^aeioudt]ed$/.test(w)) c--;
-    if (c > 1 && /[^aeiou]es$/.test(w) && !/(s|x|z|ch|sh|ce|ge)es$/.test(w)) c--; // times, eyes
+    if (c > 1 && /[^aeiou]es$/.test(w) && !/(s|x|z|ch|sh|ce|ge)es$/.test(w))
+      c--; // times, eyes
     if (/[aeiouy]ing$/.test(w) && !/[aeiou]ying$/.test(w)) c++; // ly-ing, be-ing
     return Math.max(1, c);
   }
@@ -2305,32 +5769,74 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const words = text.split(/\s+/).filter((w) => /[a-zA-Zñ0-9]/.test(w));
     if (!words.length || !ln.length) return null;
     const owner = [];
-    words.forEach((w, wi) => { const c = syllableCount(w, tl) || 1; for (let k = 0; k < c; k++) owner.push(wi); });
-    const N = ln.length, S = owner.length;
+    words.forEach((w, wi) => {
+      const c = syllableCount(w, tl) || 1;
+      for (let k = 0; k < c; k++) owner.push(wi);
+    });
+    const N = ln.length,
+      S = owner.length;
     let groups;
     if (N >= S) {
       const bounds = [];
       for (let i = 1; i < N; i++) {
-        const a = ln[i - 1], b = ln[i], gap = Math.max(0, b.pos - a.end);
-        bounds.push({ i, s: (b.cut === "silence" ? 3 : b.cut === "dip" ? 2 : 0) + Math.min(1, gap / 0.15) + (a.midi === b.midi ? 0.5 : 0) });
+        const a = ln[i - 1],
+          b = ln[i],
+          gap = Math.max(0, b.pos - a.end);
+        bounds.push({
+          i,
+          s:
+            (b.cut === "silence" ? 3 : b.cut === "dip" ? 2 : 0) +
+            Math.min(1, gap / 0.15) +
+            (a.midi === b.midi ? 0.5 : 0),
+        });
       }
-      const keep = new Set([...bounds].sort((x, y) => y.s - x.s || x.i - y.i).slice(0, S - 1).map((b) => b.i));
-      groups = []; let cur = [0];
-      for (let i = 1; i < N; i++) { if (keep.has(i)) { groups.push(cur); cur = [i]; } else cur.push(i); }
+      const keep = new Set(
+        [...bounds]
+          .sort((x, y) => y.s - x.s || x.i - y.i)
+          .slice(0, S - 1)
+          .map((b) => b.i),
+      );
+      groups = [];
+      let cur = [0];
+      for (let i = 1; i < N; i++) {
+        if (keep.has(i)) {
+          groups.push(cur);
+          cur = [i];
+        } else cur.push(i);
+      }
       groups.push(cur);
-    } else groups = Array.from({ length: S }, (_, k) => [Math.min(N - 1, Math.floor((k * N) / S))]);
-    return words.map((w, wi) => { const idx = []; owner.forEach((o, k) => { if (o === wi) groups[k].forEach((i) => { if (!idx.includes(i)) idx.push(i); }); }); return { w, idx }; });
+    } else
+      groups = Array.from({ length: S }, (_, k) => [
+        Math.min(N - 1, Math.floor((k * N) / S)),
+      ]);
+    return words.map((w, wi) => {
+      const idx = [];
+      owner.forEach((o, k) => {
+        if (o === wi)
+          groups[k].forEach((i) => {
+            if (!idx.includes(i)) idx.push(i);
+          });
+      });
+      return { w, idx };
+    });
   }
 
   // ---- Practice: song sheet, the notes for every lyric line ----
   function lineTags(ln, songLo, songHi) {
-    const g = ln.notes, tags = [];
+    const g = ln.notes,
+      tags = [];
     if (!g.length) return tags;
     let jump = 0;
-    for (let j = 1; j < g.length; j++) if (g[j].pos - g[j - 1].end < 0.35) jump = Math.max(jump, Math.abs(g[j].midi - g[j - 1].midi));
+    for (let j = 1; j < g.length; j++)
+      if (g[j].pos - g[j - 1].end < 0.35)
+        jump = Math.max(jump, Math.abs(g[j].midi - g[j - 1].midi));
     if (jump >= 5) tags.push("Big jump");
     let fast = false;
-    for (let j = 0; j < g.length && !fast; j++) { let c = 0; for (let q = j; q < g.length && g[q].pos < g[j].pos + 1; q++) c++; if (c >= 5) fast = true; }
+    for (let j = 0; j < g.length && !fast; j++) {
+      let c = 0;
+      for (let q = j; q < g.length && g[q].pos < g[j].pos + 1; q++) c++;
+      if (c >= 5) fast = true;
+    }
     if (fast) tags.push("Fast run");
     const wide = songHi - songLo >= 7;
     if (wide && g.some((n) => n.midi >= songHi - 1)) tags.push("High note");
@@ -2338,7 +5844,28 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     if (g.some((n) => n.end - n.pos >= 1.5)) tags.push("Long hold");
     return tags;
   }
-  function SongSheet({ notes, spans, phrases, tr, nameOf, names, onNames, cursor, curIdx, playing, onPlayLine, onLoop, loop, lineInfo, onMe, you, onAnalyze, onPlayRange, onSaveWords, scrollLine }) {
+  function SongSheet({
+    notes,
+    spans,
+    phrases,
+    tr,
+    nameOf,
+    names,
+    onNames,
+    cursor,
+    curIdx,
+    playing,
+    onPlayLine,
+    onLoop,
+    loop,
+    lineInfo,
+    onMe,
+    you,
+    onAnalyze,
+    onPlayRange,
+    onSaveWords,
+    scrollLine,
+  }) {
     const [open, setOpen] = useState(-1);
     const timeRef = useRef(0);
     timeRef.current = cursor || 0;
@@ -2346,105 +5873,461 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     useEffect(() => {
       if (!scrollLine || scrollLine.k < 0) return;
       const el = refs.current[scrollLine.k];
-      if (el && el.scrollIntoView) setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
+      if (el && el.scrollIntoView)
+        setTimeout(
+          () => el.scrollIntoView({ block: "center", behavior: "smooth" }),
+          60,
+        );
     }, [scrollLine && scrollLine.id]);
     const short = (m) => nameOf(m).replace(/-?\d+$/, "");
     const tl = useMemo(() => looksTagalog(spans), [spans]);
     const lines = useMemo(() => {
-      const src = spans.length ? spans : phrases.map((p) => ({ start: p.start, end: p.end, text: "", words: null }));
+      const src = spans.length
+        ? spans
+        : phrases.map((p) => ({
+            start: p.start,
+            end: p.end,
+            text: "",
+            words: null,
+          }));
       return src.map((l, li) => {
         const idx = [];
-        notes.forEach((n, i) => { if (n.pos >= l.start - 0.08 && n.pos < l.end - 0.02) idx.push(i); });
+        notes.forEach((n, i) => {
+          if (n.pos >= l.start - 0.08 && n.pos < l.end - 0.02) idx.push(i);
+        });
         const ln = { ...l, li, idx, notes: idx.map((i) => notes[i]) };
         if (!(l.words && l.words.length) && l.text && idx.length) {
-          const m = wordsToNotes(l.text, idx.map((i) => notes[i]), tl);
-          if (m) { ln.wordNotes = m.map((x) => ({ w: x.w, idx: x.idx.map((j) => idx[j]) })); ln.guessed = true; }
+          const m = wordsToNotes(
+            l.text,
+            idx.map((i) => notes[i]),
+            tl,
+          );
+          if (m) {
+            ln.wordNotes = m.map((x) => ({
+              w: x.w,
+              idx: x.idx.map((j) => idx[j]),
+            }));
+            ln.guessed = true;
+          }
         }
         // real word timing from the lyrics file (or your taps) wins
         if (l.words && l.words.length && idx.length) {
           ln.wordNotes = l.words.map((w, k) => {
             const end = k + 1 < l.words.length ? l.words[k + 1].t : l.end;
-            const mine = idx.filter((i) => notes[i].pos >= w.t - 0.08 && notes[i].pos < end - 0.02);
+            const mine = idx.filter(
+              (i) => notes[i].pos >= w.t - 0.08 && notes[i].pos < end - 0.02,
+            );
             return { w: w.w, idx: mine };
           });
         }
         return ln;
       });
     }, [notes, spans, phrases, tl]);
-    let songLo = 999, songHi = 0;
-    notes.forEach((n) => { songLo = Math.min(songLo, n.midi); songHi = Math.max(songHi, n.midi); });
-    const cur = cursor != null ? lines.findIndex((l) => cursor >= l.start - 0.05 && cursor < l.end) : -1;
+    let songLo = 999,
+      songHi = 0;
+    notes.forEach((n) => {
+      songLo = Math.min(songLo, n.midi);
+      songHi = Math.max(songHi, n.midi);
+    });
+    const cur =
+      cursor != null
+        ? lines.findIndex((l) => cursor >= l.start - 0.05 && cursor < l.end)
+        : -1;
     useEffect(() => {
       if (!playing || cur < 0) return;
       const el = refs.current[cur];
       if (!el) return;
       const r = el.getBoundingClientRect();
-      if (r.top < 90 || r.bottom > window.innerHeight - 170) { try { el.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) {} }
+      if (r.top < 90 || r.bottom > window.innerHeight - 170) {
+        try {
+          el.scrollIntoView({ block: "center", behavior: "smooth" });
+        } catch (e) {}
+      }
     }, [cur, playing]);
     const youChip = (i) => {
       const r = you && you[i];
-      if (!r) return html`<span class="mono" style=${{ fontSize: 12, padding: "3px 6px", color: "var(--muted)", minWidth: 18, textAlign: "center" }}> </span>`;
-      const st = r.c == null ? "miss" : Math.abs(r.c) <= 25 ? "good" : Math.abs(r.c) <= 50 ? "warn" : "bad";
-      const label = r.c == null ? "–" : st === "bad" ? short(r.m + Math.round(r.c / 100)) : short(r.m) + (st === "warn" ? (r.c < 0 ? "↓" : "↑") : "");
+      if (!r)
+        return html`<span
+          class="mono"
+          style=${{
+            fontSize: 12,
+            padding: "3px 6px",
+            color: "var(--muted)",
+            minWidth: 18,
+            textAlign: "center",
+          }}
+        >
+        </span>`;
+      const st =
+        r.c == null
+          ? "miss"
+          : Math.abs(r.c) <= 25
+            ? "good"
+            : Math.abs(r.c) <= 50
+              ? "warn"
+              : "bad";
+      const label =
+        r.c == null
+          ? "–"
+          : st === "bad"
+            ? short(r.m + Math.round(r.c / 100))
+            : short(r.m) + (st === "warn" ? (r.c < 0 ? "↓" : "↑") : "");
       const col = st === "miss" ? "var(--muted)" : "var(--" + st + ")";
-      const tip = r.c == null ? "Not heard" : "You sang " + pretty(midiInfo(r.m + Math.round(r.c / 100)).label) + (Math.abs(r.c - 100 * Math.round(r.c / 100)) > 10 ? ", " + Math.abs(r.c - 100 * Math.round(r.c / 100)) + "¢ " + (r.c - 100 * Math.round(r.c / 100) < 0 ? "flat" : "sharp") : "") + ". The song has " + pretty(midiInfo(r.m).label) + ".";
-      return html`<span class="mono" title=${tip} aria-label=${tip} style=${{ fontSize: 12, fontWeight: 700, padding: "3px 6px", borderRadius: 6, minWidth: 18, textAlign: "center", whiteSpace: "nowrap", color: col, background: st === "miss" ? "var(--surface-2)" : "color-mix(in srgb, " + col + " 15%, transparent)" }}>${label}</span>`;
+      const tip =
+        r.c == null
+          ? "Not heard"
+          : "You sang " +
+            pretty(midiInfo(r.m + Math.round(r.c / 100)).label) +
+            (Math.abs(r.c - 100 * Math.round(r.c / 100)) > 10
+              ? ", " +
+                Math.abs(r.c - 100 * Math.round(r.c / 100)) +
+                "¢ " +
+                (r.c - 100 * Math.round(r.c / 100) < 0 ? "flat" : "sharp")
+              : "") +
+            ". The song has " +
+            pretty(midiInfo(r.m).label) +
+            ".";
+      return html`<span
+        class="mono"
+        title=${tip}
+        aria-label=${tip}
+        style=${{
+          fontSize: 12,
+          fontWeight: 700,
+          padding: "3px 6px",
+          borderRadius: 6,
+          minWidth: 18,
+          textAlign: "center",
+          whiteSpace: "nowrap",
+          color: col,
+          background:
+            st === "miss"
+              ? "var(--surface-2)"
+              : "color-mix(in srgb, " + col + " 15%, transparent)",
+        }}
+        >${label}</span
+      >`;
     };
-    const chip = (i, label) => html`<span class="mono" style=${{ fontSize: 12, fontWeight: 600, padding: "3px 6px", borderRadius: 6, background: i === curIdx ? "var(--accent)" : "color-mix(in srgb, var(--accent) 15%, transparent)", color: i === curIdx ? "var(--accent-ink)" : "var(--accent)", whiteSpace: "nowrap" }}>${label}</span>`;
-    if (!notes.length) return html`<p class="muted text-sm">No melody found in this vocal yet.</p>`;
+    const chip = (i, label) =>
+      html`<span
+        class="mono"
+        style=${{
+          fontSize: 12,
+          fontWeight: 600,
+          padding: "3px 6px",
+          borderRadius: 6,
+          background:
+            i === curIdx
+              ? "var(--accent)"
+              : "color-mix(in srgb, var(--accent) 15%, transparent)",
+          color: i === curIdx ? "var(--accent-ink)" : "var(--accent)",
+          whiteSpace: "nowrap",
+        }}
+        >${label}</span
+      >`;
+    if (!notes.length)
+      return html`<p class="muted text-sm">
+        No melody found in this vocal yet.
+      </p>`;
     return html`<div class="flex flex-col gap-3">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="seg" role="group" aria-label="Note names">
-          <button aria-pressed=${names !== "solfege" ? "true" : "false"} onClick=${() => onNames("letters")}>Letters</button>
-          <button aria-pressed=${names === "solfege" ? "true" : "false"} onClick=${() => onNames("solfege")}>Do re mi</button>
+          <button
+            aria-pressed=${names !== "solfege" ? "true" : "false"}
+            onClick=${() => onNames("letters")}
+          >
+            Letters
+          </button>
+          <button
+            aria-pressed=${names === "solfege" ? "true" : "false"}
+            onClick=${() => onNames("solfege")}
+          >
+            Do re mi
+          </button>
         </div>
       </div>
-      ${!spans.length && html`<p class="text-xs muted" style=${{ margin: 0 }}>No lyrics for this song yet, so lines follow the melody's phrases. Add an .lrc file under Change to see the words.</p>`}
+      ${!spans.length &&
+      html`<p class="text-xs muted" style=${{ margin: 0 }}>
+        No lyrics for this song yet, so lines follow the melody's phrases. Add
+        an .lrc file under Change to see the words.
+      </p>`}
       ${lines.map((l, k) => {
-        const isCur = k === cur, isOpen = k === open, tags = lineTags(l, songLo, songHi);
+        const isCur = k === cur,
+          isOpen = k === open,
+          tags = lineTags(l, songLo, songHi);
         const info = lineInfo ? lineInfo(l) : {};
         const hasYou = !!(you && l.idx.some((i) => you[i]));
-        const scoreTag = (lbl, v) => (v == null ? null : html`<span class=${"tag tag-" + (v >= 80 ? "good" : v >= 50 ? "warn" : "bad")}>${lbl} ${v}%</span>`);
+        const scoreTag = (lbl, v) =>
+          v == null
+            ? null
+            : html`<span
+                class=${"tag tag-" +
+                (v >= 80 ? "good" : v >= 50 ? "warn" : "bad")}
+                >${lbl} ${v}%</span
+              >`;
         const looping = loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05;
-        let lo = 999, hi = 0, jump = 0;
-        l.notes.forEach((n, j) => { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); if (j) jump = Math.max(jump, Math.abs(n.midi - l.notes[j - 1].midi)); });
-        return html`<section key=${k} ref=${(el) => { refs.current[k] = el; }} class="panel" style=${{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10, borderColor: isCur ? "color-mix(in srgb, var(--accent) 55%, transparent)" : undefined, borderRadius: 16 }}>
+        let lo = 999,
+          hi = 0,
+          jump = 0;
+        l.notes.forEach((n, j) => {
+          lo = Math.min(lo, n.midi);
+          hi = Math.max(hi, n.midi);
+          if (j) jump = Math.max(jump, Math.abs(n.midi - l.notes[j - 1].midi));
+        });
+        return html`<section
+          key=${k}
+          ref=${(el) => {
+            refs.current[k] = el;
+          }}
+          class="panel"
+          style=${{
+            padding: "12px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            borderColor: isCur
+              ? "color-mix(in srgb, var(--accent) 55%, transparent)"
+              : undefined,
+            borderRadius: 16,
+          }}
+        >
           <div class="flex items-center gap-2">
-            <button class="flex items-center gap-2 min-w-0" style=${{ flex: 1, background: "none", border: 0, padding: 0, color: "inherit", font: "inherit", cursor: "pointer", textAlign: "left" }} onClick=${() => setOpen(isOpen ? -1 : k)} aria-expanded=${isOpen ? "true" : "false"}>
-              ${info.learned && html`<span title="Learned: 85% or more twice in a row" aria-label="Learned" style=${{ width: 20, height: 20, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center", background: "var(--good)", color: "var(--bg)", fontSize: 11, fontWeight: 800 }}>✓</span>`}
-              <span class="mono text-xs muted">${String(k + 1).padStart(2, "0")} · ${fmt(Math.max(0, l.start))}</span>
-              <span class="flex flex-wrap gap-1">${tags.map((t) => html`<span key=${t} class="tag" style=${{ color: "var(--muted)", background: "var(--surface-2)" }}>${t}</span>`)}${scoreTag("Last", info.last)}${scoreTag("Best", info.best)}</span>
+            <button
+              class="flex items-center gap-2 min-w-0"
+              style=${{
+                flex: 1,
+                background: "none",
+                border: 0,
+                padding: 0,
+                color: "inherit",
+                font: "inherit",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+              onClick=${() => setOpen(isOpen ? -1 : k)}
+              aria-expanded=${isOpen ? "true" : "false"}
+            >
+              ${info.learned &&
+              html`<span
+                title="Learned: 85% or more twice in a row"
+                aria-label="Learned"
+                style=${{
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  flexShrink: 0,
+                  display: "grid",
+                  placeItems: "center",
+                  background: "var(--good)",
+                  color: "var(--bg)",
+                  fontSize: 11,
+                  fontWeight: 800,
+                }}
+                >✓</span
+              >`}
+              <span class="mono text-xs muted"
+                >${String(k + 1).padStart(2, "0")} ·
+                ${fmt(Math.max(0, l.start))}</span
+              >
+              <span class="flex flex-wrap gap-1"
+                >${tags.map(
+                  (t) =>
+                    html`<span
+                      key=${t}
+                      class="tag"
+                      style=${{
+                        color: "var(--muted)",
+                        background: "var(--surface-2)",
+                      }}
+                      >${t}</span
+                    >`,
+                )}${scoreTag("Last", info.last)}${scoreTag(
+                  "Best",
+                  info.best,
+                )}</span
+              >
             </button>
           </div>
           ${l.wordNotes
-            ? html`<div class="flex flex-wrap" style=${{ gap: "10px 8px" }} onClick=${() => setOpen(isOpen ? -1 : k)}>
-                ${l.wordNotes.map((w, j) => html`<span key=${j} class="flex flex-col items-center" style=${{ gap: 3 }}>
-                  <span class="flex gap-1" style=${{ minHeight: 22 }}>${w.idx.length ? w.idx.slice(0, 3).map((i) => chip(i, short(notes[i].midi))) : html`<span class="mono text-xs muted">·</span>`}${w.idx.length > 3 ? html`<span class="text-xs muted">…</span>` : ""}</span>
-                  ${hasYou && html`<span class="flex gap-1" style=${{ minHeight: 22 }}>${w.idx.slice(0, 3).map((i) => html`<span key=${i}>${youChip(i)}</span>`)}</span>`}
-                  <span style=${{ fontSize: 15, fontWeight: 600 }}>${w.w}</span>
-                </span>`)}
+            ? html`<div
+                class="flex flex-wrap"
+                style=${{ gap: "10px 8px" }}
+                onClick=${() => setOpen(isOpen ? -1 : k)}
+              >
+                ${l.wordNotes.map(
+                  (w, j) =>
+                    html`<span
+                      key=${j}
+                      class="flex flex-col items-center"
+                      style=${{ gap: 3 }}
+                    >
+                      <span class="flex gap-1" style=${{ minHeight: 22 }}
+                        >${w.idx.length
+                          ? w.idx
+                              .slice(0, 3)
+                              .map((i) => chip(i, short(notes[i].midi)))
+                          : html`<span class="mono text-xs muted">·</span>`}${w
+                          .idx.length > 3
+                          ? html`<span class="text-xs muted">…</span>`
+                          : ""}</span
+                      >
+                      ${hasYou &&
+                      html`<span class="flex gap-1" style=${{ minHeight: 22 }}
+                        >${w.idx
+                          .slice(0, 3)
+                          .map(
+                            (i) => html`<span key=${i}>${youChip(i)}</span>`,
+                          )}</span
+                      >`}
+                      <span style=${{ fontSize: 15, fontWeight: 600 }}
+                        >${w.w}</span
+                      >
+                    </span>`,
+                )}
               </div>`
-            : html`<div class="flex flex-col gap-2" onClick=${() => setOpen(isOpen ? -1 : k)}>
+            : html`<div
+                class="flex flex-col gap-2"
+                onClick=${() => setOpen(isOpen ? -1 : k)}
+              >
                 ${hasYou
                   ? html`<div class="flex gap-2 items-start">
-                      <span class="flex flex-col" style=${{ gap: 4, fontSize: 10, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)", paddingTop: 3 }}><span style=${{ height: 20 }}>Song</span><span style=${{ height: 20, color: "var(--you)" }}>You</span></span>
-                      <div class="flex flex-wrap" style=${{ gap: "6px 4px" }}>${l.idx.map((i) => html`<span key=${i} class="flex flex-col items-center" style=${{ gap: 4 }}>${chip(i, short(notes[i].midi))}${youChip(i)}</span>`)}</div>
+                      <span
+                        class="flex flex-col"
+                        style=${{
+                          gap: 4,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          letterSpacing: ".08em",
+                          textTransform: "uppercase",
+                          color: "var(--muted)",
+                          paddingTop: 3,
+                        }}
+                        ><span style=${{ height: 20 }}>Song</span
+                        ><span style=${{ height: 20, color: "var(--you)" }}
+                          >You</span
+                        ></span
+                      >
+                      <div class="flex flex-wrap" style=${{ gap: "6px 4px" }}>
+                        ${l.idx.map(
+                          (i) =>
+                            html`<span
+                              key=${i}
+                              class="flex flex-col items-center"
+                              style=${{ gap: 4 }}
+                              >${chip(i, short(notes[i].midi))}${youChip(
+                                i,
+                              )}</span
+                            >`,
+                        )}
+                      </div>
                     </div>`
-                  : html`<div class="flex flex-wrap gap-1">${l.idx.map((i) => html`<span key=${i}>${chip(i, short(notes[i].midi))}</span>`)}</div>`}
-                ${l.text && html`<span style=${{ fontSize: 16, fontWeight: 600, lineHeight: 1.35 }}>${l.text}</span>`}
+                  : html`<div class="flex flex-wrap gap-1">
+                      ${l.idx.map(
+                        (i) =>
+                          html`<span key=${i}
+                            >${chip(i, short(notes[i].midi))}</span
+                          >`,
+                      )}
+                    </div>`}
+                ${l.text &&
+                html`<span
+                  style=${{ fontSize: 16, fontWeight: 600, lineHeight: 1.35 }}
+                  >${l.text}</span
+                >`}
               </div>`}
           <div class="flex flex-wrap gap-2">
-            <button class="btn" style=${{ padding: "5px 10px", fontSize: 12 }} onClick=${() => onPlayLine(l)} aria-label=${"Play line " + (k + 1)}>▶ Play</button>
-            ${info.me && html`<button class="btn" style=${{ padding: "5px 10px", fontSize: 12, color: "var(--you)" }} onClick=${() => onMe && onMe(l)} aria-label=${"Hear your last try at line " + (k + 1)}>▶ Me</button>`}
-            <button class="btn" style=${{ padding: "5px 10px", fontSize: 12, color: looping ? "var(--accent)" : undefined, borderColor: looping ? "var(--accent)" : undefined }} onClick=${() => onLoop(l)} aria-label=${"Loop line " + (k + 1)}>↻ ${looping ? "Looping" : "Loop"}</button>
-            ${info.analyze && html`<button class="btn" style=${{ padding: "5px 10px", fontSize: 12, color: "var(--accent)", borderColor: "color-mix(in srgb, var(--accent) 45%, transparent)" }} onClick=${() => onAnalyze && onAnalyze(l)} aria-label=${"Analyze your try at line " + (k + 1)}>Analyze</button>`}
+            <button
+              class="btn"
+              style=${{ padding: "5px 10px", fontSize: 12 }}
+              onClick=${() => onPlayLine(l)}
+              aria-label=${"Play line " + (k + 1)}
+            >
+              ▶ Play
+            </button>
+            ${info.me &&
+            html`<button
+              class="btn"
+              style=${{
+                padding: "5px 10px",
+                fontSize: 12,
+                color: "var(--you)",
+              }}
+              onClick=${() => onMe && onMe(l)}
+              aria-label=${"Hear your last try at line " + (k + 1)}
+            >
+              ▶ Me
+            </button>`}
+            <button
+              class="btn"
+              style=${{
+                padding: "5px 10px",
+                fontSize: 12,
+                color: looping ? "var(--accent)" : undefined,
+                borderColor: looping ? "var(--accent)" : undefined,
+              }}
+              onClick=${() => onLoop(l)}
+              aria-label=${"Loop line " + (k + 1)}
+            >
+              ↻ ${looping ? "Looping" : "Loop"}
+            </button>
+            ${info.analyze &&
+            html`<button
+              class="btn"
+              style=${{
+                padding: "5px 10px",
+                fontSize: 12,
+                color: "var(--accent)",
+                borderColor:
+                  "color-mix(in srgb, var(--accent) 45%, transparent)",
+              }}
+              onClick=${() => onAnalyze && onAnalyze(l)}
+              aria-label=${"Analyze your try at line " + (k + 1)}
+            >
+              Analyze
+            </button>`}
           </div>
-          ${isOpen && l.notes.length > 0 && html`<${React.Fragment}>
-            <svg viewBox="0 0 300 50" preserveAspectRatio="none" style=${{ width: "100%", height: 50, display: "block" }} aria-hidden="true">
-              ${(() => { const a = l.notes[0].pos, b = Math.max(a + 0.5, l.notes[l.notes.length - 1].end), L = lo - 1, H = hi + 1; return l.notes.map((n, j) => html`<rect key=${j} x=${((300 * (n.pos - a)) / (b - a)).toFixed(1)} y=${(44 - ((n.midi - L) / (H - L)) * 38).toFixed(1)} width=${Math.max(4, (300 * (n.end - n.pos)) / (b - a) - 2).toFixed(1)} height="6" rx="3" fill=${l.idx[j] === curIdx ? "var(--fg)" : "var(--accent)"}></rect>`); })()}
+          ${isOpen &&
+          l.notes.length > 0 &&
+          html`<${React.Fragment}>
+            <svg
+              viewBox="0 0 300 50"
+              preserveAspectRatio="none"
+              style=${{ width: "100%", height: 50, display: "block" }}
+              aria-hidden="true"
+            >
+              ${(() => {
+                const a = l.notes[0].pos,
+                  b = Math.max(a + 0.5, l.notes[l.notes.length - 1].end),
+                  L = lo - 1,
+                  H = hi + 1;
+                return l.notes.map(
+                  (n, j) =>
+                    html`<rect
+                      key=${j}
+                      x=${((300 * (n.pos - a)) / (b - a)).toFixed(1)}
+                      y=${(44 - ((n.midi - L) / (H - L)) * 38).toFixed(1)}
+                      width=${Math.max(
+                        4,
+                        (300 * (n.end - n.pos)) / (b - a) - 2,
+                      ).toFixed(1)}
+                      height="6"
+                      rx="3"
+                      fill=${l.idx[j] === curIdx
+                        ? "var(--fg)"
+                        : "var(--accent)"}
+                    ></rect>`,
+                );
+              })()}
             </svg>
-            <div class="flex flex-wrap items-center justify-between gap-2 text-xs muted">
-              <span>Range ${pretty(midiInfo(lo + tr).label)}–${pretty(midiInfo(hi + tr).label)}</span>
+            <div
+              class="flex flex-wrap items-center justify-between gap-2 text-xs muted"
+            >
+              <span
+                >Range
+                ${pretty(midiInfo(lo + tr).label)}–${pretty(
+                  midiInfo(hi + tr).label,
+                )}</span
+              >
               <span>Biggest jump ${jump} key${jump === 1 ? "" : "s"}</span>
             </div>
           <//>`}
@@ -2453,36 +6336,69 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     </div>`;
   }
 
-  function Learn({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, focus, onGo, inst, sync }) {
+  function Learn({
+    themeKey,
+    active,
+    orig,
+    onPickOrig,
+    lyrics,
+    updateLyrics,
+    focus,
+    onGo,
+    inst,
+    sync,
+  }) {
     const data = orig && orig.data ? orig.data : null;
     const notes = data ? data.notes : [];
     const [playing, setPlaying] = useState(false);
     const [cursor, setCursor] = useState(null);
-    const [mix, setMix] = useState(() => ({ m: 0.6, ...loadJSON("pitchstaff.learnmix.v1", { o: 0.8, g: 0.45 }) }));
-    const instRef = useRef(null), syncRef2 = useRef(0);
-    instRef.current = inst && inst.buffer ? inst : null; syncRef2.current = sync || 0;
+    const [mix, setMix] = useState(() => ({
+      m: 0.6,
+      ...loadJSON("pitchstaff.learnmix.v1", { o: 0.8, g: 0.45 }),
+    }));
+    const instRef = useRef(null),
+      syncRef2 = useRef(0);
+    instRef.current = inst && inst.buffer ? inst : null;
+    syncRef2.current = sync || 0;
     const [speed, setSpeed] = useState(1);
     const [tr, setTr] = useState(0);
-    const [names, setNames] = useState(() => loadJSON("pitchstaff.names.v1", "letters"));
+    const [names, setNames] = useState(() =>
+      loadJSON("pitchstaff.names.v1", "letters"),
+    );
     const [mode, setModeState] = useState("play");
-    const [view, setViewState] = useState(() => loadJSON("pitchstaff.pview.v1", "sheet"));
-    const chooseView = (v) => { setViewState(v); saveJSON("pitchstaff.pview.v1", v); };
+    const [view, setViewState] = useState(() =>
+      loadJSON("pitchstaff.pview.v1", "sheet"),
+    );
+    const chooseView = (v) => {
+      setViewState(v);
+      saveJSON("pitchstaff.pview.v1", v);
+    };
     const [loop, setLoop] = useState(null);
     const [turn, setTurn] = useState(null);
     const [learned, setLearned] = useState([]);
     const [optOpen, setOptOpen] = useState(false);
     const [listen, setListen] = useState(false);
     const [micMsg, setMicMsg] = useState("");
-    const [mastery, setMastery] = useState(() => loadJSON("pitchstaff.mastery.v1", false));
-    const [moreTime, setMoreTime] = useState(() => loadJSON("pitchstaff.moretime.v1", 0));
+    const [mastery, setMastery] = useState(() =>
+      loadJSON("pitchstaff.mastery.v1", false),
+    );
+    const [moreTime, setMoreTime] = useState(() =>
+      loadJSON("pitchstaff.moretime.v1", 0),
+    );
     const [liveLine, setLiveLine] = useState(null);
     const [attempt, setAttempt] = useState(null);
     const [review, setReview] = useState(null);
     const [scoring, setScoring] = useState(false);
     const [best, setBest] = useState({});
     const [toast, setToast] = useState("");
-    const listenRef = useRef(false), masteryRef = useRef(mastery), moreTimeRef = useRef(moreTime);
-    const mic = useRef({}), rec = useRef({ on: false, chunks: [], live: [], t0: 0 }), flow = useRef(0), streak = useRef({}), lastTake = useRef(null);
+    const listenRef = useRef(false),
+      masteryRef = useRef(mastery),
+      moreTimeRef = useRef(moreTime);
+    const mic = useRef({}),
+      rec = useRef({ on: false, chunks: [], live: [], t0: 0 }),
+      flow = useRef(0),
+      streak = useRef({}),
+      lastTake = useRef(null);
     const coachRef = useRef(null);
     const [pending, setPending] = useState(null); // after a try: { next, again, after, scored }
     const takesRef = useRef({});
@@ -2499,105 +6415,238 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const el = coachRef.current;
       if (!el || !active) return;
       const r = el.getBoundingClientRect();
-      if (r.top < 70 || r.top > window.innerHeight * 0.45) { try { el.scrollIntoView({ block: "start", behavior: "smooth" }); window.scrollBy(0, -12); } catch (e) {} }
-    }, [turn ? turn.idx : -1, attempt ? attempt.idx + ":" + attempt.score : ""]);
+      if (r.top < 70 || r.top > window.innerHeight * 0.45) {
+        try {
+          el.scrollIntoView({ block: "start", behavior: "smooth" });
+          window.scrollBy(0, -12);
+        } catch (e) {}
+      }
+    }, [
+      turn ? turn.idx : -1,
+      attempt ? attempt.idx + ":" + attempt.score : "",
+    ]);
     useEffect(() => setShowDetails(false), [attempt]);
     useEffect(() => {
       const p = loadPlan(orig && orig.data ? orig.name : null);
-      if (p && p.fresh && active) { p.fresh = false; p.hidden = false; savePlan(orig.name, p); modeRef.current = "play"; setModeState("play"); chooseView("sheet"); }
+      if (p && p.fresh && active) {
+        p.fresh = false;
+        p.hidden = false;
+        savePlan(orig.name, p);
+        modeRef.current = "play";
+        setModeState("play");
+        chooseView("sheet");
+      }
       setPlanState(p);
     }, [orig, active]);
-    const mixRef = useRef(mix), speedRef = useRef(1), trRef = useRef(0), modeRef = useRef("play"), loopRef = useRef(null);
-    const play = useRef({ ctx: null, origSrc: null, guide: [], gO: null, gG: null, raf: 0 });
+    const mixRef = useRef(mix),
+      speedRef = useRef(1),
+      trRef = useRef(0),
+      modeRef = useRef("play"),
+      loopRef = useRef(null);
+    const play = useRef({
+      ctx: null,
+      origSrc: null,
+      guide: [],
+      gO: null,
+      gG: null,
+      raf: 0,
+    });
     const fileRef = useRef(null);
 
-    const key = useMemo(() => (notes.length ? estimateKey(notes) : null), [notes]);
-    const spans = useMemo(() => (data ? lyricSpans(lyrics, data.duration) : []), [lyrics, data]);
-    const phrases = useMemo(() => buildPhrases(notes, spans, data && data.grid), [notes, spans, data]);
+    const key = useMemo(
+      () => (notes.length ? estimateKey(notes) : null),
+      [notes],
+    );
+    const spans = useMemo(
+      () => (data ? lyricSpans(lyrics, data.duration) : []),
+      [lyrics, data],
+    );
+    const phrases = useMemo(
+      () => buildPhrases(notes, spans, data && data.grid),
+      [notes, spans, data],
+    );
     const songName = data ? orig.name : null;
 
-    const nameOf = useCallback((m) => {
-      if (names === "solfege" && key) return SOLFEGE[(((m - key.doPc) % 12) + 12) % 12];
-      return pretty(midiInfo(m + tr).label);
-    }, [names, key, tr]);
+    const nameOf = useCallback(
+      (m) => {
+        if (names === "solfege" && key)
+          return SOLFEGE[(((m - key.doPc) % 12) + 12) % 12];
+        return pretty(midiInfo(m + tr).label);
+      },
+      [names, key, tr],
+    );
 
     const killSources = () => {
       const p = play.current;
       cancelAnimationFrame(p.raf);
-      [p.origSrc, p.musicSrc, p.replay, ...(p.guide || [])].forEach((s) => { if (s) { try { s.stop(); } catch (e) {} } });
-      [p.gO, p.gG, p.gM].forEach((g) => { if (g) { try { g.disconnect(); } catch (e) {} } });
-      p.origSrc = null; p.musicSrc = null; p.replay = null; p.guide = []; p.gO = p.gG = p.gM = null;
+      [p.origSrc, p.musicSrc, p.replay, ...(p.guide || [])].forEach((s) => {
+        if (s) {
+          try {
+            s.stop();
+          } catch (e) {}
+        }
+      });
+      [p.gO, p.gG, p.gM].forEach((g) => {
+        if (g) {
+          try {
+            g.disconnect();
+          } catch (e) {}
+        }
+      });
+      p.origSrc = null;
+      p.musicSrc = null;
+      p.replay = null;
+      p.guide = [];
+      p.gO = p.gG = p.gM = null;
     };
     const stopAll = useCallback(() => {
       flow.current++;
       rec.current.on = false;
-      killSources(); setPlaying(false); setTurn(null); setReview(null);
+      killSources();
+      setPlaying(false);
+      setTurn(null);
+      setReview(null);
     }, []);
 
     // ---- microphone (only works where the page is allowed to use it) ----
     const closeMic = useCallback(() => {
       const m = mic.current;
       if (m.stream) m.stream.getTracks().forEach((t) => t.stop());
-      [m.src, m.an, m.proc, m.sink].forEach((n) => { if (n) { try { n.disconnect(); } catch (e) {} } });
+      [m.src, m.an, m.proc, m.sink].forEach((n) => {
+        if (n) {
+          try {
+            n.disconnect();
+          } catch (e) {}
+        }
+      });
       if (m.proc) m.proc.onaudioprocess = null;
       mic.current = {};
     }, []);
     const openMic = async () => {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("unsupported");
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+        throw new Error("unsupported");
       const ctx = ensureCtx();
       const stream = await getMicStream();
       const src = ctx.createMediaStreamSource(stream);
-      const an = ctx.createAnalyser(); an.fftSize = 2048;
+      const an = ctx.createAnalyser();
+      an.fftSize = 2048;
       const proc = ctx.createScriptProcessor(4096, 1, 1);
-      const sink = ctx.createGain(); sink.gain.value = 0;
-      src.connect(an); src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
-      proc.onaudioprocess = (e) => { const r = rec.current; if (r.on) r.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+      const sink = ctx.createGain();
+      sink.gain.value = 0;
+      src.connect(an);
+      src.connect(proc);
+      proc.connect(sink);
+      sink.connect(ctx.destination);
+      proc.onaudioprocess = (e) => {
+        const r = rec.current;
+        if (r.on)
+          r.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      };
       mic.current = { stream, src, an, proc, sink };
     };
-    const MIC_BLOCKED = "The microphone is blocked on this page, so listening is off. It works when you open the Tono file in Chrome on your computer, or put the file on a website (https) to use it on your phone.";
+    const MIC_BLOCKED =
+      "The microphone is blocked on this page, so listening is off. It works when you open the Tono file in Chrome on your computer, or put the file on a website (https) to use it on your phone.";
     const ensureMic = async () => {
       if (mic.current.stream) return true;
-      try { await openMic(); return true; }
-      catch (e) { closeMic(); listenRef.current = false; setListen(false); setMicMsg(MIC_BLOCKED); return false; }
+      try {
+        await openMic();
+        return true;
+      } catch (e) {
+        closeMic();
+        listenRef.current = false;
+        setListen(false);
+        setMicMsg(MIC_BLOCKED);
+        return false;
+      }
     };
     const toggleListen = async () => {
-      if (listenRef.current) { listenRef.current = false; setListen(false); closeMic(); return; }
+      if (listenRef.current) {
+        listenRef.current = false;
+        setListen(false);
+        closeMic();
+        return;
+      }
       setMicMsg("");
       const ok = await ensureMic();
-      if (ok) { listenRef.current = true; setListen(true); }
+      if (ok) {
+        listenRef.current = true;
+        setListen(true);
+      }
     };
-    useEffect(() => { if (!active) { stopAll(); closeMic(); } }, [active, stopAll, closeMic]);
-    useEffect(() => () => { killSources(); closeMic(); if (play.current.ctx) play.current.ctx.close().catch(() => {}); }, []);
     useEffect(() => {
-      stopAll(); setCursor(null); loopRef.current = null; setLoop(null);
-      setAttempt(null); setLiveLine(null); streak.current = {}; lastTake.current = null; takesRef.current = {}; setLastScores({}); setPending(null); attemptsRef.current = {}; setTries(loadTries(songName)); setPanel(null);
-      setLearned(songName ? (loadJSON(LEARNED_KEY, {})[songName] || []) : []);
-      setBest(songName ? (loadJSON(BEST_KEY, {})[songName] || {}) : {});
+      if (!active) {
+        stopAll();
+        closeMic();
+      }
+    }, [active, stopAll, closeMic]);
+    useEffect(
+      () => () => {
+        killSources();
+        closeMic();
+        if (play.current.ctx) play.current.ctx.close().catch(() => {});
+      },
+      [],
+    );
+    useEffect(() => {
+      stopAll();
+      setCursor(null);
+      loopRef.current = null;
+      setLoop(null);
+      setAttempt(null);
+      setLiveLine(null);
+      streak.current = {};
+      lastTake.current = null;
+      takesRef.current = {};
+      setLastScores({});
+      setPending(null);
+      attemptsRef.current = {};
+      setTries(loadTries(songName));
+      setPanel(null);
+      setLearned(songName ? loadJSON(LEARNED_KEY, {})[songName] || [] : []);
+      setBest(songName ? loadJSON(BEST_KEY, {})[songName] || {} : {});
     }, [data, songName, stopAll]);
 
     const ensureCtx = () => {
       const p = play.current;
-      if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
+      if (!p.ctx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        p.ctx = new Ctx();
+      }
       if (p.ctx.state === "suspended") p.ctx.resume().catch(() => {});
       return p.ctx;
     };
-    const bus = (ctx, v) => { const g = ctx.createGain(); g.gain.value = v; g.connect(ctx.destination); return g; };
+    const bus = (ctx, v) => {
+      const g = ctx.createGain();
+      g.gain.value = v;
+      g.connect(ctx.destination);
+      return g;
+    };
 
     // play the song from t to end, then call onDone
     const playRange = (t, end, onDone) => {
       killSources();
-      const p = play.current, ctx = ensureCtx();
-      const mx = mixRef.current, sp = speedRef.current;
+      const p = play.current,
+        ctx = ensureCtx();
+      const mx = mixRef.current,
+        sp = speedRef.current;
       const now = ctx.currentTime + 0.05;
-      p.gO = bus(ctx, mx.o); p.gG = bus(ctx, mx.g); p.gM = bus(ctx, mx.m || 0);
+      p.gO = bus(ctx, mx.o);
+      p.gG = bus(ctx, mx.g);
+      p.gM = bus(ctx, mx.m || 0);
       if (sp === 1) {
-        const s = ctx.createBufferSource(); s.buffer = orig.buffer; s.connect(p.gO);
-        s.start(now, Math.max(0, t)); p.origSrc = s;
+        const s = ctx.createBufferSource();
+        s.buffer = orig.buffer;
+        s.connect(p.gO);
+        s.start(now, Math.max(0, t));
+        p.origSrc = s;
         const ib = instRef.current;
         if (ib) {
-          const m = ctx.createBufferSource(); m.buffer = ib.buffer; m.connect(p.gM);
+          const m = ctx.createBufferSource();
+          m.buffer = ib.buffer;
+          m.connect(p.gM);
           const at = t + syncRef2.current;
-          if (at >= 0) m.start(now, at); else m.start(now - at, 0);
+          if (at >= 0) m.start(now, at);
+          else m.start(now - at, 0);
           p.musicSrc = m;
         }
       }
@@ -2605,79 +6654,181 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       setPlaying(true);
       const tick = () => {
         const ct = t + Math.max(0, ctx.currentTime - now) * sp;
-        if (ct >= end) { killSources(); setCursor(Math.min(end, data.duration)); onDone(); return; }
+        if (ct >= end) {
+          killSources();
+          setCursor(Math.min(end, data.duration));
+          onDone();
+          return;
+        }
         setCursor(ct);
         p.raf = requestAnimationFrame(tick);
       };
       tick();
     };
 
-    const phraseAt = (t) => { const i = phrases.findIndex((p) => p.end > t); return i < 0 ? 0 : i; };
+    const phraseAt = (t) => {
+      const i = phrases.findIndex((p) => p.end > t);
+      return i < 0 ? 0 : i;
+    };
 
     const addLearned = (i) => {
       setLearned((prev) => {
         if (prev.includes(i)) return prev;
         const next = [...prev, i];
-        const all = loadJSON(LEARNED_KEY, {}); all[songName] = next; saveJSON(LEARNED_KEY, all);
+        const all = loadJSON(LEARNED_KEY, {});
+        all[songName] = next;
+        saveJSON(LEARNED_KEY, all);
         return next;
       });
     };
-    const flash = (msg) => { setToast(msg); setTimeout(() => setToast((t) => (t === msg ? "" : t)), 3500); };
+    const flash = (msg) => {
+      setToast(msg);
+      setTimeout(() => setToast((t) => (t === msg ? "" : t)), 3500);
+    };
 
     // after a phrase: short pause showing the result, then the next phrase (or the same one again)
     // after a phrase: stop and wait for the singer to tap Play / Next
     const nextAfter = (idx, token, res) => {
       if (flow.current !== token) return;
-      let next = idx + 1, again = false;
-      if (loopRef.current) { next = idx; again = true; }
-      else if (res && masteryRef.current && res.score < 80) { next = idx; again = true; }
-      killSources(); setPlaying(false); setTurn(null); setReview(null);
-      setPending(next >= phrases.length ? { next: -1, again: false, after: idx, scored: !!res } : { next, again, after: idx, scored: !!res });
+      let next = idx + 1,
+        again = false;
+      if (loopRef.current) {
+        next = idx;
+        again = true;
+      } else if (res && masteryRef.current && res.score < 80) {
+        next = idx;
+        again = true;
+      }
+      killSources();
+      setPlaying(false);
+      setTurn(null);
+      setReview(null);
+      setPending(
+        next >= phrases.length
+          ? { next: -1, again: false, after: idx, scored: !!res }
+          : { next, again, after: idx, scored: !!res },
+      );
     };
 
     const finishAttempt = async (idx, token) => {
-      const ctx = play.current.ctx, chunks = rec.current.chunks;
+      const ctx = play.current.ctx,
+        chunks = rec.current.chunks;
       const len = chunks.reduce((n, c) => n + c.length, 0);
-      if (len < ctx.sampleRate * 0.3) { nextAfter(idx, token, null); return; }
+      if (len < ctx.sampleRate * 0.3) {
+        nextAfter(idx, token, null);
+        return;
+      }
       const pcm = new Float32Array(len);
-      let o = 0; chunks.forEach((c) => { pcm.set(c, o); o += c.length; });
+      let o = 0;
+      chunks.forEach((c) => {
+        pcm.set(c, o);
+        o += c.length;
+      });
       const sr = ctx.sampleRate;
-      const ab = ctx.createBuffer(1, len, sr); ab.getChannelData(0).set(pcm);
+      const ab = ctx.createBuffer(1, len, sr);
+      ab.getChannelData(0).set(pcm);
       lastTake.current = { idx, buffer: ab };
       takesRef.current[idx] = ab;
       setScoring(true);
-      const her = await trackPitch({ getChannelData: () => pcm, numberOfChannels: 1, sampleRate: sr, duration: len / sr }, () => {}, () => flow.current !== token);
+      const her = await trackPitch(
+        {
+          getChannelData: () => pcm,
+          numberOfChannels: 1,
+          sampleRate: sr,
+          duration: len / sr,
+        },
+        () => {},
+        () => flow.current !== token,
+      );
       setScoring(false);
       if (!her || flow.current !== token) return;
-      const res = scorePhrase(phrases[idx], her, speedRef.current, trRef.current);
+      const res = scorePhrase(
+        phrases[idx],
+        her,
+        speedRef.current,
+        trRef.current,
+      );
       setAttempt({ ...res, idx });
       attemptsRef.current[idx] = res.rows;
       {
-        const rec = { score: res.score, at: Date.now(), speed: speedRef.current, start: phrases[idx].start, trace: res.trace,
-          rows: res.rows.map((r) => ({ p: Math.round(r.n.pos * 1000) / 1000, m: r.n.midi, c: r.missed ? null : r.cents, sc: !!r.sc, sd: r.sd == null ? null : r.sd, dt: r.dt, dr: r.dr || null })), bt: res.bt };
-        setTries((t) => { const cur = t[idx] || {}; const hist = [...(cur.hist || []), { at: rec.at, s: rec.score }].slice(-30); const next = { ...t, [idx]: { last: rec, best: !cur.best || rec.score >= cur.best.score ? rec : cur.best, hist } }; saveTries(songName, next); return next; });
+        const rec = {
+          score: res.score,
+          at: Date.now(),
+          speed: speedRef.current,
+          start: phrases[idx].start,
+          trace: res.trace,
+          rows: res.rows.map((r) => ({
+            p: Math.round(r.n.pos * 1000) / 1000,
+            m: r.n.midi,
+            c: r.missed ? null : r.cents,
+            sc: !!r.sc,
+            sd: r.sd == null ? null : r.sd,
+            dt: r.dt,
+            dr: r.dr || null,
+          })),
+          bt: res.bt,
+        };
+        setTries((t) => {
+          const cur = t[idx] || {};
+          const hist = [
+            ...(cur.hist || []),
+            { at: rec.at, s: rec.score },
+          ].slice(-30);
+          const next = {
+            ...t,
+            [idx]: {
+              last: rec,
+              best: !cur.best || rec.score >= cur.best.score ? rec : cur.best,
+              hist,
+            },
+          };
+          saveTries(songName, next);
+          return next;
+        });
       }
       setLastScores((x) => ({ ...x, [idx]: res.score }));
       if (songName) {
-        const all = loadJSON(BEST_KEY, {}), sb = all[songName] || {};
-        if (!(sb[idx] >= res.score)) { sb[idx] = res.score; all[songName] = sb; saveJSON(BEST_KEY, all); setBest({ ...sb }); }
+        const all = loadJSON(BEST_KEY, {}),
+          sb = all[songName] || {};
+        if (!(sb[idx] >= res.score)) {
+          sb[idx] = res.score;
+          all[songName] = sb;
+          saveJSON(BEST_KEY, all);
+          setBest({ ...sb });
+        }
       }
-      streak.current[idx] = res.score >= 85 ? (streak.current[idx] || 0) + 1 : 0;
-      if (streak.current[idx] >= 2) { addLearned(idx); if (streak.current[idx] === 2) flash("Phrase " + (idx + 1) + " marked learned: two good tries in a row."); }
+      streak.current[idx] =
+        res.score >= 85 ? (streak.current[idx] || 0) + 1 : 0;
+      if (streak.current[idx] >= 2) {
+        addLearned(idx);
+        if (streak.current[idx] === 2)
+          flash(
+            "Phrase " + (idx + 1) + " marked learned: two good tries in a row.",
+          );
+      }
       nextAfter(idx, token, res);
     };
 
     // your turn: silence (and listening, if on) for as long as the phrase lasted
     const turnPhase = (idx, token) => {
       if (flow.current !== token) return;
-      const ph = phrases[idx], p = play.current, ctx = p.ctx, sp = speedRef.current;
+      const ph = phrases[idx],
+        p = play.current,
+        ctx = p.ctx,
+        sp = speedRef.current;
       const total = (ph.end - ph.start) / sp + 0.8 + moreTimeRef.current;
       const until = ctx.currentTime + total;
       const an = listenRef.current ? mic.current.an : null;
       const r = rec.current;
       const buf = an ? new Float32Array(an.fftSize) : null;
       const tgtMed = median(ph.notes.map((n) => n.midi + trRef.current));
-      if (an) { r.on = true; r.chunks = []; r.live = []; r.t0 = ctx.currentTime; setLiveLine({ start: ph.start, speed: sp, oct: 0, points: [] }); }
+      if (an) {
+        r.on = true;
+        r.chunks = [];
+        r.live = [];
+        r.t0 = ctx.currentTime;
+        setLiveLine({ start: ph.start, speed: sp, oct: 0, points: [] });
+      }
       let frame = 0;
       setPlaying(true);
       const wait = () => {
@@ -2686,15 +6837,27 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         if (an) {
           an.getFloatTimeDomainData(buf);
           const d = detectPitch(buf, ctx.sampleRate, micGate());
-          r.live.push({ t: ctx.currentTime - r.t0, m: d.freq > 0 ? 69 + 12 * Math.log2(d.freq / SETTINGS.a4) : NaN });
+          r.live.push({
+            t: ctx.currentTime - r.t0,
+            m: d.freq > 0 ? 69 + 12 * Math.log2(d.freq / SETTINGS.a4) : NaN,
+          });
           if (++frame % 3 === 0) {
             const ms = r.live.filter((x) => x.m === x.m).map((x) => x.m);
-            setLiveLine({ start: ph.start, speed: sp, oct: ms.length ? 12 * Math.round((median(ms) - tgtMed) / 12) : 0, points: r.live.slice() });
+            setLiveLine({
+              start: ph.start,
+              speed: sp,
+              oct: ms.length ? 12 * Math.round((median(ms) - tgtMed) / 12) : 0,
+              points: r.live.slice(),
+            });
           }
         }
         if (left <= 0) {
           setTurn(null);
-          if (an) { r.on = false; finishAttempt(idx, token); return; }
+          if (an) {
+            r.on = false;
+            finishAttempt(idx, token);
+            return;
+          }
           nextAfter(idx, token, null);
           return;
         }
@@ -2706,83 +6869,197 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
 
     const runRepeat = async (idx) => {
       const ph = phrases[idx];
-      if (!ph) { stopAll(); return; }
+      if (!ph) {
+        stopAll();
+        return;
+      }
       const token = ++flow.current;
-      setTurn(null); setReview(null); setPending(null);
-      if (listenRef.current) { await ensureMic(); if (flow.current !== token) return; }
-      playRange(Math.max(0, ph.start - 0.2), ph.end + 0.15, () => turnPhase(idx, token));
+      setTurn(null);
+      setReview(null);
+      setPending(null);
+      if (listenRef.current) {
+        await ensureMic();
+        if (flow.current !== token) return;
+      }
+      playRange(Math.max(0, ph.start - 0.2), ph.end + 0.15, () =>
+        turnPhase(idx, token),
+      );
     };
 
     const startPlay = (t) => {
       if (!data) return;
-      if (modeRef.current === "repeat") { runRepeat(pending && pending.next >= 0 ? pending.next : pending ? 0 : phraseAt(t)); return; }
+      if (modeRef.current === "repeat") {
+        runRepeat(
+          pending && pending.next >= 0
+            ? pending.next
+            : pending
+              ? 0
+              : phraseAt(t),
+        );
+        return;
+      }
       const lp = loopRef.current;
-      let from = Math.max(0, t), end = data.duration;
-      if (lp) { end = lp.b; if (from < lp.a - 0.5 || from >= lp.b) from = Math.max(0, lp.a - 0.3); }
+      let from = Math.max(0, t),
+        end = data.duration;
+      if (lp) {
+        end = lp.b;
+        if (from < lp.a - 0.5 || from >= lp.b) from = Math.max(0, lp.a - 0.3);
+      }
       if (from >= end - 0.05) from = lp ? Math.max(0, lp.a - 0.3) : 0;
       flow.current++;
-      playRange(from, end, () => { if (loopRef.current) startPlay(Math.max(0, loopRef.current.a - 0.3)); else stopAll(); });
+      playRange(from, end, () => {
+        if (loopRef.current) startPlay(Math.max(0, loopRef.current.a - 0.3));
+        else stopAll();
+      });
     };
-    const restartIfPlaying = () => { if (playing) startPlay(turn ? phrases[turn.idx].start : cursor || 0); };
+    const restartIfPlaying = () => {
+      if (playing) startPlay(turn ? phrases[turn.idx].start : cursor || 0);
+    };
 
     const setVol = (k, v) => {
       const next = { ...mixRef.current, [k]: v };
-      mixRef.current = next; setMix(next); saveJSON("pitchstaff.learnmix.v1", next);
-      const p = play.current, node = k === "o" ? p.gO : k === "m" ? p.gM : p.gG;
+      mixRef.current = next;
+      setMix(next);
+      saveJSON("pitchstaff.learnmix.v1", next);
+      const p = play.current,
+        node = k === "o" ? p.gO : k === "m" ? p.gM : p.gG;
       if (node && p.ctx) node.gain.setTargetAtTime(v, p.ctx.currentTime, 0.02);
     };
-    const chooseSpeed = (s) => { speedRef.current = s; setSpeed(s); restartIfPlaying(); };
-    const shiftKey = (d) => { const v = Math.max(-7, Math.min(7, trRef.current + d)); trRef.current = v; setTr(v); restartIfPlaying(); };
-    const resetKey = () => { trRef.current = 0; setTr(0); restartIfPlaying(); };
-    const chooseMode = (m) => { modeRef.current = m; setModeState(m); setLiveLine(null); setPending(null); if (playing) { stopAll(); } };
-    const chooseNames = (n) => { setNames(n); saveJSON("pitchstaff.names.v1", n); };
-    const toggleMastery = () => { const v = !masteryRef.current; masteryRef.current = v; setMastery(v); saveJSON("pitchstaff.mastery.v1", v); };
-    const chooseMoreTime = (v) => { moreTimeRef.current = v; setMoreTime(v); saveJSON("pitchstaff.moretime.v1", v); };
+    const chooseSpeed = (s) => {
+      speedRef.current = s;
+      setSpeed(s);
+      restartIfPlaying();
+    };
+    const shiftKey = (d) => {
+      const v = Math.max(-7, Math.min(7, trRef.current + d));
+      trRef.current = v;
+      setTr(v);
+      restartIfPlaying();
+    };
+    const resetKey = () => {
+      trRef.current = 0;
+      setTr(0);
+      restartIfPlaying();
+    };
+    const chooseMode = (m) => {
+      modeRef.current = m;
+      setModeState(m);
+      setLiveLine(null);
+      setPending(null);
+      if (playing) {
+        stopAll();
+      }
+    };
+    const chooseNames = (n) => {
+      setNames(n);
+      saveJSON("pitchstaff.names.v1", n);
+    };
+    const toggleMastery = () => {
+      const v = !masteryRef.current;
+      masteryRef.current = v;
+      setMastery(v);
+      saveJSON("pitchstaff.mastery.v1", v);
+    };
+    const chooseMoreTime = (v) => {
+      moreTimeRef.current = v;
+      setMoreTime(v);
+      saveJSON("pitchstaff.moretime.v1", v);
+    };
     const [scrollLine, setScrollLine] = useState(null);
-    const startLoop = (a, b) => { const lp = { a: Math.max(0, a), b }; loopRef.current = lp; setLoop(lp); startPlay(Math.max(0, a - 0.3)); };
-    const clearLoop = () => { loopRef.current = null; setLoop(null); };
+    const startLoop = (a, b) => {
+      const lp = { a: Math.max(0, a), b };
+      loopRef.current = lp;
+      setLoop(lp);
+      startPlay(Math.max(0, a - 0.3));
+    };
+    const clearLoop = () => {
+      loopRef.current = null;
+      setLoop(null);
+    };
     // sent here from Karaoke or the Analyst: get that part ready to loop
     useEffect(() => {
       if (!focus || !data) return;
       stopAll();
       if (focus.repeat) {
         // sent from Analyze: get Repeat after me ready on that line
-        modeRef.current = "repeat"; setModeState("repeat"); chooseView("sheet"); clearLoop();
-        let k = -1, bo = 0;
-        spans.forEach((l, i) => { const o = Math.min(l.end, focus.b) - Math.max(l.start, focus.a); if (o > bo) { bo = o; k = i; } });
-        setScrollLine({ k, id: focus.id }); setCursor(Math.max(0, focus.a - 0.3));
-        setToast("Ready on this line. Tap ▶ Play on it to hear it, then sing it back.");
+        modeRef.current = "repeat";
+        setModeState("repeat");
+        chooseView("sheet");
+        clearLoop();
+        let k = -1,
+          bo = 0;
+        spans.forEach((l, i) => {
+          const o = Math.min(l.end, focus.b) - Math.max(l.start, focus.a);
+          if (o > bo) {
+            bo = o;
+            k = i;
+          }
+        });
+        setScrollLine({ k, id: focus.id });
+        setCursor(Math.max(0, focus.a - 0.3));
+        setToast(
+          "Ready on this line. Tap ▶ Play on it to hear it, then sing it back.",
+        );
         setTimeout(() => setToast(""), 5000);
         return;
       }
-      modeRef.current = "play"; setModeState("play");
+      modeRef.current = "play";
+      setModeState("play");
       const lp = { a: Math.max(0, focus.a), b: focus.b };
-      loopRef.current = lp; setLoop(lp); setCursor(Math.max(0, focus.a - 0.3));
+      loopRef.current = lp;
+      setLoop(lp);
+      setCursor(Math.max(0, focus.a - 0.3));
       setToast("That part is set to loop. Tap play when you're ready.");
       setTimeout(() => setToast(""), 4000);
     }, [focus && focus.id]);
-    const seek = (t) => { setCursor(t); if (playing) startPlay(t); };
+    const seek = (t) => {
+      setCursor(t);
+      if (playing) startPlay(t);
+    };
     const tapNote = (n) => {
       setCursor(n.pos);
-      if (playing) { startPlay(n.pos); return; }
-      const ctx = ensureCtx(), p = play.current;
+      if (playing) {
+        startPlay(n.pos);
+        return;
+      }
+      const ctx = ensureCtx(),
+        p = play.current;
       killSources();
       p.gG = bus(ctx, Math.max(0.35, mixRef.current.g || 0.6));
-      p.guide = scheduleGuide(ctx, p.gG, [{ ...n, end: n.pos + Math.min(1.2, Math.max(0.4, n.end - n.pos)) }], n.pos, n.pos + 1.3, ctx.currentTime + 0.02, trRef.current, 1);
+      p.guide = scheduleGuide(
+        ctx,
+        p.gG,
+        [{ ...n, end: n.pos + Math.min(1.2, Math.max(0.4, n.end - n.pos)) }],
+        n.pos,
+        n.pos + 1.3,
+        ctx.currentTime + 0.02,
+        trRef.current,
+        1,
+      );
     };
     const hearSelf = () => {
       const lt = lastTake.current;
       if (!lt) return;
       stopAll();
-      const ctx = ensureCtx(), p = play.current;
-      const s = ctx.createBufferSource(); s.buffer = lt.buffer; s.connect(ctx.destination); s.start(); p.replay = s;
+      const ctx = ensureCtx(),
+        p = play.current;
+      const s = ctx.createBufferSource();
+      s.buffer = lt.buffer;
+      s.connect(ctx.destination);
+      s.start();
+      p.replay = s;
     };
     const hearTake = (idx) => {
       const b = takesRef.current[idx];
       if (!b) return;
       stopAll();
-      const ctx = ensureCtx(), p = play.current;
-      const s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(); p.replay = s;
+      const ctx = ensureCtx(),
+        p = play.current;
+      const s = ctx.createBufferSource();
+      s.buffer = b;
+      s.connect(ctx.destination);
+      s.start();
+      p.replay = s;
     };
     const hearPhrase = (idx) => {
       stopAll();
@@ -2790,271 +7067,1129 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       flow.current++;
       playRange(Math.max(0, ph.start - 0.2), ph.end + 0.15, () => stopAll());
     };
-    const tryAgain = (idx) => { stopAll(); runRepeat(idx); };
+    const tryAgain = (idx) => {
+      stopAll();
+      runRepeat(idx);
+    };
     const toggleLearned = (i) => {
-      const next = learned.includes(i) ? learned.filter((x) => x !== i) : [...learned, i];
+      const next = learned.includes(i)
+        ? learned.filter((x) => x !== i)
+        : [...learned, i];
       setLearned(next);
-      const all = loadJSON(LEARNED_KEY, {}); all[songName] = next; saveJSON(LEARNED_KEY, all);
+      const all = loadJSON(LEARNED_KEY, {});
+      all[songName] = next;
+      saveJSON(LEARNED_KEY, all);
     };
     const sungName = (m, ks) => {
-      if (names === "solfege" && key) return SOLFEGE[(((m - trRef.current - ks - key.doPc) % 12) + 12) % 12];
+      if (names === "solfege" && key)
+        return SOLFEGE[(((m - trRef.current - ks - key.doPc) % 12) + 12) % 12];
       return pretty(midiInfo(m).label);
     };
 
     if (!data) {
       return html`<div class="grid gap-4 sm:grid-cols-2">
-        <${UploadSlot} id="learn-file" step="1" title="Song to learn" hint="Upload the acapella (vocal only) of the song you want to learn. It's shared with Karaoke and the Singing Analyst, so you only upload it once." slot=${orig} onPick=${onPickOrig} />
+        <${UploadSlot}
+          id="learn-file"
+          step="1"
+          title="Song to learn"
+          hint="Upload the acapella (vocal only) of the song you want to learn. It's shared with Karaoke and the Singing Analyst, so you only upload it once."
+          slot=${orig}
+          onPick=${onPickOrig}
+        />
         <div class="panel p-5 flex flex-col gap-2">
           <h3 class="display text-lg font-bold">How Practice works</h3>
-          <p class="muted text-sm" style=${{ maxWidth: "62ch" }}>You'll see the melody as note bars with their names, split into phrases. Play it through or use Repeat after me, which plays a line and then leaves a gap for you to sing it back. Slow the guide notes down, move them into your key, loop the hard parts, and tick off phrases as you learn them. When you're ready, record yourself and check it in the Singing Analyst.</p>
+          <p class="muted text-sm" style=${{ maxWidth: "62ch" }}>
+            You'll see the melody as note bars with their names, split into
+            phrases. Play it through or use Repeat after me, which plays a line
+            and then leaves a gap for you to sing it back. Slow the guide notes
+            down, move them into your key, loop the hard parts, and tick off
+            phrases as you learn them. When you're ready, record yourself and
+            check it in the Singing Analyst.
+          </p>
         </div>
       </div>`;
     }
 
-    const curIdx = cursor != null ? notes.findIndex((n) => cursor >= n.pos && cursor < n.end) : -1;
+    const curIdx =
+      cursor != null
+        ? notes.findIndex((n) => cursor >= n.pos && cursor < n.end)
+        : -1;
     const nextNotes = (() => {
       const from = cursor || 0;
       return notes.filter((n) => n.pos > from).slice(0, 5);
     })();
-    const curPh = turn ? turn.idx : cursor != null ? phrases.findIndex((p) => cursor >= p.start - 0.2 && cursor < p.end + 0.3) : -1;
-    const curLine = cursor != null ? spans.findIndex((l) => cursor >= l.start && cursor < l.end) : -1;
-    let lo = Infinity, hi = -Infinity;
-    notes.forEach((n) => { lo = Math.min(lo, n.midi); hi = Math.max(hi, n.midi); });
+    const curPh = turn
+      ? turn.idx
+      : cursor != null
+        ? phrases.findIndex(
+            (p) => cursor >= p.start - 0.2 && cursor < p.end + 0.3,
+          )
+        : -1;
+    const curLine =
+      cursor != null
+        ? spans.findIndex((l) => cursor >= l.start && cursor < l.end)
+        : -1;
+    let lo = Infinity,
+      hi = -Infinity;
+    notes.forEach((n) => {
+      lo = Math.min(lo, n.midi);
+      hi = Math.max(hi, n.midi);
+    });
     const span = hi - lo;
-    const spanText = span >= 12 ? Math.floor(span / 12) + " octave" + (span >= 24 ? "s" : "") + (span % 12 ? " + " + pianoKeys(span % 12) : "") : pianoKeys(span);
-    const linesIn = (a, b) => spans.filter((l) => l.start < b && l.end > a).map((l) => l.text);
+    const spanText =
+      span >= 12
+        ? Math.floor(span / 12) +
+          " octave" +
+          (span >= 24 ? "s" : "") +
+          (span % 12 ? " + " + pianoKeys(span % 12) : "")
+        : pianoKeys(span);
+    const linesIn = (a, b) =>
+      spans.filter((l) => l.start < b && l.end > a).map((l) => l.text);
     const btn = { padding: "5px 10px", fontSize: 13 };
 
-    const setPlan = (p) => { setPlanState(p); savePlan(songName, p); };
-    if (planRun != null && tempPlan) return html`<${PlanFlow} plan=${tempPlan} songTitle=${(songName || "").replace(/\.[^.]+$/, "")} buffer=${orig && orig.buffer} start=${planRun}
-      onClose=${() => { setPlanRun(null); setTempPlan(null); }} onUpdate=${setTempPlan} onKaraoke=${() => { setPlanRun(null); setTempPlan(null); onGo && onGo("karaoke"); }} />`;
-    if (planRun != null && plan) return html`<${PlanFlow} plan=${plan} songTitle=${(songName || "").replace(/\.[^.]+$/, "")} buffer=${orig && orig.buffer} start=${planRun}
-      onClose=${() => setPlanRun(null)} onUpdate=${setPlan} onKaraoke=${() => { setPlanRun(null); onGo && onGo("karaoke"); }} />`;
+    const setPlan = (p) => {
+      setPlanState(p);
+      savePlan(songName, p);
+    };
+    if (planRun != null && tempPlan)
+      return html`<${PlanFlow}
+        plan=${tempPlan}
+        songTitle=${(songName || "").replace(/\.[^.]+$/, "")}
+        buffer=${orig && orig.buffer}
+        start=${planRun}
+        onClose=${() => {
+          setPlanRun(null);
+          setTempPlan(null);
+        }}
+        onUpdate=${setTempPlan}
+        onKaraoke=${() => {
+          setPlanRun(null);
+          setTempPlan(null);
+          onGo && onGo("karaoke");
+        }}
+      />`;
+    if (planRun != null && plan)
+      return html`<${PlanFlow}
+        plan=${plan}
+        songTitle=${(songName || "").replace(/\.[^.]+$/, "")}
+        buffer=${orig && orig.buffer}
+        start=${planRun}
+        onClose=${() => setPlanRun(null)}
+        onUpdate=${setPlan}
+        onKaraoke=${() => {
+          setPlanRun(null);
+          onGo && onGo("karaoke");
+        }}
+      />`;
     // each lyric line maps to the phrase it overlaps most (scores and takes are kept per phrase)
-    const phraseFor = (l) => { let bi = 0, bo = -1; phrases.forEach((p, i) => { const o = Math.min(p.end, l.end) - Math.max(p.start, l.start); if (o > bo) { bo = o; bi = i; } }); return bi; };
-    const lineInfo = (l) => { const pi = phraseFor(l); const tr0 = tries[pi]; return { last: mode === "repeat" ? (lastScores[pi] != null ? lastScores[pi] : tr0 ? tr0.last.score : null) : null, best: best[pi], learned: learned.includes(pi), me: mode === "repeat" && !!takesRef.current[pi], analyze: mode === "repeat" && !!tr0 }; };
+    const phraseFor = (l) => {
+      let bi = 0,
+        bo = -1;
+      phrases.forEach((p, i) => {
+        const o = Math.min(p.end, l.end) - Math.max(p.start, l.start);
+        if (o > bo) {
+          bo = o;
+          bi = i;
+        }
+      });
+      return bi;
+    };
+    const lineInfo = (l) => {
+      const pi = phraseFor(l);
+      const tr0 = tries[pi];
+      return {
+        last:
+          mode === "repeat"
+            ? lastScores[pi] != null
+              ? lastScores[pi]
+              : tr0
+                ? tr0.last.score
+                : null
+            : null,
+        best: best[pi],
+        learned: learned.includes(pi),
+        me: mode === "repeat" && !!takesRef.current[pi],
+        analyze: mode === "repeat" && !!tr0,
+      };
+    };
     const youMap = (() => {
       if (mode !== "repeat") return null;
-      const byPos = {}; notes.forEach((n, i) => { byPos[Math.round(n.pos * 1000)] = i; });
+      const byPos = {};
+      notes.forEach((n, i) => {
+        byPos[Math.round(n.pos * 1000)] = i;
+      });
       const m = {};
-      Object.values(tries).forEach((t) => t.last.rows.forEach((r) => { const i = byPos[Math.round(r.p * 1000)]; if (i != null) m[i] = r; }));
+      Object.values(tries).forEach((t) =>
+        t.last.rows.forEach((r) => {
+          const i = byPos[Math.round(r.p * 1000)];
+          if (i != null) m[i] = r;
+        }),
+      );
       return m;
     })();
     // your taps (or Clear) become word timing in this song's lyrics
     const saveWords = (src, words) => {
       if (!lyrics || !lyrics.lines || !updateLyrics) return;
       const off = lyrics.offset || 0;
-      updateLyrics({ ...lyrics, lines: lyrics.lines.map((ln, i) => (i === src ? { ...ln, words: words ? words.map((w) => ({ t: Math.max(0, Math.round((w.t - off) * 100) / 100), w: w.w })) : null } : ln)) });
-      flash(words ? "Word timing saved for this line." : "Word timing cleared.");
+      updateLyrics({
+        ...lyrics,
+        lines: lyrics.lines.map((ln, i) =>
+          i === src
+            ? {
+                ...ln,
+                words: words
+                  ? words.map((w) => ({
+                      t: Math.max(0, Math.round((w.t - off) * 100) / 100),
+                      w: w.w,
+                    }))
+                  : null,
+              }
+            : ln,
+        ),
+      });
+      flash(
+        words ? "Word timing saved for this line." : "Word timing cleared.",
+      );
     };
     const drillLine = (l, pi, rec, info) => {
-      const ms = rec.rows.map((r) => r.m), wi = info.worst ? info.worst.i : 0;
-      const a = Math.max(0, Math.min(ms.length - 5, wi - 2)), fixed = ms.slice(a, a + 5);
-      const p = { at: Date.now(), source: "repeat", fresh: false, done: {}, after: null,
-        drills: [{ id: "line" + pi, kind: "line", title: "Drill this line", why: "Five notes around the tricky spot, slow then at song speed", detail: info.tip, tip: info.tip, line: null,
-          spec: { type: "pattern", fixed: fixed.length >= 2 ? fixed : ms.slice(0, 5), rounds: 2, steps: [700, 520], stages: ["Slow", "Song speed"], tol: 0.5 } }],
-        checks: [{ li: null, start: phrases[pi].start, end: phrases[pi].end, text: l.text, before: rec.score, notes: ms.slice(0, 12) }] };
-      setPanel(null); stopAll(); setTempPlan(p); setPlanRun(0);
+      const ms = rec.rows.map((r) => r.m),
+        wi = info.worst ? info.worst.i : 0;
+      const a = Math.max(0, Math.min(ms.length - 5, wi - 2)),
+        fixed = ms.slice(a, a + 5);
+      const p = {
+        at: Date.now(),
+        source: "repeat",
+        fresh: false,
+        done: {},
+        after: null,
+        drills: [
+          {
+            id: "line" + pi,
+            kind: "line",
+            title: "Drill this line",
+            why: "Five notes around the tricky spot, slow then at song speed",
+            detail: info.tip,
+            tip: info.tip,
+            line: null,
+            spec: {
+              type: "pattern",
+              fixed: fixed.length >= 2 ? fixed : ms.slice(0, 5),
+              rounds: 2,
+              steps: [700, 520],
+              stages: ["Slow", "Song speed"],
+              tol: 0.5,
+            },
+          },
+        ],
+        checks: [
+          {
+            li: null,
+            start: phrases[pi].start,
+            end: phrases[pi].end,
+            text: l.text,
+            before: rec.score,
+            notes: ms.slice(0, 12),
+          },
+        ],
+      };
+      setPanel(null);
+      stopAll();
+      setTempPlan(p);
+      setPlanRun(0);
     };
-    const weakRepeat = Object.values(lastScores).some((v) => v < 80) && Object.keys(attemptsRef.current).length > 0;
-    const lo2 = notes.length ? notes.reduce((m, n) => Math.min(m, n.midi), 999) : 0, hi2 = notes.length ? notes.reduce((m, n) => Math.max(m, n.midi), 0) : 0;
+    const weakRepeat =
+      Object.values(lastScores).some((v) => v < 80) &&
+      Object.keys(attemptsRef.current).length > 0;
+    const lo2 = notes.length
+        ? notes.reduce((m, n) => Math.min(m, n.midi), 999)
+        : 0,
+      hi2 = notes.length ? notes.reduce((m, n) => Math.max(m, n.midi), 0) : 0;
     return html`<div class="flex flex-col gap-4">
       <div class="flex gap-2">
-        <div class="mode-seg" role="group" aria-label="Practice mode" style=${{ flex: 1 }}>
-          <button aria-pressed=${mode === "play" ? "true" : "false"} onClick=${() => chooseMode("play")}>Listen</button>
-          <button aria-pressed=${mode === "repeat" ? "true" : "false"} onClick=${() => chooseMode("repeat")}>Repeat after me</button>
+        <div
+          class="mode-seg"
+          role="group"
+          aria-label="Practice mode"
+          style=${{ flex: 1 }}
+        >
+          <button
+            aria-pressed=${mode === "play" ? "true" : "false"}
+            onClick=${() => chooseMode("play")}
+          >
+            Listen
+          </button>
+          <button
+            aria-pressed=${mode === "repeat" ? "true" : "false"}
+            onClick=${() => chooseMode("repeat")}
+          >
+            Repeat after me
+          </button>
         </div>
-        ${mode === "repeat" && html`<button class=${"mic-btn" + (listen ? " on" : "")} aria-pressed=${listen ? "true" : "false"} onClick=${toggleListen} aria-label=${listen ? "Listen to me is on. Tap to practice without scoring" : "Turn on Listen to me to get scored"}><${Icon} name="mic" size=${22} /></button>`}
+        ${mode === "repeat" &&
+        html`<button
+          class=${"mic-btn" + (listen ? " on" : "")}
+          aria-pressed=${listen ? "true" : "false"}
+          onClick=${toggleListen}
+          aria-label=${listen
+            ? "Listen to me is on. Tap to practice without scoring"
+            : "Turn on Listen to me to get scored"}
+        >
+          <${Icon} name="mic" size=${22} />
+        </button>`}
       </div>
-      ${mode === "repeat" && html`<p class="text-xs muted">${listen ? "Mic on: each try gets scored. Tap the mic to practice without scoring." : "Plays a phrase, then gives you time to sing it back. Tap the mic to get scored."}</p>`}
-      ${micMsg && mode === "repeat" && html`<div class="notice" role="alert">${micMsg}</div>`}
+      ${mode === "repeat" &&
+      html`<p class="text-xs muted">
+        ${listen
+          ? "Mic on: each try gets scored. Tap the mic to practice without scoring."
+          : "Plays a phrase, then gives you time to sing it back. Tap the mic to get scored."}
+      </p>`}
+      ${micMsg &&
+      mode === "repeat" &&
+      html`<div class="notice" role="alert">${micMsg}</div>`}
       <div class="flex items-center justify-between gap-2">
-        <span class="text-xs muted">${key ? keyName(key, tr) : ""}${notes.length ? " · " + pretty(midiInfo(lo2 + tr).label) + "–" + pretty(midiInfo(hi2 + tr).label) : ""}</span>
+        <span class="text-xs muted"
+          >${key ? keyName(key, tr) : ""}${notes.length
+            ? " · " +
+              pretty(midiInfo(lo2 + tr).label) +
+              "–" +
+              pretty(midiInfo(hi2 + tr).label)
+            : ""}</span
+        >
         <div class="seg" role="group" aria-label="View">
-          <button aria-pressed=${view === "chart" ? "true" : "false"} onClick=${() => chooseView("chart")} aria-label="Chart view" title="Chart"><${Icon} name="bars" size=${18} /></button>
-          <button aria-pressed=${view === "sheet" ? "true" : "false"} onClick=${() => chooseView("sheet")} aria-label="Song sheet view" title="Song sheet"><${Icon} name="list" size=${18} /></button>
+          <button
+            aria-pressed=${view === "chart" ? "true" : "false"}
+            onClick=${() => chooseView("chart")}
+            aria-label="Chart view"
+            title="Chart"
+          >
+            <${Icon} name="bars" size=${18} />
+          </button>
+          <button
+            aria-pressed=${view === "sheet" ? "true" : "false"}
+            onClick=${() => chooseView("sheet")}
+            aria-label="Song sheet view"
+            title="Song sheet"
+          >
+            <${Icon} name="list" size=${18} />
+          </button>
         </div>
       </div>
 
-      ${view === "sheet" && toast && html`<div class="notice" role="status">${toast}</div>`}
-      ${mode === "play" && plan && !plan.hidden && html`<${PlanCard} plan=${plan} onStart=${(k) => { stopAll(); setPlanRun(k); }} onHide=${() => setPlan({ ...plan, hidden: true })} onClear=${() => setPlan(null)} />`}
-      ${mode === "play" && plan && plan.hidden && html`<button class="link-btn text-sm" style=${{ alignSelf: "flex-start" }} onClick=${() => setPlan({ ...plan, hidden: false })}>Show your plan (${plan.drills.filter((d) => plan.done[d.id] != null).length} of ${plan.drills.length} done)</button>`}
-      ${mode === "play" && !plan && weakRepeat && html`<div class="panel p-3 flex items-center gap-3" style=${{ borderStyle: "dashed" }}>
-        <span class="text-sm muted" style=${{ flex: 1 }}>Make a practice plan from your Repeat after me tries.</span>
-        <button class="btn btn-primary" style=${{ padding: "6px 12px", fontSize: 13, whiteSpace: "nowrap" }} onClick=${() => { const rows = Object.values(attemptsRef.current).flat(); const p = makePlan(rows, notes, spans, phrases, "repeat"); if (p) { p.fresh = false; setPlan(p); } else flash("Nothing big to fix yet. Nice!"); }}>Make plan</button>
+      ${view === "sheet" &&
+      toast &&
+      html`<div class="notice" role="status">${toast}</div>`}
+      ${mode === "play" &&
+      plan &&
+      !plan.hidden &&
+      html`<${PlanCard}
+        plan=${plan}
+        onStart=${(k) => {
+          stopAll();
+          setPlanRun(k);
+        }}
+        onHide=${() => setPlan({ ...plan, hidden: true })}
+        onClear=${() => setPlan(null)}
+      />`}
+      ${mode === "play" &&
+      plan &&
+      plan.hidden &&
+      html`<button
+        class="link-btn text-sm"
+        style=${{ alignSelf: "flex-start" }}
+        onClick=${() => setPlan({ ...plan, hidden: false })}
+      >
+        Show your plan
+        (${plan.drills.filter((d) => plan.done[d.id] != null).length} of
+        ${plan.drills.length} done)
+      </button>`}
+      ${mode === "play" &&
+      !plan &&
+      weakRepeat &&
+      html`<div
+        class="panel p-3 flex items-center gap-3"
+        style=${{ borderStyle: "dashed" }}
+      >
+        <span class="text-sm muted" style=${{ flex: 1 }}
+          >Make a practice plan from your Repeat after me tries.</span
+        >
+        <button
+          class="btn btn-primary"
+          style=${{ padding: "6px 12px", fontSize: 13, whiteSpace: "nowrap" }}
+          onClick=${() => {
+            const rows = Object.values(attemptsRef.current).flat();
+            const p = makePlan(rows, notes, spans, phrases, "repeat");
+            if (p) {
+              p.fresh = false;
+              setPlan(p);
+            } else flash("Nothing big to fix yet. Nice!");
+          }}
+        >
+          Make plan
+        </button>
       </div>`}
-      ${view === "sheet" && mode === "play" ? html`<${SongSheet} scrollLine=${scrollLine} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords}
-        onPlayLine=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.2), l.end + 0.15, () => stopAll()); }}
-        onLoop=${(l) => { if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) { clearLoop(); stopAll(); } else startLoop(l.start, l.end + 0.3); }} />` : html`<${React.Fragment}>
-      <section class="panel p-4 flex flex-col gap-3 min-w-0 coach" ref=${coachRef} style=${view === "sheet" ? { position: "sticky", top: 8, zIndex: 15, boxShadow: "0 8px 24px rgba(0,0,0,.25)" } : undefined}>
-        <div class="flex items-center justify-between gap-2 text-xs muted">
-          <span>${key ? keyName(key, tr) : ""}${notes.length ? " · " + pretty(midiInfo(lo2 + tr).label) + "–" + pretty(midiInfo(hi2 + tr).label) : ""}</span>
-        </div>
-        ${(() => {
-          const showResult = mode === "repeat" && !turn && (scoring || (!playing && attempt && pending && pending.scored && attempt.idx === pending.after));
-          const showReady = mode === "repeat" && !turn && !playing && pending && !pending.scored;
-          if (turn) return html`<div class="flex flex-col gap-1 min-w-0">
-            <span class="label">Your turn · phrase ${turn.idx + 1}</span>
-            ${html`<div class="flex flex-col gap-2">
-                  <p class="display font-bold" style=${{ fontSize: 30, lineHeight: 1.1, color: "var(--accent)" }}>Sing it back${turn.listening ? html` <span class="rec-dot" style=${{ display: "inline-block", verticalAlign: "middle" }}></span>` : ""}</p>
-                  <div class="level" style=${{ height: 6 }}><div style=${{ width: Math.max(0, (100 * turn.left) / turn.total) + "%" }}></div></div>
-                  <p class="text-xs muted">Phrase ${turn.idx + 1}${linesIn(phrases[turn.idx].start, phrases[turn.idx].end).length ? " · “" + linesIn(phrases[turn.idx].start, phrases[turn.idx].end).join(" / ") + "”" : ""}</p>
-                </div>`}
-          </div>`;
-          if (showResult) {
-            if (scoring || !attempt) return html`<div class="flex flex-col gap-1"><span class="label">Your try</span><p class="display text-xl font-bold muted">Checking…</p></div>`;
-            const a = attempt, wrong = a.rows.filter((r) => !r.ok);
-            const tone = a.score >= 80 ? "good" : a.score >= 50 ? "warn" : "bad";
-            const nextIdx = pending ? pending.next : a.idx + 1;
-            const again = pending && pending.again;
-            return html`<div class="flex flex-col gap-3">
-              <div class="flex items-start justify-between gap-3">
-                <div class="flex flex-col">
-                  <span class="label">Your try · phrase ${a.idx + 1}</span>
-                  <span class="display text-xl font-bold">${a.score >= 85 ? "Great! " : a.score >= 60 ? "" : ""}${a.right} of ${a.rows.length} notes right</span>
-                </div>
-                <span class="display font-bold" style=${{ fontSize: 36, lineHeight: 1, color: "var(--" + tone + ")" }}>${a.score}%</span>
+      ${view === "sheet" && mode === "play"
+        ? html`<${SongSheet}
+            scrollLine=${scrollLine}
+            notes=${notes}
+            spans=${spans}
+            phrases=${phrases}
+            tr=${tr}
+            nameOf=${nameOf}
+            names=${names}
+            onNames=${chooseNames}
+            cursor=${cursor}
+            curIdx=${curIdx}
+            playing=${playing}
+            loop=${loop}
+            lineInfo=${lineInfo}
+            onMe=${(l) => {
+              const pi = phraseFor(l);
+              if (takesRef.current[pi]) hearTake(pi);
+            }}
+            you=${youMap}
+            onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })}
+            onPlayRange=${(l) => {
+              clearLoop();
+              playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () =>
+                stopAll(),
+              );
+            }}
+            onSaveWords=${saveWords}
+            onPlayLine=${(l) => {
+              clearLoop();
+              playRange(Math.max(0, l.start - 0.2), l.end + 0.15, () =>
+                stopAll(),
+              );
+            }}
+            onLoop=${(l) => {
+              if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) {
+                clearLoop();
+                stopAll();
+              } else startLoop(l.start, l.end + 0.3);
+            }}
+          />`
+        : html`<${React.Fragment}>
+            <section
+              class="panel p-4 flex flex-col gap-3 min-w-0 coach"
+              ref=${coachRef}
+              style=${view === "sheet"
+                ? {
+                    position: "sticky",
+                    top: 8,
+                    zIndex: 15,
+                    boxShadow: "0 8px 24px rgba(0,0,0,.25)",
+                  }
+                : undefined}
+            >
+              <div
+                class="flex items-center justify-between gap-2 text-xs muted"
+              >
+                <span
+                  >${key ? keyName(key, tr) : ""}${notes.length
+                    ? " · " +
+                      pretty(midiInfo(lo2 + tr).label) +
+                      "–" +
+                      pretty(midiInfo(hi2 + tr).label)
+                    : ""}</span
+                >
               </div>
-              <div class="flex flex-wrap gap-1">
-                ${a.rows.map((r, i) => html`<span key=${i} class=${"nchip " + (r.missed ? "miss" : r.ok ? "ok" : "bad")}>${nameOf(r.n.midi)} ${r.missed ? "–" : r.ok ? "✓" : "✗"}</span>`)}
-              </div>
-              ${wrong.length > 0 && !showDetails && html`<p class="text-sm"><b>${nameOf(wrong[0].n.midi)}</b>: ${wrong[0].missed ? "I couldn't hear this one." : "you sang " + sungName(wrong[0].sung, a.keyShift) + ", " + howMuch(wrong[0].cents) + " too " + (wrong[0].cents > 0 ? "high" : "low") + "."}${wrong.length > 1 || Math.abs(a.lean) >= 15 || a.keyShift !== 0 ? html` <button class="link-btn" onClick=${() => setShowDetails(true)}>Details</button>` : ""}</p>`}
-              ${showDetails && html`<div class="flex flex-col gap-2">
-                <ul class="text-sm flex flex-col gap-1" style=${{ listStyle: "none", padding: 0, margin: 0 }}>
-                ${wrong.slice(0, 4).map((r, i) => html`<li key=${i}><b>${nameOf(r.n.midi)}</b>: ${r.missed ? "I couldn't hear this one." : "you sang " + sungName(r.sung, a.keyShift) + ", " + howMuch(r.cents) + " too " + (r.cents > 0 ? "high" : "low") + "."}</li>`)}
-                </ul>
-                ${Math.abs(a.lean) >= 15 && html`<p class="text-sm muted">Overall you were ${howMuch(a.lean)} ${a.lean > 0 ? "high (sharp)" : "low (flat)"} on this phrase.</p>`}
-                ${a.keyShift !== 0 && html`<div class="notice" style=${{ borderColor: "var(--line)", background: "var(--surface)" }}>You sang this ${pianoKeys(Math.abs(a.keyShift))} ${a.keyShift > 0 ? "higher" : "lower"} than the guide, which is fine.
-                <button class="btn" style=${{ padding: "4px 10px", fontSize: 12, marginLeft: 8 }} onClick=${() => { stopAll(); shiftKey(a.keyShift); }}>Move the guide to my key</button></div>`}
-                <button class="link-btn" style=${{ alignSelf: "flex-start" }} onClick=${() => setShowDetails(false)}>Hide details</button>
-              </div>`}
-              <div class="coach-actions">
-                ${again
-                  ? html`<button class="btn" onClick=${() => hearPhrase(a.idx)}>▶ Phrase</button>`
-                  : html`<button class="btn" onClick=${() => tryAgain(a.idx)}>↻ Try again</button>`}
-                <button class="btn" onClick=${() => hearTake(a.idx)} disabled=${!takesRef.current[a.idx]}>▶ Hear me</button>
-                ${again
-                  ? html`<button class="btn btn-primary" onClick=${() => tryAgain(a.idx)}>↻ Try again</button>`
-                  : nextIdx >= 0 && nextIdx < phrases.length
-                    ? html`<button class="btn btn-primary" onClick=${() => { setShowDetails(false); runRepeat(nextIdx); }}>Next →</button>`
-                    : html`<button class="btn btn-primary" onClick=${() => onGo && onGo("karaoke")}>Karaoke →</button>`}
-              </div>
-              ${again && html`<p class="text-xs muted">${loop ? "Looping this phrase." : "Get 80% or more to move on. You can skip ahead from the phrase list."}</p>`}
-              ${!again && (nextIdx < 0 || nextIdx >= phrases.length) && html`<p class="text-xs muted">That was the last phrase. Nice work!</p>`}
-              ${review && html`<div class="flex items-center gap-3">
-                <div class="level" style=${{ flex: 1, height: 4 }}><div style=${{ width: (100 * review.left) / review.total + "%" }}></div></div>
-                <span class="text-xs muted">${review.again ? "Same phrase again" : "Phrase " + (review.next + 1) + " next"}</span>
-                <button class="btn btn-ghost" style=${{ padding: "3px 10px", fontSize: 12 }} onClick=${stopAll}>Pause</button>
-              </div>`}
-            </div>`;
-          }
-          if (showReady) return html`<div class="flex flex-col gap-2">
-            <span class="label">Phrase ${pending.after + 1} done</span>
-            <p class="display text-2xl font-bold">${pending.next >= 0 ? (pending.again ? "Ready to go again?" : "Ready for phrase " + (pending.next + 1) + "?") : "That was the last phrase"}</p>
-            <div class="coach-actions">
-              <button class="btn" onClick=${() => tryAgain(pending.after)}>↻ Again</button>
-              <button class="btn" onClick=${() => hearPhrase(pending.after)}>▶ Phrase</button>
-              ${pending.next >= 0
-                ? html`<button class="btn btn-primary" onClick=${() => runRepeat(pending.next)}>${pending.again ? "Go →" : "Next →"}</button>`
-                : html`<button class="btn btn-primary" onClick=${() => onGo && onGo("karaoke")}>Karaoke →</button>`}
+              ${(() => {
+                const showResult =
+                  mode === "repeat" &&
+                  !turn &&
+                  (scoring ||
+                    (!playing &&
+                      attempt &&
+                      pending &&
+                      pending.scored &&
+                      attempt.idx === pending.after));
+                const showReady =
+                  mode === "repeat" &&
+                  !turn &&
+                  !playing &&
+                  pending &&
+                  !pending.scored;
+                if (turn)
+                  return html`<div class="flex flex-col gap-1 min-w-0">
+                    <span class="label"
+                      >Your turn · phrase ${turn.idx + 1}</span
+                    >
+                    ${html`<div class="flex flex-col gap-2">
+                      <p
+                        class="display font-bold"
+                        style=${{
+                          fontSize: 30,
+                          lineHeight: 1.1,
+                          color: "var(--accent)",
+                        }}
+                      >
+                        Sing it
+                        back${turn.listening
+                          ? html` <span
+                              class="rec-dot"
+                              style=${{
+                                display: "inline-block",
+                                verticalAlign: "middle",
+                              }}
+                            ></span>`
+                          : ""}
+                      </p>
+                      <div class="level" style=${{ height: 6 }}>
+                        <div
+                          style=${{
+                            width:
+                              Math.max(0, (100 * turn.left) / turn.total) + "%",
+                          }}
+                        ></div>
+                      </div>
+                      <p class="text-xs muted">
+                        Phrase
+                        ${turn.idx + 1}${linesIn(
+                          phrases[turn.idx].start,
+                          phrases[turn.idx].end,
+                        ).length
+                          ? " · “" +
+                            linesIn(
+                              phrases[turn.idx].start,
+                              phrases[turn.idx].end,
+                            ).join(" / ") +
+                            "”"
+                          : ""}
+                      </p>
+                    </div>`}
+                  </div>`;
+                if (showResult) {
+                  if (scoring || !attempt)
+                    return html`<div class="flex flex-col gap-1">
+                      <span class="label">Your try</span>
+                      <p class="display text-xl font-bold muted">Checking…</p>
+                    </div>`;
+                  const a = attempt,
+                    wrong = a.rows.filter((r) => !r.ok);
+                  const tone =
+                    a.score >= 80 ? "good" : a.score >= 50 ? "warn" : "bad";
+                  const nextIdx = pending ? pending.next : a.idx + 1;
+                  const again = pending && pending.again;
+                  return html`<div class="flex flex-col gap-3">
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="flex flex-col">
+                        <span class="label"
+                          >Your try · phrase ${a.idx + 1}</span
+                        >
+                        <span class="display text-xl font-bold"
+                          >${a.score >= 85
+                            ? "Great! "
+                            : a.score >= 60
+                              ? ""
+                              : ""}${a.right}
+                          of ${a.rows.length} notes right</span
+                        >
+                      </div>
+                      <span
+                        class="display font-bold"
+                        style=${{
+                          fontSize: 36,
+                          lineHeight: 1,
+                          color: "var(--" + tone + ")",
+                        }}
+                        >${a.score}%</span
+                      >
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                      ${a.rows.map(
+                        (r, i) =>
+                          html`<span
+                            key=${i}
+                            class=${"nchip " +
+                            (r.missed ? "miss" : r.ok ? "ok" : "bad")}
+                            >${nameOf(r.n.midi)}
+                            ${r.missed ? "–" : r.ok ? "✓" : "✗"}</span
+                          >`,
+                      )}
+                    </div>
+                    ${wrong.length > 0 &&
+                    !showDetails &&
+                    html`<p class="text-sm">
+                      <b>${nameOf(wrong[0].n.midi)}</b>:
+                      ${wrong[0].missed
+                        ? "I couldn't hear this one."
+                        : "you sang " +
+                          sungName(wrong[0].sung, a.keyShift) +
+                          ", " +
+                          howMuch(wrong[0].cents) +
+                          " too " +
+                          (wrong[0].cents > 0 ? "high" : "low") +
+                          "."}${wrong.length > 1 ||
+                      Math.abs(a.lean) >= 15 ||
+                      a.keyShift !== 0
+                        ? html` <button
+                            class="link-btn"
+                            onClick=${() => setShowDetails(true)}
+                          >
+                            Details
+                          </button>`
+                        : ""}
+                    </p>`}
+                    ${showDetails &&
+                    html`<div class="flex flex-col gap-2">
+                      <ul
+                        class="text-sm flex flex-col gap-1"
+                        style=${{ listStyle: "none", padding: 0, margin: 0 }}
+                      >
+                        ${wrong
+                          .slice(0, 4)
+                          .map(
+                            (r, i) =>
+                              html`<li key=${i}>
+                                <b>${nameOf(r.n.midi)}</b>:
+                                ${r.missed
+                                  ? "I couldn't hear this one."
+                                  : "you sang " +
+                                    sungName(r.sung, a.keyShift) +
+                                    ", " +
+                                    howMuch(r.cents) +
+                                    " too " +
+                                    (r.cents > 0 ? "high" : "low") +
+                                    "."}
+                              </li>`,
+                          )}
+                      </ul>
+                      ${Math.abs(a.lean) >= 15 &&
+                      html`<p class="text-sm muted">
+                        Overall you were ${howMuch(a.lean)}
+                        ${a.lean > 0 ? "high (sharp)" : "low (flat)"} on this
+                        phrase.
+                      </p>`}
+                      ${a.keyShift !== 0 &&
+                      html`<div
+                        class="notice"
+                        style=${{
+                          borderColor: "var(--line)",
+                          background: "var(--surface)",
+                        }}
+                      >
+                        You sang this ${pianoKeys(Math.abs(a.keyShift))}
+                        ${a.keyShift > 0 ? "higher" : "lower"} than the guide,
+                        which is fine.
+                        <button
+                          class="btn"
+                          style=${{
+                            padding: "4px 10px",
+                            fontSize: 12,
+                            marginLeft: 8,
+                          }}
+                          onClick=${() => {
+                            stopAll();
+                            shiftKey(a.keyShift);
+                          }}
+                        >
+                          Move the guide to my key
+                        </button>
+                      </div>`}
+                      <button
+                        class="link-btn"
+                        style=${{ alignSelf: "flex-start" }}
+                        onClick=${() => setShowDetails(false)}
+                      >
+                        Hide details
+                      </button>
+                    </div>`}
+                    <div class="coach-actions">
+                      ${again
+                        ? html`<button
+                            class="btn"
+                            onClick=${() => hearPhrase(a.idx)}
+                          >
+                            ▶ Phrase
+                          </button>`
+                        : html`<button
+                            class="btn"
+                            onClick=${() => tryAgain(a.idx)}
+                          >
+                            ↻ Try again
+                          </button>`}
+                      <button
+                        class="btn"
+                        onClick=${() => hearTake(a.idx)}
+                        disabled=${!takesRef.current[a.idx]}
+                      >
+                        ▶ Hear me
+                      </button>
+                      ${again
+                        ? html`<button
+                            class="btn btn-primary"
+                            onClick=${() => tryAgain(a.idx)}
+                          >
+                            ↻ Try again
+                          </button>`
+                        : nextIdx >= 0 && nextIdx < phrases.length
+                          ? html`<button
+                              class="btn btn-primary"
+                              onClick=${() => {
+                                setShowDetails(false);
+                                runRepeat(nextIdx);
+                              }}
+                            >
+                              Next →
+                            </button>`
+                          : html`<button
+                              class="btn btn-primary"
+                              onClick=${() => onGo && onGo("karaoke")}
+                            >
+                              Karaoke →
+                            </button>`}
+                    </div>
+                    ${again &&
+                    html`<p class="text-xs muted">
+                      ${loop
+                        ? "Looping this phrase."
+                        : "Get 80% or more to move on. You can skip ahead from the phrase list."}
+                    </p>`}
+                    ${!again &&
+                    (nextIdx < 0 || nextIdx >= phrases.length) &&
+                    html`<p class="text-xs muted">
+                      That was the last phrase. Nice work!
+                    </p>`}
+                    ${review &&
+                    html`<div class="flex items-center gap-3">
+                      <div class="level" style=${{ flex: 1, height: 4 }}>
+                        <div
+                          style=${{
+                            width: (100 * review.left) / review.total + "%",
+                          }}
+                        ></div>
+                      </div>
+                      <span class="text-xs muted"
+                        >${review.again
+                          ? "Same phrase again"
+                          : "Phrase " + (review.next + 1) + " next"}</span
+                      >
+                      <button
+                        class="btn btn-ghost"
+                        style=${{ padding: "3px 10px", fontSize: 12 }}
+                        onClick=${stopAll}
+                      >
+                        Pause
+                      </button>
+                    </div>`}
+                  </div>`;
+                }
+                if (showReady)
+                  return html`<div class="flex flex-col gap-2">
+                    <span class="label">Phrase ${pending.after + 1} done</span>
+                    <p class="display text-2xl font-bold">
+                      ${pending.next >= 0
+                        ? pending.again
+                          ? "Ready to go again?"
+                          : "Ready for phrase " + (pending.next + 1) + "?"
+                        : "That was the last phrase"}
+                    </p>
+                    <div class="coach-actions">
+                      <button
+                        class="btn"
+                        onClick=${() => tryAgain(pending.after)}
+                      >
+                        ↻ Again
+                      </button>
+                      <button
+                        class="btn"
+                        onClick=${() => hearPhrase(pending.after)}
+                      >
+                        ▶ Phrase
+                      </button>
+                      ${pending.next >= 0
+                        ? html`<button
+                            class="btn btn-primary"
+                            onClick=${() => runRepeat(pending.next)}
+                          >
+                            ${pending.again ? "Go →" : "Next →"}
+                          </button>`
+                        : html`<button
+                            class="btn btn-primary"
+                            onClick=${() => onGo && onGo("karaoke")}
+                          >
+                            Karaoke →
+                          </button>`}
+                    </div>
+                  </div>`;
+                const listenPh = mode === "repeat" && playing && curPh >= 0;
+                return html`<div class="flex flex-col gap-1 min-w-0">
+                  <span class="flex items-center justify-between gap-2">
+                    <span class="label"
+                      >${listenPh
+                        ? "Listen · phrase " + (curPh + 1)
+                        : "Now singing"}</span
+                    >
+                    ${mode === "repeat" &&
+                    attempt &&
+                    html`<span
+                      class=${"tag tag-" +
+                      (attempt.score >= 80
+                        ? "good"
+                        : attempt.score >= 50
+                          ? "warn"
+                          : "bad")}
+                      >Last try ${attempt.score}%</span
+                    >`}
+                  </span>
+                  ${html`<div class="flex items-end gap-3 flex-wrap">
+                    <span
+                      class="display font-bold"
+                      style=${{
+                        fontSize: 48,
+                        lineHeight: 1,
+                        color: curIdx >= 0 ? "var(--accent)" : "var(--muted)",
+                      }}
+                      >${curIdx >= 0 ? nameOf(notes[curIdx].midi) : "—"}</span
+                    >
+                    ${nextNotes.length > 0 &&
+                    html`<span class="text-sm muted pb-1"
+                      >Coming up:
+                      <span class="mono" style=${{ color: "var(--fg)" }}
+                        >${nextNotes
+                          .map((n) => nameOf(n.midi))
+                          .join("  ")}</span
+                      ></span
+                    >`}
+                  </div>`}
+                  ${spans.length > 0 &&
+                  html`<p
+                    class="display font-bold"
+                    style=${{ fontSize: 19, lineHeight: 1.3, marginTop: 4 }}
+                  >
+                    ${curLine >= 0 ? spans[curLine].text : "♪"}
+                  </p>`}
+                </div>`;
+              })()}
+            </section>
+            ${toast &&
+            html`<div
+              class="notice"
+              role="status"
+              style=${{
+                borderColor: "var(--good)",
+                background:
+                  "color-mix(in srgb, var(--good) 10%, var(--surface))",
+              }}
+            >
+              ${toast}
+            </div>`}
+            ${view === "sheet"
+              ? html`<${SongSheet}
+                  scrollLine=${scrollLine}
+                  notes=${notes}
+                  spans=${spans}
+                  phrases=${phrases}
+                  tr=${tr}
+                  nameOf=${nameOf}
+                  names=${names}
+                  onNames=${chooseNames}
+                  cursor=${cursor}
+                  curIdx=${curIdx}
+                  playing=${playing}
+                  loop=${loop}
+                  lineInfo=${lineInfo}
+                  onMe=${(l) => {
+                    const pi = phraseFor(l);
+                    if (takesRef.current[pi]) hearTake(pi);
+                  }}
+                  you=${youMap}
+                  onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })}
+                  onPlayRange=${(l) => {
+                    clearLoop();
+                    playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () =>
+                      stopAll(),
+                    );
+                  }}
+                  onSaveWords=${saveWords}
+                  onPlayLine=${(l) => {
+                    clearLoop();
+                    runRepeat(phraseFor(l));
+                  }}
+                  onLoop=${(l) => {
+                    if (
+                      loop &&
+                      Math.abs(loop.a - Math.max(0, l.start)) < 0.05
+                    ) {
+                      clearLoop();
+                      stopAll();
+                    } else startLoop(l.start, l.end + 0.3);
+                  }}
+                />`
+              : html`<${MelodyMap}
+                  data=${data}
+                  notes=${notes}
+                  tr=${tr}
+                  nameOf=${nameOf}
+                  phrases=${phrases}
+                  lyrics=${spans}
+                  loop=${loop}
+                  cursor=${cursor}
+                  curIdx=${curIdx}
+                  onTapNote=${tapNote}
+                  onSeek=${seek}
+                  themeKey=${themeKey}
+                  overlay=${liveLine}
+                />`}
+            ${view === "chart" &&
+            html`<${SongFit}
+              notes=${notes}
+              tr=${tr}
+              phrases=${phrases}
+              linesIn=${linesIn}
+              nameOf=${nameOf}
+              active=${active}
+              onPractice=${(ph) => {
+                clearLoop();
+                if (modeRef.current === "repeat") runRepeat(ph.i);
+                else startPlay(Math.max(0, ph.start - 0.2));
+                try {
+                  coachRef.current &&
+                    coachRef.current.scrollIntoView({
+                      block: "start",
+                      behavior: "smooth",
+                    });
+                } catch (e) {}
+              }}
+              onFind=${() => {
+                saveJSON(MATCH_KEY + ".mode", "range");
+                onGo && onGo("live");
+              }}
+            />`}
+
+            <div class="flex justify-center">
+              <button class="btn" onClick=${() => onGo && onGo("karaoke")}>
+                Ready? Try it in Karaoke →
+              </button>
             </div>
-          </div>`;
-          const listenPh = mode === "repeat" && playing && curPh >= 0;
-          return html`<div class="flex flex-col gap-1 min-w-0">
-            <span class="flex items-center justify-between gap-2">
-              <span class="label">${listenPh ? "Listen · phrase " + (curPh + 1) : "Now singing"}</span>
-              ${mode === "repeat" && attempt && html`<span class=${"tag tag-" + (attempt.score >= 80 ? "good" : attempt.score >= 50 ? "warn" : "bad")}>Last try ${attempt.score}%</span>`}
-            </span>
-            ${html`<div class="flex items-end gap-3 flex-wrap">
-                  <span class="display font-bold" style=${{ fontSize: 48, lineHeight: 1, color: curIdx >= 0 ? "var(--accent)" : "var(--muted)" }}>${curIdx >= 0 ? nameOf(notes[curIdx].midi) : "—"}</span>
-                  ${nextNotes.length > 0 && html`<span class="text-sm muted pb-1">Coming up: <span class="mono" style=${{ color: "var(--fg)" }}>${nextNotes.map((n) => nameOf(n.midi)).join("  ")}</span></span>`}
-                </div>`}
-            ${spans.length > 0 && html`<p class="display font-bold" style=${{ fontSize: 19, lineHeight: 1.3, marginTop: 4 }}>${curLine >= 0 ? spans[curLine].text : "♪"}</p>`}
-          </div>`;
-        })()}
-      </section>
-      ${toast && html`<div class="notice" role="status" style=${{ borderColor: "var(--good)", background: "color-mix(in srgb, var(--good) 10%, var(--surface))" }}>${toast}</div>`}
+          <//>`}
 
-        ${view === "sheet"
-          ? html`<${SongSheet} scrollLine=${scrollLine} notes=${notes} spans=${spans} phrases=${phrases} tr=${tr} nameOf=${nameOf} names=${names} onNames=${chooseNames} cursor=${cursor} curIdx=${curIdx} playing=${playing} loop=${loop} lineInfo=${lineInfo} onMe=${(l) => { const pi = phraseFor(l); if (takesRef.current[pi]) hearTake(pi); }} you=${youMap} onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })} onPlayRange=${(l) => { clearLoop(); playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll()); }} onSaveWords=${saveWords}
-              onPlayLine=${(l) => { clearLoop(); runRepeat(phraseFor(l)); }}
-              onLoop=${(l) => { if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) { clearLoop(); stopAll(); } else startLoop(l.start, l.end + 0.3); }} />`
-          : html`<${MelodyMap} data=${data} notes=${notes} tr=${tr} nameOf=${nameOf} phrases=${phrases} lyrics=${spans} loop=${loop} cursor=${cursor} curIdx=${curIdx} onTapNote=${tapNote} onSeek=${seek} themeKey=${themeKey} overlay=${liveLine} />`}
-
-      ${view === "chart" && html`<${SongFit} notes=${notes} tr=${tr} phrases=${phrases} linesIn=${linesIn} nameOf=${nameOf} active=${active}
-        onPractice=${(ph) => { clearLoop(); if (modeRef.current === "repeat") runRepeat(ph.i); else startPlay(Math.max(0, ph.start - 0.2)); try { coachRef.current && coachRef.current.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (e) {} }}
-        onFind=${() => { saveJSON(MATCH_KEY + ".mode", "range"); onGo && onGo("live"); }} />`}
-
-      <div class="flex justify-center">
-        <button class="btn" onClick=${() => onGo && onGo("karaoke")}>Ready? Try it in Karaoke →</button>
-      </div>
-      <//>`}
-
-      <${TryPanel} open=${!!panel} line=${panel && panel.l} tries=${panel ? tries[panel.pi] : null} notes=${notes} onClose=${() => setPanel(null)}
-        canHear=${!!(panel && takesRef.current[panel.pi])} onHear=${() => panel && hearTake(panel.pi)} onDrill=${(rec, info) => drillLine(panel.l, panel.pi, rec, info)} />
+      <${TryPanel}
+        open=${!!panel}
+        line=${panel && panel.l}
+        tries=${panel ? tries[panel.pi] : null}
+        notes=${notes}
+        onClose=${() => setPanel(null)}
+        canHear=${!!(panel && takesRef.current[panel.pi])}
+        onHear=${() => panel && hearTake(panel.pi)}
+        onDrill=${(rec, info) => drillLine(panel.l, panel.pi, rec, info)}
+      />
       <div class="playbar">
-        <button class="round-btn primary" onClick=${() => (playing ? stopAll() : startPlay(turn ? phrases[turn.idx].start : cursor || 0))} aria-label=${playing ? "Pause" : "Play"}><${Icon} name=${playing ? "pause" : "play"} /></button>
+        <button
+          class="round-btn primary"
+          onClick=${() =>
+            playing
+              ? stopAll()
+              : startPlay(turn ? phrases[turn.idx].start : cursor || 0)}
+          aria-label=${playing ? "Pause" : "Play"}
+        >
+          <${Icon} name=${playing ? "pause" : "play"} />
+        </button>
         <span class="flex flex-col gap-1 min-w-0" style=${{ flex: 1 }}>
-          <input id="practice-seek" type="range" min="0" max=${data.duration} step="0.1" value=${cursor || 0} onChange=${(e) => seek(parseFloat(e.target.value))} aria-label="Position in the song" />
+          <input
+            id="practice-seek"
+            type="range"
+            min="0"
+            max=${data.duration}
+            step="0.1"
+            value=${cursor || 0}
+            onChange=${(e) => seek(parseFloat(e.target.value))}
+            aria-label="Position in the song"
+          />
           <span class="flex justify-between gap-2 mono text-xs muted">
             <span>${fmt(cursor || 0)}</span>
-            <span>${loop ? "Looping " + fmt(loop.a) + "–" + fmt(loop.b) : (speed < 1 ? Math.round(speed * 100) + "% speed" : "") + (tr ? (speed < 1 ? " · " : "") + "key " + signed(tr) : "")}</span>
+            <span
+              >${loop
+                ? "Looping " + fmt(loop.a) + "–" + fmt(loop.b)
+                : (speed < 1 ? Math.round(speed * 100) + "% speed" : "") +
+                  (tr
+                    ? (speed < 1 ? " · " : "") + "key " + signed(tr)
+                    : "")}</span
+            >
           </span>
         </span>
-        ${loop && html`<button class="icon-btn" onClick=${clearLoop} aria-label="Stop looping" style=${{ color: "var(--accent)", borderColor: "var(--accent)" }}><${Icon} name="loop" /></button>`}
-        <button class="icon-btn" onClick=${() => setOptOpen(true)} aria-label="Practice options"><${Icon} name="sliders" /></button>
+        ${loop &&
+        html`<button
+          class="icon-btn"
+          onClick=${clearLoop}
+          aria-label="Stop looping"
+          style=${{ color: "var(--accent)", borderColor: "var(--accent)" }}
+        >
+          <${Icon} name="loop" />
+        </button>`}
+        <button
+          class="icon-btn"
+          onClick=${() => setOptOpen(true)}
+          aria-label="Practice options"
+        >
+          <${Icon} name="sliders" />
+        </button>
       </div>
 
-      <${Sheet} open=${optOpen} title="Practice options" onClose=${() => setOptOpen(false)}>
+      <${Sheet}
+        open=${optOpen}
+        title="Practice options"
+        onClose=${() => setOptOpen(false)}
+      >
         <div class="opt-group">
           <span class="label">Sound</span>
-        <div class="mixer" style=${{ gridTemplateColumns: "1fr" }}>
-          ${[["o", "Original vocal"], ...(inst && inst.buffer ? [["m", "Music"]] : []), ["g", "Guide notes"]].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"lmix-" + k}>
-            <span class="text-xs font-semibold">${l}</span>
-            <input id=${"lmix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
-            <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
-          </label>`)}
-        </div>
-
+          <div class="mixer" style=${{ gridTemplateColumns: "1fr" }}>
+            ${[
+              ["o", "Original vocal"],
+              ...(inst && inst.buffer ? [["m", "Music"]] : []),
+              ["g", "Guide notes"],
+            ].map(
+              ([k, l]) =>
+                html`<label key=${k} class="mix-row" for=${"lmix-" + k}>
+                  <span class="text-xs font-semibold">${l}</span>
+                  <input
+                    id=${"lmix-" + k}
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value=${mix[k]}
+                    onInput=${(e) => setVol(k, parseFloat(e.target.value))}
+                    onChange=${(e) => setVol(k, parseFloat(e.target.value))}
+                    style=${{ accentColor: "var(--accent)" }}
+                  />
+                  <span
+                    class="mono text-xs muted"
+                    style=${{ width: 34, textAlign: "right" }}
+                    >${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span
+                  >
+                </label>`,
+            )}
+          </div>
         </div>
         <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
           <div class="flex items-center gap-2">
             <span class="label">Speed</span>
             <div class="seg" role="group" aria-label="Speed">
-              ${[[0.5, "50%"], [0.75, "75%"], [1, "100%"]].map(([v, l]) => html`<button key=${l} aria-pressed=${speed === v ? "true" : "false"} onClick=${() => chooseSpeed(v)}>${l}</button>`)}
+              ${[
+                [0.5, "50%"],
+                [0.75, "75%"],
+                [1, "100%"],
+              ].map(
+                ([v, l]) =>
+                  html`<button
+                    key=${l}
+                    aria-pressed=${speed === v ? "true" : "false"}
+                    onClick=${() => chooseSpeed(v)}
+                  >
+                    ${l}
+                  </button>`,
+              )}
             </div>
           </div>
           <div class="flex items-center gap-2">
             <span class="label">Guide key</span>
-            <button class="btn" style=${btn} onClick=${() => shiftKey(-1)} aria-label="Lower the guide notes">−</button>
-            <span class="mono text-xs" style=${{ minWidth: 70, textAlign: "center" }}>${tr === 0 ? "Original" : signed(tr) + " " + (Math.abs(tr) === 1 ? "key" : "keys")}</span>
-            <button class="btn" style=${btn} onClick=${() => shiftKey(1)} aria-label="Raise the guide notes">+</button>
-            ${tr !== 0 && html`<button class="btn btn-ghost" style=${btn} onClick=${resetKey}>Reset</button>`}
+            <button
+              class="btn"
+              style=${btn}
+              onClick=${() => shiftKey(-1)}
+              aria-label="Lower the guide notes"
+            >
+              −
+            </button>
+            <span
+              class="mono text-xs"
+              style=${{ minWidth: 70, textAlign: "center" }}
+              >${tr === 0
+                ? "Original"
+                : signed(tr) +
+                  " " +
+                  (Math.abs(tr) === 1 ? "key" : "keys")}</span
+            >
+            <button
+              class="btn"
+              style=${btn}
+              onClick=${() => shiftKey(1)}
+              aria-label="Raise the guide notes"
+            >
+              +
+            </button>
+            ${tr !== 0 &&
+            html`<button class="btn btn-ghost" style=${btn} onClick=${resetKey}>
+              Reset
+            </button>`}
           </div>
           <div class="flex items-center gap-2">
             <span class="label">Names</span>
             <div class="seg" role="group" aria-label="Note names">
-              <button aria-pressed=${names === "letters" ? "true" : "false"} onClick=${() => chooseNames("letters")}>C D E</button>
-              <button aria-pressed=${names === "solfege" ? "true" : "false"} onClick=${() => chooseNames("solfege")}>Do Re Mi</button>
+              <button
+                aria-pressed=${names === "letters" ? "true" : "false"}
+                onClick=${() => chooseNames("letters")}
+              >
+                C D E
+              </button>
+              <button
+                aria-pressed=${names === "solfege" ? "true" : "false"}
+                onClick=${() => chooseNames("solfege")}
+              >
+                Do Re Mi
+              </button>
             </div>
           </div>
         </div>
-        ${(speed < 1 || (tr !== 0 && mix.o > 0)) && html`<p class="text-xs muted">${speed < 1 ? "Music and the original vocal only play at 100% speed, because slowing a recording down also makes it lower. The guide notes stay in tune at any speed. " : ""}${tr !== 0 && mix.o > 0 ? "The original vocal stays in its own key; only the guide notes move." : ""}</p>`}
-        ${names === "solfege" && key && html`<p class="text-xs muted">Do is ${(key.minor ? KEY_MIN : KEY_MAJ)[(key.doPc) % 12]}${key.minor ? ", so the song's home note is La" : ", the song's home note"}.</p>`}
-        ${mode === "repeat" && html`<div class="opt-group">
+        ${(speed < 1 || (tr !== 0 && mix.o > 0)) &&
+        html`<p class="text-xs muted">
+          ${speed < 1
+            ? "Music and the original vocal only play at 100% speed, because slowing a recording down also makes it lower. The guide notes stay in tune at any speed. "
+            : ""}${tr !== 0 && mix.o > 0
+            ? "The original vocal stays in its own key; only the guide notes move."
+            : ""}
+        </p>`}
+        ${names === "solfege" &&
+        key &&
+        html`<p class="text-xs muted">
+          Do is
+          ${(key.minor ? KEY_MIN : KEY_MAJ)[key.doPc % 12]}${key.minor
+            ? ", so the song's home note is La"
+            : ", the song's home note"}.
+        </p>`}
+        ${mode === "repeat" &&
+        html`<div class="opt-group">
           <span class="label">Repeat after me</span>
           <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <button class="switch" role="switch" aria-checked=${mastery ? "true" : "false"} onClick=${toggleMastery} style=${{ fontSize: 13 }} disabled=${!listen} title=${listen ? "" : "Turn on Listen to me first"}>
-              <span class="track"><span class="knob"></span></span>Move on at 80%+
+            <button
+              class="switch"
+              role="switch"
+              aria-checked=${mastery ? "true" : "false"}
+              onClick=${toggleMastery}
+              style=${{ fontSize: 13 }}
+              disabled=${!listen}
+              title=${listen ? "" : "Turn on Listen to me first"}
+            >
+              <span class="track"><span class="knob"></span></span>Move on at
+              80%+
             </button>
             <div class="flex items-center gap-2">
               <span class="label">Sing-back time</span>
               <div class="seg" role="group" aria-label="Sing-back time">
-                ${[[0, "Normal"], [1, "+1 s"], [2, "+2 s"]].map(([v, l]) => html`<button key=${l} aria-pressed=${moreTime === v ? "true" : "false"} onClick=${() => chooseMoreTime(v)}>${l}</button>`)}
+                ${[
+                  [0, "Normal"],
+                  [1, "+1 s"],
+                  [2, "+2 s"],
+                ].map(
+                  ([v, l]) =>
+                    html`<button
+                      key=${l}
+                      aria-pressed=${moreTime === v ? "true" : "false"}
+                      onClick=${() => chooseMoreTime(v)}
+                    >
+                      ${l}
+                    </button>`,
+                )}
               </div>
             </div>
           </div>
-          ${listen && html`<p class="text-xs muted">The app listens only during "Sing it back" and scores each try. Your line shows in blue on the melody. Two tries of 85% or more in a row mark a phrase as learned.</p>`}
+          ${listen &&
+          html`<p class="text-xs muted">
+            The app listens only during "Sing it back" and scores each try. Your
+            line shows in blue on the melody. Two tries of 85% or more in a row
+            mark a phrase as learned.
+          </p>`}
         </div>`}
       <//>
     </div>`;
@@ -3062,7 +8197,11 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
 
   /* ---------- note matching (Tuner tab) ---------- */
   const MATCH_KEY = "pitchstaff.match.v1";
-  const RANGES = { low: [40, 60, "Low"], mid: [48, 67, "Medium"], high: [55, 76, "High"] };
+  const RANGES = {
+    low: [40, 60, "Low"],
+    mid: [48, 67, "Medium"],
+    high: [55, 76, "High"],
+  };
   const TOLS = { easy: 50, normal: 25, hard: 10 };
   const PIANO_QUIET = 2400; // ms the mic waits while the piano note rings out
 
@@ -3072,10 +8211,16 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const f = SETTINGS.a4 * Math.pow(2, (midi - 69) / 12);
     const out = ctx.createGain();
     // brightness fades as the string rings, like a real piano
-    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 0.6;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.Q.value = 0.6;
     lp.frequency.setValueAtTime(Math.min(12000, f * 12), when);
-    lp.frequency.exponentialRampToValueAtTime(Math.min(5000, f * 3.5), when + Math.min(1.2, dur * 0.55));
-    out.connect(lp); lp.connect(ctx.destination);
+    lp.frequency.exponentialRampToValueAtTime(
+      Math.min(5000, f * 3.5),
+      when + Math.min(1.2, dur * 0.55),
+    );
+    out.connect(lp);
+    lp.connect(ctx.destination);
     // quick hammer strike, a fast first drop, a slow natural decay, then a soft release
     out.gain.setValueAtTime(0.0001, when);
     out.gain.linearRampToValueAtTime(0.5, when + 0.005);
@@ -3085,93 +8230,130 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const amps = [1, 0.55, 0.34, 0.22, 0.14, 0.09, 0.055, 0.035];
     const total = amps.reduce((s, v) => s + v, 0);
     amps.forEach((amp, i) => {
-      const n = i + 1, fn = f * n * Math.sqrt(1 + 0.00012 * n * n);
+      const n = i + 1,
+        fn = f * n * Math.sqrt(1 + 0.00012 * n * n);
       if (fn > 12000) return;
       // two slightly detuned strings per note give the warm piano shimmer
       [-0.0006, 0.0006].forEach((dt) => {
-        const o = ctx.createOscillator(); o.type = i === 0 ? "triangle" : "sine"; o.frequency.value = fn * (1 + dt);
+        const o = ctx.createOscillator();
+        o.type = i === 0 ? "triangle" : "sine";
+        o.frequency.value = fn * (1 + dt);
         const g = ctx.createGain();
         g.gain.setValueAtTime((amp / total) * 0.5, when);
-        g.gain.exponentialRampToValueAtTime((amp / total) * 0.5 * 0.08, when + dur / (1 + i * 0.55));
-        o.connect(g); g.connect(out);
-        o.start(when); o.stop(when + dur + 0.05);
+        g.gain.exponentialRampToValueAtTime(
+          (amp / total) * 0.5 * 0.08,
+          when + dur / (1 + i * 0.55),
+        );
+        o.connect(g);
+        g.connect(out);
+        o.start(when);
+        o.stop(when + dur + 0.05);
       });
     });
     // a tiny felt "thump" from the hammer
     try {
-      const len = Math.floor(ctx.sampleRate * 0.03), nb = ctx.createBuffer(1, len, ctx.sampleRate), d = nb.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-      const ns = ctx.createBufferSource(); ns.buffer = nb;
-      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = Math.min(4000, f * 3); bp.Q.value = 1.2;
-      const ng = ctx.createGain(); ng.gain.value = 0.06;
-      ns.connect(bp); bp.connect(ng); ng.connect(ctx.destination); ns.start(when);
+      const len = Math.floor(ctx.sampleRate * 0.03),
+        nb = ctx.createBuffer(1, len, ctx.sampleRate),
+        d = nb.getChannelData(0);
+      for (let i = 0; i < len; i++)
+        d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const ns = ctx.createBufferSource();
+      ns.buffer = nb;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = Math.min(4000, f * 3);
+      bp.Q.value = 1.2;
+      const ng = ctx.createGain();
+      ng.gain.value = 0.06;
+      ns.connect(bp);
+      bp.connect(ng);
+      ng.connect(ctx.destination);
+      ns.start(when);
     } catch (e) {}
   }
   function playChime(ctx) {
     [88, 93].forEach((m, i) => {
       const t = ctx.currentTime + 0.02 + i * 0.09;
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = "sine"; o.frequency.value = SETTINGS.a4 * Math.pow(2, (m - 69) / 12);
+      const o = ctx.createOscillator(),
+        g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = SETTINGS.a4 * Math.pow(2, (m - 69) / 12);
       g.gain.setValueAtTime(0.0001, t);
       g.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-      o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.4);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start(t);
+      o.stop(t + 0.4);
     });
   }
 
-  function Keyboard({ baseOct, target, matched, sung, onKey }) {
-    const c = 12 * (baseOct + 1);
-    const whites = [0, 2, 4, 5, 7, 9, 11, 12].map((s) => c + s);
-    const blacks = [[1, 0], [3, 1], [6, 3], [8, 4], [10, 5]].map(([s, after]) => ({ m: c + s, after }));
-    const ww = 100 / whites.length;
-    const state = (m) => (m === target ? (matched ? " k-hit" : " k-target") : "") + (m === sung ? " k-sung" : "");
-    return html`<div class="keys" role="group" aria-label="Piano keyboard">
-      ${whites.map((m, i) => { const info = midiInfo(m); return html`<button key=${m} class=${"wkey" + state(m)} style=${{ left: i * ww + "%", width: ww + "%" }} onClick=${() => onKey(m)} aria-label=${"Play " + info.label}>
-        <span class="mono">${info.letter === "C" ? info.label : info.letter}</span></button>`; })}
-      ${blacks.map(({ m, after }) => html`<button key=${m} class=${"bkey" + state(m)} style=${{ left: (after + 1) * ww - ww * 0.31 + "%", width: ww * 0.62 + "%" }} onClick=${() => onKey(m)} aria-label=${"Play " + midiInfo(m).label}></button>`)}
-    </div>`;
-  }
+<Keyboard/>
 
   /* ---------- vocal range ---------- */
   const RANGE_KEY = "pitchstaff.range.v1";
-  const loadRanges = () => { const v = loadJSON(RANGE_KEY, []); return Array.isArray(v) ? v.filter((r) => r && typeof r.lo === "number" && typeof r.hi === "number") : []; };
+  const loadRanges = () => {
+    const v = loadJSON(RANGE_KEY, []);
+    return Array.isArray(v)
+      ? v.filter(
+          (r) => r && typeof r.lo === "number" && typeof r.hi === "number",
+        )
+      : [];
+  };
   // typical ranges (MIDI) used to suggest a voice type
-  const VOICES = [["Bass", 40, 64], ["Baritone", 45, 69], ["Tenor", 48, 72], ["Alto", 53, 77], ["Mezzo-soprano", 57, 81], ["Soprano", 60, 84]];
+  const VOICES = [
+    ["Bass", 40, 64],
+    ["Baritone", 45, 69],
+    ["Tenor", 48, 72],
+    ["Alto", 53, 77],
+    ["Mezzo-soprano", 57, 81],
+    ["Soprano", 60, 84],
+  ];
   function voiceType(lo, hi) {
     const mid = (lo + hi) / 2;
-    let best = null, bd = Infinity;
-    VOICES.forEach(([n, a, b]) => { const d = Math.abs(mid - (a + b) / 2) + 0.5 * Math.abs(lo - a); if (d < bd) { bd = d; best = n; } });
+    let best = null,
+      bd = Infinity;
+    VOICES.forEach(([n, a, b]) => {
+      const d = Math.abs(mid - (a + b) / 2) + 0.5 * Math.abs(lo - a);
+      if (d < bd) {
+        bd = d;
+        best = n;
+      }
+    });
     return best;
   }
-  const comfyOf = (r) => (r.hi - r.lo >= 10 ? [r.lo + 3, r.hi - 3] : r.hi - r.lo >= 4 ? [r.lo + 1, r.hi - 1] : [r.lo, r.hi]);
+  const comfyOf = (r) =>
+    r.hi - r.lo >= 10
+      ? [r.lo + 3, r.hi - 3]
+      : r.hi - r.lo >= 4
+        ? [r.lo + 1, r.hi - 1]
+        : [r.lo, r.hi];
   function spanWords(lo, hi) {
-    const n = hi - lo + 1, oct = Math.round(((hi - lo) / 12) * 2) / 2;
-    const o = oct < 0.5 ? "" : oct === 0.5 ? "about half an octave" : "about " + String(Math.floor(oct)) + (oct % 1 ? "½" : "") + " octave" + (oct > 1 ? "s" : "");
+    const n = hi - lo + 1,
+      oct = Math.round(((hi - lo) / 12) * 2) / 2;
+    const o =
+      oct < 0.5
+        ? ""
+        : oct === 0.5
+          ? "about half an octave"
+          : "about " +
+            String(Math.floor(oct)) +
+            (oct % 1 ? "½" : "") +
+            " octave" +
+            (oct > 1 ? "s" : "");
     return n + " notes" + (o ? ", " + o : "");
   }
-  // a strip of piano keys with your range (and optionally a song's range) marked
-  function RangeKeys({ lo, hi, comfy, song }) {
-    let a = lo, b = hi;
-    if (song) { a = Math.min(a, song[0]); b = Math.max(b, song[1]); }
-    const first = 12 * Math.floor((a - 2) / 12), last = 12 * Math.ceil((b + 2) / 12);
-    const whites = [];
-    for (let m = first; m <= last; m++) if (!midiInfo(m).sharp) whites.push(m);
-    const W = 340, H = 64, kw = W / whites.length, xs = {};
-    const fillW = (m) => (m >= comfy[0] && m <= comfy[1] ? "var(--accent)" : m >= lo && m <= hi ? "color-mix(in srgb, var(--accent) 42%, #f7f7f4)" : "#f7f7f4");
-    const fillB = (m) => (m >= comfy[0] && m <= comfy[1] ? "color-mix(in srgb, var(--accent) 55%, #1d2027)" : m >= lo && m <= hi ? "color-mix(in srgb, var(--accent) 30%, #1d2027)" : "#1d2027");
-    whites.forEach((m, i) => { xs[m] = i * kw; });
-    const cx = (m) => (xs[m] != null ? xs[m] + kw / 2 : xs[m - 1] + kw);
-    const label = "Piano keys: your range " + pretty(midiInfo(lo).label) + " to " + pretty(midiInfo(hi).label) + (song ? ", song " + pretty(midiInfo(song[0]).label) + " to " + pretty(midiInfo(song[1]).label) : "");
-    return html`<svg viewBox=${"0 0 " + W + " " + (H + 16)} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label=${label}>
-      ${whites.map((m) => html`<rect key=${"w" + m} x=${(xs[m] + 0.5).toFixed(1)} y="0.5" width=${(kw - 1).toFixed(1)} height=${H - 1} rx="3" fill=${fillW(m)} stroke="var(--bg)"></rect>`)}
-      ${whites.filter((m) => m < last && midiInfo(m + 1).sharp).map((m) => html`<rect key=${"b" + m} x=${(xs[m] + kw * 0.68).toFixed(1)} y="0.5" width=${(kw * 0.64).toFixed(1)} height=${(H * 0.58).toFixed(1)} rx="2" fill=${fillB(m + 1)} stroke="var(--bg)"></rect>`)}
-      ${song && html`<line x1=${cx(song[0]).toFixed(1)} y1=${H - 9} x2=${cx(song[1]).toFixed(1)} y2=${H - 9} stroke="var(--you)" strokeWidth="5" strokeLinecap="round"></line>`}
-      ${song && song[1] > hi && html`<line x1=${cx(hi + 1).toFixed(1)} y1=${H - 9} x2=${cx(song[1]).toFixed(1)} y2=${H - 9} stroke="var(--bad)" strokeWidth="5" strokeLinecap="round"></line>`}
-      ${song && song[0] < lo && html`<line x1=${cx(song[0]).toFixed(1)} y1=${H - 9} x2=${cx(lo - 1).toFixed(1)} y2=${H - 9} stroke="var(--bad)" strokeWidth="5" strokeLinecap="round"></line>`}
-      ${whites.filter((m) => m % 12 === 0).map((m) => html`<text key=${"t" + m} x=${(xs[m] + 3).toFixed(1)} y=${H + 12} fill="var(--muted)" fontSize="10" fontFamily="JetBrains Mono, monospace">${midiInfo(m).label}</text>`)}
-    </svg>`;
-  }
-  const keyDot = (bg) => html`<span style=${{ width: 12, height: 12, borderRadius: 3, background: bg, flexShrink: 0 }}></span>`;
+ <RangeKeys/>
+  const keyDot = (bg) =>
+    html`<span
+      style=${{
+        width: 12,
+        height: 12,
+        borderRadius: 3,
+        background: bg,
+        flexShrink: 0,
+      }}
+    ></span>`;
 
   function RangeFinder({ feedRef, listening, onStartMic, onStopMic }) {
     const [history, setHistory] = useState(loadRanges);
@@ -3180,7 +8362,16 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [cur, setCur] = useState(null);
     const [hold, setHold] = useState(0);
     const [found, setFound] = useState({ low: null, high: null });
-    const s = useRef({ buf: [], cand: null, since: 0, quiet: 0, step: "low", low: null, high: null, hold: 0 });
+    const s = useRef({
+      buf: [],
+      cand: null,
+      since: 0,
+      quiet: 0,
+      step: "low",
+      low: null,
+      high: null,
+      hold: 0,
+    });
     const ringC = 2 * Math.PI * 48;
 
     feedRef.current = (m, now) => {
@@ -3188,111 +8379,376 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       if (!testing) return;
       if (m == null || m < 36 || m > 92) {
         if (!st.quiet) st.quiet = now;
-        if (now - st.quiet > 150 && st.cand != null) { st.buf = []; st.cand = null; st.hold = 0; setCur(null); setHold(0); }
+        if (now - st.quiet > 150 && st.cand != null) {
+          st.buf = [];
+          st.cand = null;
+          st.hold = 0;
+          setCur(null);
+          setHold(0);
+        }
         return;
       }
       st.quiet = 0;
-      st.buf.push(m); if (st.buf.length > 7) st.buf.shift();
-      const med = [...st.buf].sort((a, b) => a - b)[Math.floor(st.buf.length / 2)];
+      st.buf.push(m);
+      if (st.buf.length > 7) st.buf.shift();
+      const med = [...st.buf].sort((a, b) => a - b)[
+        Math.floor(st.buf.length / 2)
+      ];
       const n = Math.round(med);
-      if (n !== st.cand) { st.cand = n; st.since = now; setCur(n); }
+      if (n !== st.cand) {
+        st.cand = n;
+        st.since = now;
+        setCur(n);
+      }
       const h = Math.min(1, (now - st.since) / 500);
-      if (Math.abs(h - st.hold) >= 0.05 || (h === 1 && st.hold !== 1)) { st.hold = h; setHold(h); }
+      if (Math.abs(h - st.hold) >= 0.05 || (h === 1 && st.hold !== 1)) {
+        st.hold = h;
+        setHold(h);
+      }
       if (h >= 1) {
-        if (st.step === "low" && (st.low == null || n < st.low)) { st.low = n; setFound((f) => ({ ...f, low: n })); }
-        if (st.step === "high" && (st.high == null || n > st.high)) { st.high = n; setFound((f) => ({ ...f, high: n })); }
+        if (st.step === "low" && (st.low == null || n < st.low)) {
+          st.low = n;
+          setFound((f) => ({ ...f, low: n }));
+        }
+        if (st.step === "high" && (st.high == null || n > st.high)) {
+          st.high = n;
+          setFound((f) => ({ ...f, high: n }));
+        }
       }
     };
-    useEffect(() => () => { feedRef.current = null; }, []);
+    useEffect(
+      () => () => {
+        feedRef.current = null;
+      },
+      [],
+    );
 
     const begin = () => {
-      s.current = { buf: [], cand: null, since: 0, quiet: 0, step: "low", low: null, high: null, hold: 0 };
-      setFound({ low: null, high: null }); setStep("low"); setCur(null); setHold(0); setTesting(true);
+      s.current = {
+        buf: [],
+        cand: null,
+        since: 0,
+        quiet: 0,
+        step: "low",
+        low: null,
+        high: null,
+        hold: 0,
+      };
+      setFound({ low: null, high: null });
+      setStep("low");
+      setCur(null);
+      setHold(0);
+      setTesting(true);
       if (!listening) onStartMic();
     };
-    const goHigh = () => { s.current.step = "high"; s.current.cand = null; s.current.buf = []; setStep("high"); setCur(null); setHold(0); };
+    const goHigh = () => {
+      s.current.step = "high";
+      s.current.cand = null;
+      s.current.buf = [];
+      setStep("high");
+      setCur(null);
+      setHold(0);
+    };
     const finish = () => {
-      const lo = s.current.low, hi = s.current.high;
+      const lo = s.current.low,
+        hi = s.current.high;
       if (lo == null || hi == null) return;
       const r = { lo: Math.min(lo, hi), hi: Math.max(lo, hi), at: Date.now() };
       const next = [r, ...history].slice(0, 12);
-      setHistory(next); saveJSON(RANGE_KEY, next);
-      setTesting(false); onStopMic();
+      setHistory(next);
+      saveJSON(RANGE_KEY, next);
+      setTesting(false);
+      onStopMic();
     };
-    const cancel = () => { setTesting(false); onStopMic(); };
+    const cancel = () => {
+      setTesting(false);
+      onStopMic();
+    };
 
     if (testing) {
       const best = step === "low" ? found.low : found.high;
-      const center = cur != null ? cur : best != null ? best : step === "low" ? 57 : 67;
-      const rows = []; for (let m = center + 6; m >= center - 6; m--) rows.push(m);
+      const center =
+        cur != null ? cur : best != null ? best : step === "low" ? 57 : 67;
+      const rows = [];
+      for (let m = center + 6; m >= center - 6; m--) rows.push(m);
       return html`<${React.Fragment}>
         <div class="flex items-center gap-3">
-          <span class="flex gap-1"><span style=${{ width: 26, height: 6, borderRadius: 3, background: step === "high" ? "var(--good)" : "var(--accent)" }}></span><span style=${{ width: 26, height: 6, borderRadius: 3, background: step === "high" ? "var(--accent)" : "var(--line)" }}></span></span>
+          <span class="flex gap-1"
+            ><span
+              style=${{
+                width: 26,
+                height: 6,
+                borderRadius: 3,
+                background: step === "high" ? "var(--good)" : "var(--accent)",
+              }}
+            ></span
+            ><span
+              style=${{
+                width: 26,
+                height: 6,
+                borderRadius: 3,
+                background: step === "high" ? "var(--accent)" : "var(--line)",
+              }}
+            ></span
+          ></span>
           <span class="text-sm muted">Step ${step === "low" ? 1 : 2} of 2</span>
         </div>
-        <section class="tuner-card" style=${{ alignItems: "stretch", justifyContent: "flex-start", flex: 1, gap: 14 }}>
+        <section
+          class="tuner-card"
+          style=${{
+            alignItems: "stretch",
+            justifyContent: "flex-start",
+            flex: 1,
+            gap: 14,
+          }}
+        >
           <div class="flex flex-col gap-1">
-            <span class="display font-bold" style=${{ fontSize: 24 }}>${step === "low" ? "Slide down" : "Now slide up"}</span>
-            <span class="text-sm muted">${step === "low" ? "Start on a comfy note and glide down slowly. Stop when your voice gets croaky or breathy." : "Start on a comfy note and glide up slowly, like a siren. Stop when it strains. No need to push."}</span>
+            <span class="display font-bold" style=${{ fontSize: 24 }}
+              >${step === "low" ? "Slide down" : "Now slide up"}</span
+            >
+            <span class="text-sm muted"
+              >${step === "low"
+                ? "Start on a comfy note and glide down slowly. Stop when your voice gets croaky or breathy."
+                : "Start on a comfy note and glide up slowly, like a siren. Stop when it strains. No need to push."}</span
+            >
           </div>
-          ${!listening ? html`<div class="flex justify-center py-4"><button class="btn btn-primary" style=${{ minHeight: 52, fontSize: 16, padding: "0 22px" }} onClick=${onStartMic}><span class="flex items-center gap-2"><${Icon} name="mic" size=${20} />Tap to start listening</span></button></div>` : html`
-          <div class="flex gap-3" style=${{ flex: 1, minHeight: 0 }}>
-            <div class="flex flex-col" style=${{ flex: 1, gap: 3, minWidth: 0 }} aria-hidden="true">
-              ${rows.map((m) => {
-                const isCur = m === cur, isBest = m === best;
-                const reached = best != null && (step === "low" ? m >= best : m <= best);
-                return html`<div key=${m} class="mono flex items-center justify-between" style=${{ height: 22, padding: "0 10px", borderRadius: 6, fontSize: 11, background: isCur ? "var(--you)" : reached ? "color-mix(in srgb, var(--you) 14%, transparent)" : "var(--surface-2)", color: isCur ? "var(--bg)" : reached ? "var(--fg)" : "var(--muted)", fontWeight: isCur ? 700 : 500 }}>
-                  <span>${pretty(midiInfo(m).label)}</span><span>${isCur ? "you" : isBest ? (step === "low" ? "lowest" : "highest") : ""}</span></div>`;
-              })}
-            </div>
-            <div class="flex flex-col items-center justify-center gap-2" style=${{ width: 118, flexShrink: 0 }}>
-              <span style=${{ position: "relative", width: 108, height: 108 }}>
-                <svg width="108" height="108" viewBox="0 0 108 108" role="img" aria-label=${cur != null ? "Holding " + pretty(midiInfo(cur).label) : "Waiting for your voice"}>
-                  <circle cx="54" cy="54" r="48" fill="none" stroke="var(--line)" strokeWidth="6"></circle>
-                  <circle cx="54" cy="54" r="48" fill="none" stroke="var(--you)" strokeWidth="6" strokeLinecap="round" strokeDasharray=${(ringC * hold).toFixed(1) + " " + ringC.toFixed(1)} transform="rotate(-90 54 54)"></circle>
-                </svg>
-                <span style=${{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                  <span class="label" style=${{ fontSize: 10 }}>Hold</span>
-                  <span class="display font-bold" style=${{ fontSize: 32, lineHeight: 1, color: cur != null ? "var(--you)" : "var(--muted)" }} aria-live="polite">${cur != null ? pretty(midiInfo(cur).label) : "—"}</span>
-                </span>
-              </span>
-              <span class="text-xs muted" style=${{ textAlign: "center" }}>Hold a note steady for half a second to count it</span>
-            </div>
-          </div>`}
+          ${!listening
+            ? html`<div class="flex justify-center py-4">
+                <button
+                  class="btn btn-primary"
+                  style=${{ minHeight: 52, fontSize: 16, padding: "0 22px" }}
+                  onClick=${onStartMic}
+                >
+                  <span class="flex items-center gap-2"
+                    ><${Icon} name="mic" size=${20} />Tap to start
+                    listening</span
+                  >
+                </button>
+              </div>`
+            : html` <div class="flex gap-3" style=${{ flex: 1, minHeight: 0 }}>
+                <div
+                  class="flex flex-col"
+                  style=${{ flex: 1, gap: 3, minWidth: 0 }}
+                  aria-hidden="true"
+                >
+                  ${rows.map((m) => {
+                    const isCur = m === cur,
+                      isBest = m === best;
+                    const reached =
+                      best != null && (step === "low" ? m >= best : m <= best);
+                    return html`<div
+                      key=${m}
+                      class="mono flex items-center justify-between"
+                      style=${{
+                        height: 22,
+                        padding: "0 10px",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        background: isCur
+                          ? "var(--you)"
+                          : reached
+                            ? "color-mix(in srgb, var(--you) 14%, transparent)"
+                            : "var(--surface-2)",
+                        color: isCur
+                          ? "var(--bg)"
+                          : reached
+                            ? "var(--fg)"
+                            : "var(--muted)",
+                        fontWeight: isCur ? 700 : 500,
+                      }}
+                    >
+                      <span>${pretty(midiInfo(m).label)}</span
+                      ><span
+                        >${isCur
+                          ? "you"
+                          : isBest
+                            ? step === "low"
+                              ? "lowest"
+                              : "highest"
+                            : ""}</span
+                      >
+                    </div>`;
+                  })}
+                </div>
+                <div
+                  class="flex flex-col items-center justify-center gap-2"
+                  style=${{ width: 118, flexShrink: 0 }}
+                >
+                  <span
+                    style=${{ position: "relative", width: 108, height: 108 }}
+                  >
+                    <svg
+                      width="108"
+                      height="108"
+                      viewBox="0 0 108 108"
+                      role="img"
+                      aria-label=${cur != null
+                        ? "Holding " + pretty(midiInfo(cur).label)
+                        : "Waiting for your voice"}
+                    >
+                      <circle
+                        cx="54"
+                        cy="54"
+                        r="48"
+                        fill="none"
+                        stroke="var(--line)"
+                        strokeWidth="6"
+                      ></circle>
+                      <circle
+                        cx="54"
+                        cy="54"
+                        r="48"
+                        fill="none"
+                        stroke="var(--you)"
+                        strokeWidth="6"
+                        strokeLinecap="round"
+                        strokeDasharray=${(ringC * hold).toFixed(1) +
+                        " " +
+                        ringC.toFixed(1)}
+                        transform="rotate(-90 54 54)"
+                      ></circle>
+                    </svg>
+                    <span
+                      style=${{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <span class="label" style=${{ fontSize: 10 }}>Hold</span>
+                      <span
+                        class="display font-bold"
+                        style=${{
+                          fontSize: 32,
+                          lineHeight: 1,
+                          color: cur != null ? "var(--you)" : "var(--muted)",
+                        }}
+                        aria-live="polite"
+                        >${cur != null
+                          ? pretty(midiInfo(cur).label)
+                          : "—"}</span
+                      >
+                    </span>
+                  </span>
+                  <span class="text-xs muted" style=${{ textAlign: "center" }}
+                    >Hold a note steady for half a second to count it</span
+                  >
+                </div>
+              </div>`}
           <div class="grid grid-cols-2 gap-2">
-            <div style=${{ padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)" }}><div class="label">Lowest</div><div class="display font-bold" style=${{ fontSize: 20 }}>${found.low != null ? pretty(midiInfo(found.low).label) : "—"}${found.low != null && step === "high" ? html` <span style=${{ fontSize: 13, color: "var(--good)" }}>✓</span>` : ""}</div></div>
-            <div style=${{ padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)" }}><div class="label">Highest</div><div class="display font-bold" style=${{ fontSize: 20 }}>${found.high != null ? pretty(midiInfo(found.high).label) : "—"}</div></div>
+            <div
+              style=${{
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "var(--surface-2)",
+              }}
+            >
+              <div class="label">Lowest</div>
+              <div class="display font-bold" style=${{ fontSize: 20 }}>
+                ${found.low != null
+                  ? pretty(midiInfo(found.low).label)
+                  : "—"}${found.low != null && step === "high"
+                  ? html` <span style=${{ fontSize: 13, color: "var(--good)" }}
+                      >✓</span
+                    >`
+                  : ""}
+              </div>
+            </div>
+            <div
+              style=${{
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "var(--surface-2)",
+              }}
+            >
+              <div class="label">Highest</div>
+              <div class="display font-bold" style=${{ fontSize: 20 }}>
+                ${found.high != null ? pretty(midiInfo(found.high).label) : "—"}
+              </div>
+            </div>
           </div>
         </section>
         <div class="grid grid-cols-2 gap-2">
-          <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${step === "low" ? cancel : begin}>${step === "low" ? "Cancel" : "Start over"}</button>
+          <button
+            class="btn"
+            style=${{ justifyContent: "center", minHeight: 46 }}
+            onClick=${step === "low" ? cancel : begin}
+          >
+            ${step === "low" ? "Cancel" : "Start over"}
+          </button>
           ${step === "low"
-            ? html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${goHigh} disabled=${found.low == null}>Next: slide up</button>`
-            : html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${finish} disabled=${found.high == null}>See my range</button>`}
+            ? html`<button
+                class="btn btn-primary"
+                style=${{ justifyContent: "center", minHeight: 46 }}
+                onClick=${goHigh}
+                disabled=${found.low == null}
+              >
+                Next: slide up
+              </button>`
+            : html`<button
+                class="btn btn-primary"
+                style=${{ justifyContent: "center", minHeight: 46 }}
+                onClick=${finish}
+                disabled=${found.high == null}
+              >
+                See my range
+              </button>`}
         </div>
       <//>`;
     }
 
-    if (!history.length) return html`<${React.Fragment}>
-      <section class="tuner-card" style=${{ alignItems: "stretch", gap: 12 }}>
-        <span class="display font-bold" style=${{ fontSize: 24 }}>Find your range</span>
-        <p class="text-sm muted" style=${{ margin: 0 }}>A 1-minute test to find your lowest and highest notes. You'll slide down, then slide up, and Tono notes where your voice stays steady.</p>
-        <ul class="text-sm flex flex-col gap-1" style=${{ margin: 0, paddingLeft: 18 }}>
-          <li>Warm up a little first. Hum or sing something easy.</li>
-          <li>Go slowly, and stop before it hurts. Straining doesn't count.</li>
-          <li>A quiet room helps the mic hear you clearly.</li>
-        </ul>
-      </section>
-      <div style=${{ marginTop: "auto" }}><button class="btn btn-primary w-full" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${begin}>Start the test</button></div>
-    <//>`;
+    if (!history.length)
+      return html`<${React.Fragment}>
+        <section class="tuner-card" style=${{ alignItems: "stretch", gap: 12 }}>
+          <span class="display font-bold" style=${{ fontSize: 24 }}
+            >Find your range</span
+          >
+          <p class="text-sm muted" style=${{ margin: 0 }}>
+            A 1-minute test to find your lowest and highest notes. You'll slide
+            down, then slide up, and Tono notes where your voice stays steady.
+          </p>
+          <ul
+            class="text-sm flex flex-col gap-1"
+            style=${{ margin: 0, paddingLeft: 18 }}
+          >
+            <li>Warm up a little first. Hum or sing something easy.</li>
+            <li>
+              Go slowly, and stop before it hurts. Straining doesn't count.
+            </li>
+            <li>A quiet room helps the mic hear you clearly.</li>
+          </ul>
+        </section>
+        <div style=${{ marginTop: "auto" }}>
+          <button
+            class="btn btn-primary w-full"
+            style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+            onClick=${begin}
+          >
+            Start the test
+          </button>
+        </div>
+      <//>`;
 
-    const r = history[0], comfy = comfyOf(r);
+    const r = history[0],
+      comfy = comfyOf(r);
     const today = new Date().toDateString();
-    const day = (t) => (new Date(t).toDateString() === today ? "Today" : new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+    const day = (t) =>
+      new Date(t).toDateString() === today
+        ? "Today"
+        : new Date(t).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          });
     const change = (i) => {
-      const a = history[i], b = history[i + 1];
+      const a = history[i],
+        b = history[i + 1];
       if (!b) return "First test";
-      const up = a.hi - b.hi, down = b.lo - a.lo, parts = [];
+      const up = a.hi - b.hi,
+        down = b.lo - a.lo,
+        parts = [];
       if (up) parts.push((up > 0 ? "+" : "−") + Math.abs(up) + " top");
       if (down) parts.push((down > 0 ? "+" : "−") + Math.abs(down) + " low");
       return parts.length ? parts.join(", ") : "Same";
@@ -3302,138 +8758,403 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         <div class="flex items-start justify-between gap-3">
           <div class="flex flex-col min-w-0">
             <span class="label">Your range</span>
-            <span class="display font-bold" style=${{ fontSize: 40, lineHeight: 1.05 }}>${pretty(midiInfo(r.lo).label)} – ${pretty(midiInfo(r.hi).label)}</span>
+            <span
+              class="display font-bold"
+              style=${{ fontSize: 40, lineHeight: 1.05 }}
+              >${pretty(midiInfo(r.lo).label)} –
+              ${pretty(midiInfo(r.hi).label)}</span
+            >
             <span class="text-sm muted">${spanWords(r.lo, r.hi)}</span>
           </div>
-          <span class="tag" style=${{ background: "color-mix(in srgb, var(--accent) 16%, transparent)", color: "var(--accent)", fontSize: 13, padding: "5px 10px", whiteSpace: "nowrap" }}>${voiceType(r.lo, r.hi)}</span>
+          <span
+            class="tag"
+            style=${{
+              background: "color-mix(in srgb, var(--accent) 16%, transparent)",
+              color: "var(--accent)",
+              fontSize: 13,
+              padding: "5px 10px",
+              whiteSpace: "nowrap",
+            }}
+            >${voiceType(r.lo, r.hi)}</span
+          >
         </div>
         <${RangeKeys} lo=${r.lo} hi=${r.hi} comfy=${comfy} />
         <div class="flex flex-wrap gap-3 text-xs muted">
-          <span class="flex items-center gap-2">${keyDot("var(--accent)")}Comfortable ${pretty(midiInfo(comfy[0]).label)}–${pretty(midiInfo(comfy[1]).label)}</span>
-          <span class="flex items-center gap-2">${keyDot("color-mix(in srgb, var(--accent) 42%, #f7f7f4)")}Reachable</span>
+          <span class="flex items-center gap-2"
+            >${keyDot("var(--accent)")}Comfortable
+            ${pretty(midiInfo(comfy[0]).label)}–${pretty(
+              midiInfo(comfy[1]).label,
+            )}</span
+          >
+          <span class="flex items-center gap-2"
+            >${keyDot(
+              "color-mix(in srgb, var(--accent) 42%, #f7f7f4)",
+            )}Reachable</span
+          >
         </div>
-        <p class="text-xs muted" style=${{ margin: 0 }}>Voice type is a rough guide from your range. Tone and where your voice feels easy matter too, and your range can grow as you practise.</p>
+        <p class="text-xs muted" style=${{ margin: 0 }}>
+          Voice type is a rough guide from your range. Tone and where your voice
+          feels easy matter too, and your range can grow as you practise.
+        </p>
       </section>
-      ${history.length > 1 && html`<section class="panel p-4 flex flex-col gap-2">
+      ${history.length > 1 &&
+      html`<section class="panel p-4 flex flex-col gap-2">
         <span class="label">Past results</span>
-        ${history.slice(0, 4).map((h, i) => html`<div key=${h.at} class="flex items-center justify-between gap-2 text-sm" style=${{ color: i ? "var(--muted)" : "var(--fg)" }}>
-          <span style=${{ width: 64 }}>${day(h.at)}</span><span class="mono" style=${{ fontSize: 13 }}>${pretty(midiInfo(h.lo).label)} – ${pretty(midiInfo(h.hi).label)}</span><span class="text-xs" style=${{ width: 92, textAlign: "right", color: i === 0 && /\+/.test(change(0)) ? "var(--good)" : undefined }}>${change(i)}</span>
-        </div>`)}
+        ${history.slice(0, 4).map(
+          (h, i) =>
+            html`<div
+              key=${h.at}
+              class="flex items-center justify-between gap-2 text-sm"
+              style=${{ color: i ? "var(--muted)" : "var(--fg)" }}
+            >
+              <span style=${{ width: 64 }}>${day(h.at)}</span
+              ><span class="mono" style=${{ fontSize: 13 }}
+                >${pretty(midiInfo(h.lo).label)} –
+                ${pretty(midiInfo(h.hi).label)}</span
+              ><span
+                class="text-xs"
+                style=${{
+                  width: 92,
+                  textAlign: "right",
+                  color:
+                    i === 0 && /\+/.test(change(0)) ? "var(--good)" : undefined,
+                }}
+                >${change(i)}</span
+              >
+            </div>`,
+        )}
       </section>`}
-      <div style=${{ marginTop: "auto" }}><button class="btn btn-primary w-full" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${begin}>Test again</button></div>
+      <div style=${{ marginTop: "auto" }}>
+        <button
+          class="btn btn-primary w-full"
+          style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+          onClick=${begin}
+        >
+          Test again
+        </button>
+      </div>
     <//>`;
   }
 
   // Practice: how the loaded song sits against the singer's saved range
-  function SongFit({ notes, tr, phrases, linesIn, nameOf, active, onPractice, onFind }) {
+  function SongFit({
+    notes,
+    tr,
+    phrases,
+    linesIn,
+    nameOf,
+    active,
+    onPractice,
+    onFind,
+  }) {
     const mine = useMemo(() => loadRanges()[0] || null, [active]);
     if (!notes.length) return null;
-    if (!mine) return html`<section class="panel p-4 flex items-center gap-3" style=${{ borderStyle: "dashed" }}>
-      <span class="text-sm muted" style=${{ flex: 1 }}>No range yet? Take the 1-minute test in Tuner to see how songs fit you.</span>
-      <button class="link-btn text-sm" style=${{ whiteSpace: "nowrap" }} onClick=${onFind}>Find my range</button>
-    </section>`;
-    let slo = 999, shi = 0;
-    notes.forEach((n) => { slo = Math.min(slo, n.midi + tr); shi = Math.max(shi, n.midi + tr); });
-    const highs = new Set(), lows = new Set();
-    notes.forEach((n) => { const m = n.midi + tr; if (m > mine.hi) highs.add(m); if (m < mine.lo) lows.add(m); });
+    if (!mine)
+      return html`<section
+        class="panel p-4 flex items-center gap-3"
+        style=${{ borderStyle: "dashed" }}
+      >
+        <span class="text-sm muted" style=${{ flex: 1 }}
+          >No range yet? Take the 1-minute test in Tuner to see how songs fit
+          you.</span
+        >
+        <button
+          class="link-btn text-sm"
+          style=${{ whiteSpace: "nowrap" }}
+          onClick=${onFind}
+        >
+          Find my range
+        </button>
+      </section>`;
+    let slo = 999,
+      shi = 0;
+    notes.forEach((n) => {
+      slo = Math.min(slo, n.midi + tr);
+      shi = Math.max(shi, n.midi + tr);
+    });
+    const highs = new Set(),
+      lows = new Set();
+    notes.forEach((n) => {
+      const m = n.midi + tr;
+      if (m > mine.hi) highs.add(m);
+      if (m < mine.lo) lows.add(m);
+    });
     const out = highs.size + lows.size;
-    const status = !out ? ["Fits you", "good"] : highs.size && lows.size ? ["Wider than your range", "warn"] : highs.size ? [out <= 3 ? "A bit high" : "High for you", "warn"] : [out <= 3 ? "A bit low" : "Low for you", "warn"];
-    const hard = phrases.map((ph) => {
-      let top = null, bottom = null;
-      ph.notes.forEach((n) => { const m = n.midi + tr; if (m > mine.hi && (top == null || m > top)) top = m; if (m < mine.lo && (bottom == null || m < bottom)) bottom = m; });
-      return top != null || bottom != null ? { ph, m: top != null ? top : bottom } : null;
-    }).filter(Boolean);
+    const status = !out
+      ? ["Fits you", "good"]
+      : highs.size && lows.size
+        ? ["Wider than your range", "warn"]
+        : highs.size
+          ? [out <= 3 ? "A bit high" : "High for you", "warn"]
+          : [out <= 3 ? "A bit low" : "Low for you", "warn"];
+    const hard = phrases
+      .map((ph) => {
+        let top = null,
+          bottom = null;
+        ph.notes.forEach((n) => {
+          const m = n.midi + tr;
+          if (m > mine.hi && (top == null || m > top)) top = m;
+          if (m < mine.lo && (bottom == null || m < bottom)) bottom = m;
+        });
+        return top != null || bottom != null
+          ? { ph, m: top != null ? top : bottom }
+          : null;
+      })
+      .filter(Boolean);
     const outNames = [...highs, ...lows];
     return html`<section class="panel p-4 flex flex-col gap-3">
       <div class="flex items-center justify-between gap-2">
         <h3 class="display text-lg font-bold">Song vs your range</h3>
         <span class=${"tag tag-" + status[1]}>${status[0]}</span>
       </div>
-      <${RangeKeys} lo=${mine.lo} hi=${mine.hi} comfy=${comfyOf(mine)} song=${[slo, shi]} />
+      <${RangeKeys}
+        lo=${mine.lo}
+        hi=${mine.hi}
+        comfy=${comfyOf(mine)}
+        song=${[slo, shi]}
+      />
       <div class="flex flex-wrap gap-3 text-xs muted">
-        <span class="flex items-center gap-2"><span style=${{ width: 14, height: 5, borderRadius: 3, background: "var(--you)" }}></span>Song ${pretty(midiInfo(slo).label)}–${pretty(midiInfo(shi).label)}</span>
-        <span class="flex items-center gap-2">${keyDot("var(--accent)")}You ${pretty(midiInfo(mine.lo).label)}–${pretty(midiInfo(mine.hi).label)}</span>
-        ${out > 0 && html`<span class="flex items-center gap-2"><span style=${{ width: 14, height: 5, borderRadius: 3, background: "var(--bad)" }}></span>Outside your range</span>`}
+        <span class="flex items-center gap-2"
+          ><span
+            style=${{
+              width: 14,
+              height: 5,
+              borderRadius: 3,
+              background: "var(--you)",
+            }}
+          ></span
+          >Song
+          ${pretty(midiInfo(slo).label)}–${pretty(midiInfo(shi).label)}</span
+        >
+        <span class="flex items-center gap-2"
+          >${keyDot("var(--accent)")}You
+          ${pretty(midiInfo(mine.lo).label)}–${pretty(
+            midiInfo(mine.hi).label,
+          )}</span
+        >
+        ${out > 0 &&
+        html`<span class="flex items-center gap-2"
+          ><span
+            style=${{
+              width: 14,
+              height: 5,
+              borderRadius: 3,
+              background: "var(--bad)",
+            }}
+          ></span
+          >Outside your range</span
+        >`}
       </div>
       ${!out
-        ? html`<p class="text-sm" style=${{ margin: 0 }}>Every note is inside your range. Nice pick!</p>`
-        : html`<p class="text-sm" style=${{ margin: 0 }}><b>${out} note${out > 1 ? "s" : ""}</b> (${outNames.map((m) => pretty(midiInfo(m).label)).join(", ")}) ${(highs.size && lows.size ? "go outside" : highs.size ? "go above" : "go below").replace(/^go/, out > 1 ? "go" : "goes")} your range, in <b>${hard.length} phrase${hard.length > 1 ? "s" : ""}</b>:</p>
-        <div class="flex flex-col gap-2">
-          ${hard.slice(0, 5).map(({ ph, m }) => { const w = linesIn(ph.start, ph.end); return html`<div key=${ph.i} class="flex items-center gap-3" style=${{ padding: "8px 12px", borderRadius: 12, background: "var(--surface-2)" }}>
-            <span class="mono text-xs muted">${fmt(ph.start)}</span>
-            <span class="text-sm" style=${{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${w.length ? w.join(" / ") : "Phrase " + (ph.i + 1)}</span>
-            <span class="mono text-xs" style=${{ color: "var(--bad)" }}>${pretty(midiInfo(m).label)}</span>
-            <button class="link-btn text-sm" onClick=${() => onPractice(ph)}>Practise</button>
-          </div>`; })}
-          ${hard.length > 5 && html`<span class="text-xs muted">…and ${hard.length - 5} more in the phrase list.</span>`}
-        </div>
-        <p class="text-xs muted" style=${{ margin: 0 }}>Tip: ${highs.size ? "sing the high notes lightly, or drop them an octave for now." : "sing the low notes softly, or take them up an octave for now."}${highs.size && lows.size ? " Low ones can go up an octave." : ""}</p>`}
+        ? html`<p class="text-sm" style=${{ margin: 0 }}>
+            Every note is inside your range. Nice pick!
+          </p>`
+        : html`<p class="text-sm" style=${{ margin: 0 }}>
+              <b>${out} note${out > 1 ? "s" : ""}</b> (${outNames
+                .map((m) => pretty(midiInfo(m).label))
+                .join(", ")})
+              ${(highs.size && lows.size
+                ? "go outside"
+                : highs.size
+                  ? "go above"
+                  : "go below"
+              ).replace(/^go/, out > 1 ? "go" : "goes")}
+              your range, in
+              <b>${hard.length} phrase${hard.length > 1 ? "s" : ""}</b>:
+            </p>
+            <div class="flex flex-col gap-2">
+              ${hard.slice(0, 5).map(({ ph, m }) => {
+                const w = linesIn(ph.start, ph.end);
+                return html`<div
+                  key=${ph.i}
+                  class="flex items-center gap-3"
+                  style=${{
+                    padding: "8px 12px",
+                    borderRadius: 12,
+                    background: "var(--surface-2)",
+                  }}
+                >
+                  <span class="mono text-xs muted">${fmt(ph.start)}</span>
+                  <span
+                    class="text-sm"
+                    style=${{
+                      flex: 1,
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    >${w.length ? w.join(" / ") : "Phrase " + (ph.i + 1)}</span
+                  >
+                  <span class="mono text-xs" style=${{ color: "var(--bad)" }}
+                    >${pretty(midiInfo(m).label)}</span
+                  >
+                  <button
+                    class="link-btn text-sm"
+                    onClick=${() => onPractice(ph)}
+                  >
+                    Practise
+                  </button>
+                </div>`;
+              })}
+              ${hard.length > 5 &&
+              html`<span class="text-xs muted"
+                >…and ${hard.length - 5} more in the phrase list.</span
+              >`}
+            </div>
+            <p class="text-xs muted" style=${{ margin: 0 }}>
+              Tip:
+              ${highs.size
+                ? "sing the high notes lightly, or drop them an octave for now."
+                : "sing the low notes softly, or take them up an octave for now."}${highs.size &&
+              lows.size
+                ? " Low ones can go up an octave."
+                : ""}
+            </p>`}
     </section>`;
   }
 
-  function MatchTrainer({ hookRef, listening, onStartMic, onStopMic, onTarget, onStatus, sung, live, level, error }) {
+  function MatchTrainer({
+    hookRef,
+    listening,
+    onStartMic,
+    onStopMic,
+    onTarget,
+    onStatus,
+    sung,
+    live,
+    level,
+    error,
+  }) {
     const [target, setTarget] = useState(null);
-    const [tmode, setTmode] = useState(() => loadJSON(MATCH_KEY + ".mode", "free"));
+    const [tmode, setTmode] = useState(() =>
+      loadJSON(MATCH_KEY + ".mode", "free"),
+    );
     const [optOpen, setOptOpen] = useState(false);
     const [baseOct, setBaseOct] = useState(4);
-    const [range, setRange] = useState(() => loadJSON(MATCH_KEY + ".range", "mid"));
-    const [diff, setDiff] = useState(() => loadJSON(MATCH_KEY + ".diff", "normal"));
-    const [anyOct, setAnyOct] = useState(() => loadJSON(MATCH_KEY + ".anyoct", true));
-    const [autoNext, setAutoNext] = useState(() => loadJSON(MATCH_KEY + ".auto", true));
+    const [range, setRange] = useState(() =>
+      loadJSON(MATCH_KEY + ".range", "mid"),
+    );
+    const [diff, setDiff] = useState(() =>
+      loadJSON(MATCH_KEY + ".diff", "normal"),
+    );
+    const [anyOct, setAnyOct] = useState(() =>
+      loadJSON(MATCH_KEY + ".anyoct", true),
+    );
+    const [autoNext, setAutoNext] = useState(() =>
+      loadJSON(MATCH_KEY + ".auto", true),
+    );
     const [phase, setPhase] = useState("idle"); // idle | listen | sing | hit
     const [cents, setCents] = useState(null);
     const [hold, setHold] = useState(0);
     const [streak, setStreak] = useState(0);
     const [lastTime, setLastTime] = useState(null);
-    const [stats, setStats] = useState(() => loadJSON(MATCH_KEY + ".stats", { hits: 0, best: null }));
-    const r = useRef({ target: null, setAt: 0, holdStart: 0, ignoreUntil: 0, matched: false, ctx: null, timers: [] });
+    const [stats, setStats] = useState(() =>
+      loadJSON(MATCH_KEY + ".stats", { hits: 0, best: null }),
+    );
+    const r = useRef({
+      target: null,
+      setAt: 0,
+      holdStart: 0,
+      ignoreUntil: 0,
+      matched: false,
+      ctx: null,
+      timers: [],
+    });
     const opts = useRef({});
     const rangeFeed = useRef(null);
     opts.current = { tol: TOLS[diff], anyOct, autoNext, range };
 
     const ctx = () => {
       const s = r.current;
-      if (!s.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; s.ctx = new Ctx(); }
+      if (!s.ctx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        s.ctx = new Ctx();
+      }
       if (s.ctx.state === "suspended") s.ctx.resume().catch(() => {});
       return s.ctx;
     };
-    const later = (fn, ms) => { const id = setTimeout(fn, ms); r.current.timers.push(id); };
-    useEffect(() => () => { hookRef.current = null; onTarget(null); onStatus && onStatus(null); r.current.timers.forEach(clearTimeout); if (r.current.ctx) r.current.ctx.close().catch(() => {}); }, []);
+    const later = (fn, ms) => {
+      const id = setTimeout(fn, ms);
+      r.current.timers.push(id);
+    };
+    useEffect(
+      () => () => {
+        hookRef.current = null;
+        onTarget(null);
+        onStatus && onStatus(null);
+        r.current.timers.forEach(clearTimeout);
+        if (r.current.ctx) r.current.ctx.close().catch(() => {});
+      },
+      [],
+    );
 
     const choose = (midi) => {
       const s = r.current;
-      s.timers.forEach(clearTimeout); s.timers = [];
+      s.timers.forEach(clearTimeout);
+      s.timers = [];
       if (s.target != null && !s.matched) setStreak(0); // moved on without hitting it
-      s.target = midi; s.matched = false; s.holdStart = 0;
+      s.target = midi;
+      s.matched = false;
+      s.holdStart = 0;
       // ignore the mic while the piano rings, so the app doesn't "hear" its own note
-      s.ignoreUntil = performance.now() + PIANO_QUIET; s.setAt = s.ignoreUntil;
-      setTarget(midi); setCents(null); setHold(0); setPhase("listen");
+      s.ignoreUntil = performance.now() + PIANO_QUIET;
+      s.setAt = s.ignoreUntil;
+      setTarget(midi);
+      setCents(null);
+      setHold(0);
+      setPhase("listen");
       onTarget({ midi, matched: false });
       const oct = Math.floor(midi / 12) - 1;
-      setBaseOct((b) => (midi >= 12 * (b + 1) && midi <= 12 * (b + 1) + 12 ? b : Math.max(2, Math.min(5, oct))));
+      setBaseOct((b) =>
+        midi >= 12 * (b + 1) && midi <= 12 * (b + 1) + 12
+          ? b
+          : Math.max(2, Math.min(5, oct)),
+      );
       playPiano(ctx(), midi);
       later(() => setPhase((p) => (p === "listen" ? "sing" : p)), PIANO_QUIET);
     };
     const random = () => {
       const [lo, hi] = RANGES[opts.current.range];
       let m;
-      do { m = lo + Math.floor(Math.random() * (hi - lo + 1)); } while (m === r.current.target && hi > lo);
+      do {
+        m = lo + Math.floor(Math.random() * (hi - lo + 1));
+      } while (m === r.current.target && hi > lo);
       choose(m);
     };
     const replay = () => {
       const s = r.current;
       if (s.target == null) return;
-      s.ignoreUntil = performance.now() + PIANO_QUIET; s.holdStart = 0; setHold(0);
-      if (!s.matched) { setPhase("listen"); later(() => setPhase((p) => (p === "listen" ? "sing" : p)), PIANO_QUIET); }
+      s.ignoreUntil = performance.now() + PIANO_QUIET;
+      s.holdStart = 0;
+      setHold(0);
+      if (!s.matched) {
+        setPhase("listen");
+        later(
+          () => setPhase((p) => (p === "listen" ? "sing" : p)),
+          PIANO_QUIET,
+        );
+      }
       playPiano(ctx(), s.target);
     };
 
     // called by the microphone loop on every frame: m = sung pitch (fractional MIDI) or null for silence
     hookRef.current = (m, now) => {
-      if (tmode === "range") { if (rangeFeed.current) rangeFeed.current(m, now); return; }
-      const s = r.current, o = opts.current;
+      if (tmode === "range") {
+        if (rangeFeed.current) rangeFeed.current(m, now);
+        return;
+      }
+      const s = r.current,
+        o = opts.current;
       if (s.target == null || s.matched || now < s.ignoreUntil) return;
-      if (m == null) { if (s.holdStart) { s.holdStart = 0; setHold(0); } setCents(null); return; }
+      if (m == null) {
+        if (s.holdStart) {
+          s.holdStart = 0;
+          setHold(0);
+        }
+        setCents(null);
+        return;
+      }
       let d = m - s.target;
       if (o.anyOct) d -= 12 * Math.round(d / 12);
       const c = Math.round(d * 100);
@@ -3444,227 +9165,683 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         setHold(h);
         if (h >= 1) {
           s.matched = true;
-          setPhase("hit"); onTarget({ midi: s.target, matched: true });
+          setPhase("hit");
+          onTarget({ midi: s.target, matched: true });
           playChime(ctx());
           const secs = Math.max(0, (now - s.setAt) / 1000);
           setLastTime(secs);
           setStreak((v) => v + 1);
-          setStats((st) => { const next = { hits: st.hits + 1, best: st.best == null ? secs : Math.min(st.best, secs) }; saveJSON(MATCH_KEY + ".stats", next); return next; });
+          setStats((st) => {
+            const next = {
+              hits: st.hits + 1,
+              best: st.best == null ? secs : Math.min(st.best, secs),
+            };
+            saveJSON(MATCH_KEY + ".stats", next);
+            return next;
+          });
           if (o.autoNext) later(random, 1400);
         }
-      } else if (s.holdStart) { s.holdStart = 0; setHold(0); }
+      } else if (s.holdStart) {
+        s.holdStart = 0;
+        setHold(0);
+      }
     };
 
     const tol = TOLS[diff];
-    useEffect(() => { onStatus && onStatus(target == null ? null : { midi: target, cents, hold, tol, phase }); }, [target, cents, hold, tol, phase]);
-    let hint, tone = "muted";
-    if (target == null) hint = "Pick a note on the keyboard, or tap Random note.";
-    else if (phase === "hit") { hint = "Matched!"; tone = "good"; }
-    else if (!listening) hint = "Tap Start listening, then sing the note.";
+    useEffect(() => {
+      onStatus &&
+        onStatus(
+          target == null ? null : { midi: target, cents, hold, tol, phase },
+        );
+    }, [target, cents, hold, tol, phase]);
+    let hint,
+      tone = "muted";
+    if (target == null)
+      hint = "Pick a note on the keyboard, or tap Random note.";
+    else if (phase === "hit") {
+      hint = "Matched!";
+      tone = "good";
+    } else if (!listening) hint = "Tap Start listening, then sing the note.";
     else if (phase === "listen") hint = "Listen…";
     else if (cents == null) hint = "Your turn. Sing the note.";
-    else if (Math.abs(cents) <= tol) { hint = "Hold it…"; tone = "good"; }
-    else if (cents < 0) { hint = cents < -Math.max(2 * tol, 50) ? "Go up ↑" : "A little higher ↑"; tone = "warn"; }
-    else { hint = cents > Math.max(2 * tol, 50) ? "Go down ↓" : "A little lower ↓"; tone = "warn"; }
+    else if (Math.abs(cents) <= tol) {
+      hint = "Hold it…";
+      tone = "good";
+    } else if (cents < 0) {
+      hint = cents < -Math.max(2 * tol, 50) ? "Go up ↑" : "A little higher ↑";
+      tone = "warn";
+    } else {
+      hint = cents > Math.max(2 * tol, 50) ? "Go down ↓" : "A little lower ↓";
+      tone = "warn";
+    }
     const save = (k, v) => saveJSON(MATCH_KEY + "." + k, v);
     const small = { padding: "5px 10px", fontSize: 13 };
     const tInfo = target != null ? midiInfo(target) : null;
 
     const switchMode = (m) => {
-      setTmode(m); save("mode", m);
+      setTmode(m);
+      save("mode", m);
       if (m !== "match") {
         const st = r.current;
-        st.timers.forEach(clearTimeout); st.timers = [];
-        st.target = null; st.matched = false; setTarget(null); setPhase("idle"); setCents(null); setHold(0); onTarget(null);
+        st.timers.forEach(clearTimeout);
+        st.timers = [];
+        st.target = null;
+        st.matched = false;
+        setTarget(null);
+        setPhase("idle");
+        setCents(null);
+        setHold(0);
+        onTarget(null);
       }
     };
-    const startBtn = html`<button class="btn btn-primary" style=${{ minHeight: 52, fontSize: 16, padding: "0 22px", justifyContent: "center" }} onClick=${onStartMic}><span class="flex items-center gap-2"><${Icon} name="mic" size=${20} />Tap to start listening</span></button>`;
-    const freeTone = !live ? "muted" : Math.abs(live.cents) <= 10 ? "good" : Math.abs(live.cents) <= 25 ? "warn" : "bad";
+    const startBtn = html`<button
+      class="btn btn-primary"
+      style=${{
+        minHeight: 52,
+        fontSize: 16,
+        padding: "0 22px",
+        justifyContent: "center",
+      }}
+      onClick=${onStartMic}
+    >
+      <span class="flex items-center gap-2"
+        ><${Icon} name="mic" size=${20} />Tap to start listening</span
+      >
+    </button>`;
+    const freeTone = !live
+      ? "muted"
+      : Math.abs(live.cents) <= 10
+        ? "good"
+        : Math.abs(live.cents) <= 25
+          ? "warn"
+          : "bad";
     const lInfo = live ? midiInfo(live.midi) : null;
     const sungInfo = sung != null ? midiInfo(sung) : null;
     const ringC = 2 * Math.PI * 50;
 
     return html`<div class="tuner-screen">
       <div class="flex items-center gap-2">
-        <div class="mode-seg" role="group" aria-label="Tuner mode" style=${{ flex: 1, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
-          <button aria-pressed=${tmode === "free" ? "true" : "false"} onClick=${() => switchMode("free")}>Free</button>
-          <button aria-pressed=${tmode === "match" ? "true" : "false"} onClick=${() => switchMode("match")}>Match a note</button>
-          <button aria-pressed=${tmode === "range" ? "true" : "false"} onClick=${() => switchMode("range")}>My range</button>
+        <div
+          class="mode-seg"
+          role="group"
+          aria-label="Tuner mode"
+          style=${{ flex: 1, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}
+        >
+          <button
+            aria-pressed=${tmode === "free" ? "true" : "false"}
+            onClick=${() => switchMode("free")}
+          >
+            Free
+          </button>
+          <button
+            aria-pressed=${tmode === "match" ? "true" : "false"}
+            onClick=${() => switchMode("match")}
+          >
+            Match a note
+          </button>
+          <button
+            aria-pressed=${tmode === "range" ? "true" : "false"}
+            onClick=${() => switchMode("range")}
+          >
+            My range
+          </button>
         </div>
       </div>
       ${error && html`<div class="notice" role="alert">${error}</div>`}
+      ${tmode === "range"
+        ? html`<${RangeFinder}
+            feedRef=${rangeFeed}
+            listening=${listening}
+            onStartMic=${onStartMic}
+            onStopMic=${onStopMic}
+          />`
+        : tmode === "free"
+          ? html`<${React.Fragment}>
+              <section class="tuner-card" style=${{ flex: 1 }}>
+                <${Dial}
+                  cents=${live ? live.cents : null}
+                  tol=${10}
+                  tone=${freeTone}
+                  lowLabel="−50¢"
+                  highLabel="+50¢"
+                />
+                ${listening
+                  ? html`<div class="flex flex-col items-center gap-1">
+                      <span class="flex items-start gap-1">
+                        <span
+                          class="display font-bold"
+                          style=${{
+                            fontSize: 88,
+                            lineHeight: 0.9,
+                            color: lInfo
+                              ? "var(--" + freeTone + ")"
+                              : "var(--muted)",
+                          }}
+                          >${lInfo
+                            ? lInfo.letter + (lInfo.sharp ? "♯" : "")
+                            : "—"}</span
+                        >
+                        ${lInfo &&
+                        html`<span
+                          class="mono font-semibold"
+                          style=${{ fontSize: 30, marginTop: 44 }}
+                          >${lInfo.octave}</span
+                        >`}
+                      </span>
+                      <span class="mono text-sm muted"
+                        >${live
+                          ? live.freq.toFixed(1) +
+                            " Hz · " +
+                            signed(live.cents) +
+                            "¢"
+                          : "Sing or play a note"}</span
+                      >
+                      ${live &&
+                      html`<span
+                        class=${"tag tag-" + freeTone}
+                        style=${{ fontSize: 13, padding: "4px 12px" }}
+                        >${Math.abs(live.cents) <= 10
+                          ? "In tune"
+                          : live.cents > 0
+                            ? "A little sharp"
+                            : "A little flat"}</span
+                      >`}
+                    </div>`
+                  : html`<div class="flex flex-col items-center gap-3 py-2">
+                      ${startBtn}<span class="text-xs muted"
+                        >See which note you're singing, and how close you
+                        are.</span
+                      >
+                    </div>`}
+              </section>
+              ${listening &&
+              html`<div class="listen-bar">
+                <span class="flex items-center gap-2 text-sm"
+                  ><span class="rec-dot"></span>Listening</span
+                >
+                <span class="level" style=${{ flex: 1, height: 5 }}
+                  ><div style=${{ width: level * 100 + "%" }}></div
+                ></span>
+                <button
+                  class="btn"
+                  style=${{ padding: "6px 12px", fontSize: 13 }}
+                  onClick=${onStopMic}
+                >
+                  Stop
+                </button>
+              </div>`}
+            <//>`
+          : html`<${React.Fragment}>
+              <div class="flex flex-wrap gap-2">
+                <span class="chip"
+                  ><span class="muted text-xs">Streak</span
+                  ><b class="mono">${streak}</b></span
+                >
+                <span class="chip"
+                  ><span class="muted text-xs">Last</span
+                  ><b class="mono"
+                    >${lastTime == null ? "—" : lastTime.toFixed(1) + " s"}</b
+                  ></span
+                >
+                <span class="chip"
+                  ><span class="muted text-xs">Best</span
+                  ><b class="mono"
+                    >${stats.best == null
+                      ? "—"
+                      : stats.best.toFixed(1) + " s"}</b
+                  ></span
+                >
+              </div>
+              <section class=${"tuner-card" + (phase === "hit" ? " hit" : "")}>
+                <${Dial}
+                  cents=${target != null && listening && phase !== "listen"
+                    ? phase === "hit"
+                      ? 0
+                      : cents
+                    : null}
+                  tol=${tol}
+                  tone=${phase === "hit" ||
+                  (cents != null && Math.abs(cents) <= tol)
+                    ? "good"
+                    : "warn"}
+                  lowLabel="too low"
+                  highLabel="too high"
+                  zoneSoft=${true}
+                />
+                <div
+                  class="flex items-center justify-center gap-5"
+                  style=${{ minHeight: 112 }}
+                >
+                  <span
+                    style=${{
+                      position: "relative",
+                      width: 112,
+                      height: 112,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <svg
+                      width="112"
+                      height="112"
+                      viewBox="0 0 112 112"
+                      role="img"
+                      aria-label=${"Hold progress " +
+                      Math.round((phase === "hit" ? 1 : hold) * 100) +
+                      " percent"}
+                    >
+                      <circle
+                        cx="56"
+                        cy="56"
+                        r="50"
+                        fill=${phase === "hit"
+                          ? "color-mix(in srgb, var(--good) 18%, transparent)"
+                          : "none"}
+                        stroke="var(--line)"
+                        strokeWidth="6"
+                      ></circle>
+                      <circle
+                        cx="56"
+                        cy="56"
+                        r="50"
+                        fill="none"
+                        stroke="var(--good)"
+                        strokeWidth="6"
+                        strokeLinecap="round"
+                        strokeDasharray=${(
+                          ringC * (phase === "hit" ? 1 : hold)
+                        ).toFixed(1) +
+                        " " +
+                        ringC.toFixed(1)}
+                        transform="rotate(-90 56 56)"
+                      ></circle>
+                    </svg>
+                    <span
+                      style=${{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <span class="label" style=${{ fontSize: 10 }}
+                        >Target</span
+                      >
+                      <span
+                        class="display font-bold"
+                        style=${{
+                          fontSize: 38,
+                          lineHeight: 1,
+                          color:
+                            phase === "hit"
+                              ? "var(--good)"
+                              : tInfo
+                                ? "var(--fg)"
+                                : "var(--muted)",
+                        }}
+                        >${tInfo ? pretty(tInfo.label) : "—"}</span
+                      >
+                    </span>
+                  </span>
+                  <span class="flex flex-col gap-1 min-w-0">
+                    ${listening &&
+                    target != null &&
+                    phase !== "listen" &&
+                    html`<span class="text-xs muted">You're singing</span>
+                      <span
+                        class="display font-bold"
+                        style=${{ fontSize: 24, color: "var(--you)" }}
+                        >${sungInfo ? pretty(sungInfo.label) : "—"}</span
+                      >`}
+                    <span
+                      class="display font-bold"
+                      style=${{
+                        fontSize: 21,
+                        lineHeight: 1.2,
+                        color: "var(--" + tone + ")",
+                      }}
+                      aria-live="polite"
+                      >${hint}</span
+                    >
+                  </span>
+                </div>
+                ${!listening &&
+                target != null &&
+                html`<div class="flex justify-center">${startBtn}</div>`}
+              </section>
 
-      ${tmode === "range" ? html`<${RangeFinder} feedRef=${rangeFeed} listening=${listening} onStartMic=${onStartMic} onStopMic=${onStopMic} />` : tmode === "free" ? html`<${React.Fragment}>
-        <section class="tuner-card" style=${{ flex: 1 }}>
-          <${Dial} cents=${live ? live.cents : null} tol=${10} tone=${freeTone} lowLabel="−50¢" highLabel="+50¢" />
-          ${listening
-            ? html`<div class="flex flex-col items-center gap-1">
-                <span class="flex items-start gap-1">
-                  <span class="display font-bold" style=${{ fontSize: 88, lineHeight: 0.9, color: lInfo ? "var(--" + freeTone + ")" : "var(--muted)" }}>${lInfo ? lInfo.letter + (lInfo.sharp ? "♯" : "") : "—"}</span>
-                  ${lInfo && html`<span class="mono font-semibold" style=${{ fontSize: 30, marginTop: 44 }}>${lInfo.octave}</span>`}
-                </span>
-                <span class="mono text-sm muted">${live ? live.freq.toFixed(1) + " Hz · " + signed(live.cents) + "¢" : "Sing or play a note"}</span>
-                ${live && html`<span class=${"tag tag-" + freeTone} style=${{ fontSize: 13, padding: "4px 12px" }}>${Math.abs(live.cents) <= 10 ? "In tune" : live.cents > 0 ? "A little sharp" : "A little flat"}</span>`}
-              </div>`
-            : html`<div class="flex flex-col items-center gap-3 py-2">${startBtn}<span class="text-xs muted">See which note you're singing, and how close you are.</span></div>`}
-        </section>
-        ${listening && html`<div class="listen-bar">
-          <span class="flex items-center gap-2 text-sm"><span class="rec-dot"></span>Listening</span>
-          <span class="level" style=${{ flex: 1, height: 5 }}><div style=${{ width: level * 100 + "%" }}></div></span>
-          <button class="btn" style=${{ padding: "6px 12px", fontSize: 13 }} onClick=${onStopMic}>Stop</button>
-        </div>`}
-      <//>` : html`<${React.Fragment}>
-        <div class="flex flex-wrap gap-2">
-          <span class="chip"><span class="muted text-xs">Streak</span><b class="mono">${streak}</b></span>
-          <span class="chip"><span class="muted text-xs">Last</span><b class="mono">${lastTime == null ? "—" : lastTime.toFixed(1) + " s"}</b></span>
-          <span class="chip"><span class="muted text-xs">Best</span><b class="mono">${stats.best == null ? "—" : stats.best.toFixed(1) + " s"}</b></span>
-        </div>
-        <section class=${"tuner-card" + (phase === "hit" ? " hit" : "")}>
-          <${Dial} cents=${target != null && listening && phase !== "listen" ? (phase === "hit" ? 0 : cents) : null} tol=${tol} tone=${phase === "hit" || (cents != null && Math.abs(cents) <= tol) ? "good" : "warn"} lowLabel="too low" highLabel="too high" zoneSoft=${true} />
-          <div class="flex items-center justify-center gap-5" style=${{ minHeight: 112 }}>
-            <span style=${{ position: "relative", width: 112, height: 112, flexShrink: 0 }}>
-              <svg width="112" height="112" viewBox="0 0 112 112" role="img" aria-label=${"Hold progress " + Math.round((phase === "hit" ? 1 : hold) * 100) + " percent"}>
-                <circle cx="56" cy="56" r="50" fill=${phase === "hit" ? "color-mix(in srgb, var(--good) 18%, transparent)" : "none"} stroke="var(--line)" strokeWidth="6"></circle>
-                <circle cx="56" cy="56" r="50" fill="none" stroke="var(--good)" strokeWidth="6" strokeLinecap="round" strokeDasharray=${(ringC * (phase === "hit" ? 1 : hold)).toFixed(1) + " " + ringC.toFixed(1)} transform="rotate(-90 56 56)"></circle>
-              </svg>
-              <span style=${{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                <span class="label" style=${{ fontSize: 10 }}>Target</span>
-                <span class="display font-bold" style=${{ fontSize: 38, lineHeight: 1, color: phase === "hit" ? "var(--good)" : tInfo ? "var(--fg)" : "var(--muted)" }}>${tInfo ? pretty(tInfo.label) : "—"}</span>
-              </span>
-            </span>
-            <span class="flex flex-col gap-1 min-w-0">
-              ${listening && target != null && phase !== "listen" && html`<span class="text-xs muted">You're singing</span>
-                <span class="display font-bold" style=${{ fontSize: 24, color: "var(--you)" }}>${sungInfo ? pretty(sungInfo.label) : "—"}</span>`}
-              <span class="display font-bold" style=${{ fontSize: 21, lineHeight: 1.2, color: "var(--" + tone + ")" }} aria-live="polite">${hint}</span>
-            </span>
-          </div>
-          ${!listening && target != null && html`<div class="flex justify-center">${startBtn}</div>`}
-        </section>
+              <div class="tuner-actions">
+                <button
+                  class="btn btn-primary"
+                  style=${{ justifyContent: "center", minHeight: 44 }}
+                  onClick=${random}
+                >
+                  Random
+                </button>
+                <button
+                  class="btn"
+                  style=${{ justifyContent: "center", minHeight: 44 }}
+                  onClick=${replay}
+                  disabled=${target == null}
+                >
+                  Play again
+                </button>
+                <button
+                  class=${"btn" + (listening ? "" : "")}
+                  style=${{ justifyContent: "center", minHeight: 44 }}
+                  onClick=${listening ? onStopMic : onStartMic}
+                  aria-label=${listening ? "Stop listening" : "Start listening"}
+                >
+                  <span class="flex items-center gap-2"
+                    >${listening
+                      ? html`<span class="rec-dot"></span>On`
+                      : html`<${Icon} name="mic" size=${18} />Off`}</span
+                  >
+                </button>
+                <button
+                  class="icon-btn"
+                  onClick=${() => setOptOpen(true)}
+                  aria-label="Tuner options"
+                >
+                  <${Icon} name="sliders" />
+                </button>
+              </div>
 
-        <div class="tuner-actions">
-          <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 44 }} onClick=${random}>Random</button>
-          <button class="btn" style=${{ justifyContent: "center", minHeight: 44 }} onClick=${replay} disabled=${target == null}>Play again</button>
-          <button class=${"btn" + (listening ? "" : "")} style=${{ justifyContent: "center", minHeight: 44 }} onClick=${listening ? onStopMic : onStartMic} aria-label=${listening ? "Stop listening" : "Start listening"}>
-            <span class="flex items-center gap-2">${listening ? html`<span class="rec-dot"></span>On` : html`<${Icon} name="mic" size=${18} />Off`}</span>
-          </button>
-          <button class="icon-btn" onClick=${() => setOptOpen(true)} aria-label="Tuner options"><${Icon} name="sliders" /></button>
-        </div>
+              <section
+                class="flex flex-col gap-2"
+                style=${{ marginTop: "auto" }}
+                aria-label="Piano keyboard"
+              >
+                <div class="flex items-center justify-between">
+                  <button
+                    class="icon-btn"
+                    style=${{ height: 36 }}
+                    onClick=${() => setBaseOct((b) => Math.max(2, b - 1))}
+                    disabled=${baseOct <= 2}
+                    aria-label="Lower octave"
+                  >
+                    <${Icon} name="back" size=${18} />
+                  </button>
+                  <span class="mono text-xs muted"
+                    >C${baseOct} – C${baseOct + 1}</span
+                  >
+                  <button
+                    class="icon-btn"
+                    style=${{ height: 36, transform: "scaleX(-1)" }}
+                    onClick=${() => setBaseOct((b) => Math.min(5, b + 1))}
+                    disabled=${baseOct >= 5}
+                    aria-label="Higher octave"
+                  >
+                    <${Icon} name="back" size=${18} />
+                  </button>
+                </div>
+                <${Keyboard}
+                  baseOct=${baseOct}
+                  target=${target}
+                  matched=${phase === "hit"}
+                  sung=${sung}
+                  onKey=${choose}
+                />
+              </section>
+            <//>`}
 
-        <section class="flex flex-col gap-2" style=${{ marginTop: "auto" }} aria-label="Piano keyboard">
-          <div class="flex items-center justify-between">
-            <button class="icon-btn" style=${{ height: 36 }} onClick=${() => setBaseOct((b) => Math.max(2, b - 1))} disabled=${baseOct <= 2} aria-label="Lower octave"><${Icon} name="back" size=${18} /></button>
-            <span class="mono text-xs muted">C${baseOct} – C${baseOct + 1}</span>
-            <button class="icon-btn" style=${{ height: 36, transform: "scaleX(-1)" }} onClick=${() => setBaseOct((b) => Math.min(5, b + 1))} disabled=${baseOct >= 5} aria-label="Higher octave"><${Icon} name="back" size=${18} /></button>
-          </div>
-          <${Keyboard} baseOct=${baseOct} target=${target} matched=${phase === "hit"} sung=${sung} onKey=${choose} />
-        </section>
-      <//>`}
-
-      <${Sheet} open=${optOpen} title="Tuner options" onClose=${() => setOptOpen(false)}>
+      <${Sheet}
+        open=${optOpen}
+        title="Tuner options"
+        onClose=${() => setOptOpen(false)}
+      >
         <div class="opt-group">
           <span class="label">How close counts</span>
           <div class="seg" role="group" aria-label="Difficulty">
-            ${[["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]].map(([k, l]) => html`<button key=${k} aria-pressed=${diff === k ? "true" : "false"} onClick=${() => { setDiff(k); save("diff", k); }}>${l}</button>`)}
+            ${[
+              ["easy", "Easy"],
+              ["normal", "Normal"],
+              ["hard", "Hard"],
+            ].map(
+              ([k, l]) =>
+                html`<button
+                  key=${k}
+                  aria-pressed=${diff === k ? "true" : "false"}
+                  onClick=${() => {
+                    setDiff(k);
+                    save("diff", k);
+                  }}
+                >
+                  ${l}
+                </button>`,
+            )}
           </div>
-          <p class="text-xs muted">${diff === "easy" ? "Easy: within half a piano key." : diff === "normal" ? "Normal: within a quarter of a piano key." : "Hard: within a tenth of a piano key."} Hold it for half a second to count.</p>
+          <p class="text-xs muted">
+            ${diff === "easy"
+              ? "Easy: within half a piano key."
+              : diff === "normal"
+                ? "Normal: within a quarter of a piano key."
+                : "Hard: within a tenth of a piano key."}
+            Hold it for half a second to count.
+          </p>
         </div>
         <div class="opt-group">
           <span class="label">Random notes from</span>
-          <div class="seg" role="group" aria-label="Voice range for random notes">
-            ${Object.entries(RANGES).map(([k, v]) => html`<button key=${k} aria-pressed=${range === k ? "true" : "false"} onClick=${() => { setRange(k); save("range", k); }}>${v[2]} voice</button>`)}
+          <div
+            class="seg"
+            role="group"
+            aria-label="Voice range for random notes"
+          >
+            ${Object.entries(RANGES).map(
+              ([k, v]) =>
+                html`<button
+                  key=${k}
+                  aria-pressed=${range === k ? "true" : "false"}
+                  onClick=${() => {
+                    setRange(k);
+                    save("range", k);
+                  }}
+                >
+                  ${v[2]} voice
+                </button>`,
+            )}
           </div>
         </div>
         <div class="opt-group">
-          <button class="switch" role="switch" aria-checked=${anyOct ? "true" : "false"} onClick=${() => { setAnyOct(!anyOct); save("anyoct", !anyOct); }} style=${{ fontSize: 14, alignSelf: "flex-start" }}>
-            <span class="track"><span class="knob"></span></span>Any octave counts
+          <button
+            class="switch"
+            role="switch"
+            aria-checked=${anyOct ? "true" : "false"}
+            onClick=${() => {
+              setAnyOct(!anyOct);
+              save("anyoct", !anyOct);
+            }}
+            style=${{ fontSize: 14, alignSelf: "flex-start" }}
+          >
+            <span class="track"><span class="knob"></span></span>Any octave
+            counts
           </button>
-          <button class="switch" role="switch" aria-checked=${autoNext ? "true" : "false"} onClick=${() => { setAutoNext(!autoNext); save("auto", !autoNext); }} style=${{ fontSize: 14, alignSelf: "flex-start" }}>
+          <button
+            class="switch"
+            role="switch"
+            aria-checked=${autoNext ? "true" : "false"}
+            onClick=${() => {
+              setAutoNext(!autoNext);
+              save("auto", !autoNext);
+            }}
+            style=${{ fontSize: 14, alignSelf: "flex-start" }}
+          >
             <span class="track"><span class="knob"></span></span>Auto next note
           </button>
-          <p class="text-xs muted">Total hits: ${stats.hits}. The app ignores the mic while the piano note rings, so it never hears itself.</p>
+          <p class="text-xs muted">
+            Total hits: ${stats.hits}. The app ignores the mic while the piano
+            note rings, so it never hears itself.
+          </p>
         </div>
       <//>
     </div>`;
   }
 
-  // semicircle tuner dial: needle at -50..+50 cents, green zone of +/- tol
-  function Dial({ cents, tol, tone, lowLabel, highLabel, zoneSoft }) {
-    const cx = 140, cy = 132, rad = 116;
-    const pt = (c, rr) => { const a = (Math.max(-50, Math.min(50, c)) / 50) * (Math.PI / 2); return [cx + rr * Math.sin(a), cy - rr * Math.cos(a)]; };
-    const [zx0, zy0] = pt(-tol, rad), [zx1, zy1] = pt(tol, rad);
-    const [nx, ny] = cents != null ? pt(cents, rad - 12) : [cx, cy - rad + 12];
-    const col = cents == null ? "var(--muted)" : "var(--" + tone + ")";
-    return html`<svg viewBox="0 0 280 146" style=${{ width: "100%", maxWidth: 300, height: "auto", display: "block" }} role="img" aria-label=${cents == null ? "Tuner dial, waiting for a note" : "Tuner dial: " + signed(cents) + " cents"}>
-      <path d=${"M" + (cx - rad) + " " + cy + " A" + rad + " " + rad + " 0 0 1 " + (cx + rad) + " " + cy} fill="none" stroke="var(--line)" strokeWidth="12" strokeLinecap="round"></path>
-      <path d=${"M" + zx0.toFixed(1) + " " + zy0.toFixed(1) + " A" + rad + " " + rad + " 0 0 1 " + zx1.toFixed(1) + " " + zy1.toFixed(1)} fill="none" stroke="var(--good)" strokeOpacity=${zoneSoft ? 0.5 : 1} strokeWidth="12" strokeLinecap="round"></path>
-      <line x1=${cx} y1=${cy - rad - 8} x2=${cx} y2=${cy - rad + 8} stroke="var(--muted)" strokeWidth="2"></line>
-      ${cents != null && html`<line x1=${cx} y1=${cy} x2=${nx.toFixed(1)} y2=${ny.toFixed(1)} stroke=${col} strokeWidth="4" strokeLinecap="round" style=${{ transition: "all .08s linear" }}></line>`}
-      <circle cx=${cx} cy=${cy} r="7" fill=${col}></circle>
-      <text x="14" y="144" fill="var(--muted)" fontSize="11" fontFamily="Instrument Sans, sans-serif">${lowLabel}</text>
-      <text x="266" y="144" fill="var(--muted)" fontSize="11" fontFamily="Instrument Sans, sans-serif" textAnchor="end">${highLabel}</text>
-    </svg>`;
-  }
-
+// semicircle tuner dial: needle at -50..+50 cents, green zone of +/- tol
+<Dial/>
   /* ---------- app-wide settings ---------- */
   function SettingsPanel({ listening, level, onClose, onMicChange, onChange }) {
     const [devices, setDevices] = useState([]);
     const [, force] = useState(0);
     useEffect(() => {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
-      navigator.mediaDevices.enumerateDevices().then((d) => setDevices(d.filter((x) => x.kind === "audioinput"))).catch(() => {});
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices)
+        return;
+      navigator.mediaDevices
+        .enumerateDevices()
+        .then((d) => setDevices(d.filter((x) => x.kind === "audioinput")))
+        .catch(() => {});
     }, [listening]);
-    const set = (k, v) => { SETTINGS[k] = v; saveSettings(); force((n) => n + 1); onChange && onChange(); };
+    const set = (k, v) => {
+      SETTINGS[k] = v;
+      saveSettings();
+      force((n) => n + 1);
+      onChange && onChange();
+    };
     const small = { padding: "5px 10px", fontSize: 13 };
     return html`<section class="panel p-4 sm:p-5 flex flex-col gap-4">
       <div class="flex items-start justify-between gap-3">
         <div>
           <h2 class="display text-lg font-bold">Settings</h2>
-          <p class="text-xs muted">These apply to the whole app and are saved on this device.</p>
+          <p class="text-xs muted">
+            These apply to the whole app and are saved on this device.
+          </p>
         </div>
-        <button class="btn btn-ghost" style=${small} onClick=${onClose}>Done</button>
+        <button class="btn btn-ghost" style=${small} onClick=${onClose}>
+          Done
+        </button>
       </div>
       <div class="flex flex-col gap-2">
         <span class="label">Tuning reference (A4)</span>
         <div class="flex flex-wrap items-center gap-2">
           <div class="seg" role="group" aria-label="A4 presets">
-            ${[432, 440, 442].map((v) => html`<button key=${v} aria-pressed=${SETTINGS.a4 === v ? "true" : "false"} onClick=${() => set("a4", v)}>${v} Hz</button>`)}
+            ${[432, 440, 442].map(
+              (v) =>
+                html`<button
+                  key=${v}
+                  aria-pressed=${SETTINGS.a4 === v ? "true" : "false"}
+                  onClick=${() => set("a4", v)}
+                >
+                  ${v} Hz
+                </button>`,
+            )}
           </div>
-          <button class="btn" style=${small} onClick=${() => set("a4", Math.max(415, SETTINGS.a4 - 1))} aria-label="Lower A4 by 1 hertz">−</button>
+          <button
+            class="btn"
+            style=${small}
+            onClick=${() => set("a4", Math.max(415, SETTINGS.a4 - 1))}
+            aria-label="Lower A4 by 1 hertz"
+          >
+            −
+          </button>
           <span class="mono text-sm">A4 = ${SETTINGS.a4} Hz</span>
-          <button class="btn" style=${small} onClick=${() => set("a4", Math.min(466, SETTINGS.a4 + 1))} aria-label="Raise A4 by 1 hertz">+</button>
+          <button
+            class="btn"
+            style=${small}
+            onClick=${() => set("a4", Math.min(466, SETTINGS.a4 + 1))}
+            aria-label="Raise A4 by 1 hertz"
+          >
+            +
+          </button>
         </div>
-        <p class="text-xs muted">440 Hz is standard. Change it only if your instrument or song is tuned differently. It shifts the piano, guide notes and note detection together; songs you already uploaded keep the setting they were analyzed with.</p>
+        <p class="text-xs muted">
+          440 Hz is standard. Change it only if your instrument or song is tuned
+          differently. It shifts the piano, guide notes and note detection
+          together; songs you already uploaded keep the setting they were
+          analyzed with.
+        </p>
       </div>
       <div class="flex flex-col gap-2">
         <label class="label" for="sens">Mic sensitivity</label>
         <div class="flex items-center gap-3">
           <span class="text-xs muted">Less</span>
-          <input id="sens" type="range" min="1" max="10" step="1" value=${SETTINGS.sens} onInput=${(e) => set("sens", parseInt(e.target.value, 10))} onChange=${(e) => set("sens", parseInt(e.target.value, 10))} style=${{ flex: 1, accentColor: "var(--accent)" }} />
+          <input
+            id="sens"
+            type="range"
+            min="1"
+            max="10"
+            step="1"
+            value=${SETTINGS.sens}
+            onInput=${(e) => set("sens", parseInt(e.target.value, 10))}
+            onChange=${(e) => set("sens", parseInt(e.target.value, 10))}
+            style=${{ flex: 1, accentColor: "var(--accent)" }}
+          />
           <span class="text-xs muted">More</span>
-          <span class="mono text-xs" style=${{ width: 20, textAlign: "right" }}>${SETTINGS.sens}</span>
+          <span class="mono text-xs" style=${{ width: 20, textAlign: "right" }}
+            >${SETTINGS.sens}</span
+          >
         </div>
-        ${listening && html`<div class="level" style=${{ height: 6 }} title="Input level"><div style=${{ width: level * 100 + "%" }}></div></div>`}
-        <p class="text-xs muted">Turn it up if the app misses your voice. Turn it down if it reacts to background noise.</p>
+        ${listening &&
+        html`<div class="level" style=${{ height: 6 }} title="Input level">
+          <div style=${{ width: level * 100 + "%" }}></div>
+        </div>`}
+        <p class="text-xs muted">
+          Turn it up if the app misses your voice. Turn it down if it reacts to
+          background noise.
+        </p>
       </div>
       <div class="flex flex-col gap-2">
         <label class="label" for="mic-pick">Microphone</label>
         ${devices.length > 1
-          ? html`<select id="mic-pick" class="btn" style=${{ justifyContent: "flex-start", maxWidth: "100%" }} value=${SETTINGS.micId} onChange=${(e) => { set("micId", e.target.value); onMicChange && onMicChange(); }}>
+          ? html`<select
+              id="mic-pick"
+              class="btn"
+              style=${{ justifyContent: "flex-start", maxWidth: "100%" }}
+              value=${SETTINGS.micId}
+              onChange=${(e) => {
+                set("micId", e.target.value);
+                onMicChange && onMicChange();
+              }}
+            >
               <option value="">System default</option>
-              ${devices.map((d, i) => html`<option key=${d.deviceId || i} value=${d.deviceId}>${d.label || "Microphone " + (i + 1)}</option>`)}
+              ${devices.map(
+                (d, i) =>
+                  html`<option key=${d.deviceId || i} value=${d.deviceId}>
+                    ${d.label || "Microphone " + (i + 1)}
+                  </option>`,
+              )}
             </select>`
-          : html`<p class="text-sm muted">Using the default microphone.${devices.length === 0 ? " Other microphones show up here after you allow mic access." : ""}</p>`}
+          : html`<p class="text-sm muted">
+              Using the default
+              microphone.${devices.length === 0
+                ? " Other microphones show up here after you allow mic access."
+                : ""}
+            </p>`}
       </div>
       <div class="flex flex-col gap-2">
         <span class="label">Note detection</span>
-        <button class="switch" role="switch" aria-checked=${SETTINGS.ai ? "true" : "false"} onClick=${() => set("ai", !SETTINGS.ai)} style=${{ fontSize: 14, alignSelf: "flex-start" }}>
-          <span class="track"><span class="knob"></span></span>High-accuracy notes (AI)
+        <button
+          class="switch"
+          role="switch"
+          aria-checked=${SETTINGS.ai ? "true" : "false"}
+          onClick=${() => set("ai", !SETTINGS.ai)}
+          style=${{ fontSize: 14, alignSelf: "flex-start" }}
+        >
+          <span class="track"><span class="knob"></span></span>High-accuracy
+          notes (AI)
         </button>
-        <p class="text-xs muted">Experimental. Uses Spotify's Basic Pitch model on this device to split notes where it hears a new syllable starting on the same pitch. It helps a little with fast lines, can add a few extra notes, takes a while on slower phones, and is a one-time 2.5 MB download. The result is saved per song. Applies to the next song you load.</p>
+        <p class="text-xs muted">
+          Experimental. Uses Spotify's Basic Pitch model on this device to split
+          notes where it hears a new syllable starting on the same pitch. It
+          helps a little with fast lines, can add a few extra notes, takes a
+          while on slower phones, and is a one-time 2.5 MB download. The result
+          is saved per song. Applies to the next song you load.
+        </p>
       </div>
       <div class="flex flex-col gap-1">
         <span class="label">Credits</span>
-        <p class="text-xs muted">Splitting songs into voice and music uses an MDX-Net model from <a href="https://github.com/Anjok07/ultimatevocalremovergui" target="_blank" rel="noopener" style=${{ color: "var(--accent)" }}>Ultimate Vocal Remover</a> (MIT licence), run with ONNX Runtime. Thanks to UVR and its developers.</p>
+        <p class="text-xs muted">
+          Splitting songs into voice and music uses an MDX-Net model from
+          <a
+            href="https://github.com/Anjok07/ultimatevocalremovergui"
+            target="_blank"
+            rel="noopener"
+            style=${{ color: "var(--accent)" }}
+            >Ultimate Vocal Remover</a
+          >
+          (MIT licence), run with ONNX Runtime. Thanks to UVR and its
+          developers.
+        </p>
       </div>
     </section>`;
   }
@@ -3673,88 +9850,188 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   const AI_KEY = "pitchstaff.ainotes.v4";
   const AI_FPS = 22050 / 256;
   let bpModule = null;
-  const loadBasicPitch = () => (bpModule = bpModule || import(/* @vite-ignore */ new URL("tono-basic-pitch.js", document.baseURI).href));
+  const loadBasicPitch = () =>
+    (bpModule =
+      bpModule ||
+      import(
+        /* @vite-ignore */ new URL("tono-basic-pitch.js", document.baseURI).href
+      ));
   function aiCacheGet(name, dur) {
-    const all = loadJSON(AI_KEY, {}), e = all[name];
+    const all = loadJSON(AI_KEY, {}),
+      e = all[name];
     if (!e || Math.abs(e.d - dur) > 0.5) return null;
-    return e.n.map(([midi, pos, end, c]) => ({ midi, pos, end, cut: ["silence", "dip", "pitch"][c] || "pitch" }));
+    return e.n.map(([midi, pos, end, c]) => ({
+      midi,
+      pos,
+      end,
+      cut: ["silence", "dip", "pitch"][c] || "pitch",
+    }));
   }
   function aiCachePut(name, dur, notes) {
     const all = loadJSON(AI_KEY, {});
-    all[name] = { d: Math.round(dur * 10) / 10, at: Date.now(), n: notes.map((n) => [n.midi, Math.round(n.pos * 1000) / 1000, Math.round(n.end * 1000) / 1000, { silence: 0, dip: 1, pitch: 2 }[n.cut] ?? 2]) };
-    const keys = Object.keys(all).sort((a, b) => (all[b].at || 0) - (all[a].at || 0));
+    all[name] = {
+      d: Math.round(dur * 10) / 10,
+      at: Date.now(),
+      n: notes.map((n) => [
+        n.midi,
+        Math.round(n.pos * 1000) / 1000,
+        Math.round(n.end * 1000) / 1000,
+        { silence: 0, dip: 1, pitch: 2 }[n.cut] ?? 2,
+      ]),
+    };
+    const keys = Object.keys(all).sort(
+      (a, b) => (all[b].at || 0) - (all[a].at || 0),
+    );
     keys.slice(15).forEach((k) => delete all[k]);
     saveJSON(AI_KEY, all);
   }
   // Basic Pitch finds where notes start (even repeated ones); our own pitch track gives the exact pitch
   function aiToMelody(evs, onsets, grid) {
     const out = [];
-    const ns = evs.map((e) => ({ s: e.startTimeSeconds, e: e.startTimeSeconds + e.durationSeconds, p: e.pitchMidi, a: e.amplitude }))
-      .filter((n) => n.e - n.s >= 0.06 && n.p >= 36 && n.p <= 92).sort((x, y) => x.s - y.s || y.a - x.a);
+    const ns = evs
+      .map((e) => ({
+        s: e.startTimeSeconds,
+        e: e.startTimeSeconds + e.durationSeconds,
+        p: e.pitchMidi,
+        a: e.amplitude,
+      }))
+      .filter((n) => n.e - n.s >= 0.06 && n.p >= 36 && n.p <= 92)
+      .sort((x, y) => x.s - y.s || y.a - x.a);
     ns.forEach((n) => {
       // pitch from our tracker over the middle of the note; skip notes with no sung pitch (breaths, noise)
-      const k0 = Math.round((n.s + (n.e - n.s) * 0.15) / GRID), k1 = Math.max(k0 + 1, Math.round((n.e - (n.e - n.s) * 0.15) / GRID));
+      const k0 = Math.round((n.s + (n.e - n.s) * 0.15) / GRID),
+        k1 = Math.max(k0 + 1, Math.round((n.e - (n.e - n.s) * 0.15) / GRID));
       const vals = [];
-      for (let k = k0; k < k1 && k < grid.length; k++) if (grid[k] === grid[k]) vals.push(grid[k]);
+      for (let k = k0; k < k1 && k < grid.length; k++)
+        if (grid[k] === grid[k]) vals.push(grid[k]);
       if (vals.length < Math.max(2, 0.35 * (k1 - k0))) return;
       const midi = Math.round(median(vals));
-      const f = Math.min(onsets.length - 1, Math.max(0, Math.round(n.s * AI_FPS)));
+      const f = Math.min(
+        onsets.length - 1,
+        Math.max(0, Math.round(n.s * AI_FPS)),
+      );
       let on = 0;
-      for (let q = Math.max(0, f - 2); q <= Math.min(onsets.length - 1, f + 2); q++) { const row = onsets[q]; for (let b = n.p - 22; b <= n.p - 20; b++) if (row && row[b] > on) on = row[b]; }
+      for (
+        let q = Math.max(0, f - 2);
+        q <= Math.min(onsets.length - 1, f + 2);
+        q++
+      ) {
+        const row = onsets[q];
+        for (let b = n.p - 22; b <= n.p - 20; b++)
+          if (row && row[b] > on) on = row[b];
+      }
       const last = out[out.length - 1];
       if (last && n.s < last.end - 0.03) {
-        if (n.e <= last.end + 0.02) return;           // a ghost note inside the current one
-        if (n.s - last.pos < 0.08) return;             // two guesses for the same moment: keep the first
-        last.end = n.s;                                 // a new note starts: cut the previous one here
+        if (n.e <= last.end + 0.02) return; // a ghost note inside the current one
+        if (n.s - last.pos < 0.08) return; // two guesses for the same moment: keep the first
+        last.end = n.s; // a new note starts: cut the previous one here
       }
       const prevEnd = last ? last.end : -1;
-      const cut = n.s - prevEnd > 0.12 ? "silence" : on >= 0.5 ? "dip" : "pitch";
-      if (last && cut === "pitch" && last.midi === midi && n.s - last.end < 0.04) { last.end = n.e; return; }
+      const cut =
+        n.s - prevEnd > 0.12 ? "silence" : on >= 0.5 ? "dip" : "pitch";
+      if (
+        last &&
+        cut === "pitch" &&
+        last.midi === midi &&
+        n.s - last.end < 0.04
+      ) {
+        last.end = n.e;
+        return;
+      }
       out.push({ midi, pos: n.s, end: n.e, cut });
     });
     return out.filter((n) => n.end - n.pos >= 0.06);
   }
   // keep our notes; split them only where the AI hears a new attack on that pitch AND there's a consonant dip
   function aiRefine(notes, onsets, grid, loud) {
-    const THR = 0.5, MIN = 0.1, DIP = 4.5, out = [];
-    const onCol = (f, midi) => { const r = onsets[f]; if (!r) return 0; let v = 0; for (let b = midi - 22; b <= midi - 20; b++) if (r[b] > v) v = r[b]; return v; };
+    const THR = 0.5,
+      MIN = 0.1,
+      DIP = 4.5,
+      out = [];
+    const onCol = (f, midi) => {
+      const r = onsets[f];
+      if (!r) return 0;
+      let v = 0;
+      for (let b = midi - 22; b <= midi - 20; b++) if (r[b] > v) v = r[b];
+      return v;
+    };
     const dipAt = (t) => {
-      const k = Math.round(t / GRID); let lo = Infinity, unv = false, hiB = -Infinity, hiA = -Infinity;
-      for (let q = k - 3; q <= k + 2; q++) { if (q < 0 || q >= loud.length) continue; lo = Math.min(lo, loud[q]); if (grid[q] !== grid[q]) unv = true; }
-      for (let q = k - 10; q < k - 2; q++) if (q >= 0) hiB = Math.max(hiB, loud[q]);
-      for (let q = k + 2; q < k + 10; q++) if (q < loud.length) hiA = Math.max(hiA, loud[q]);
+      const k = Math.round(t / GRID);
+      let lo = Infinity,
+        unv = false,
+        hiB = -Infinity,
+        hiA = -Infinity;
+      for (let q = k - 3; q <= k + 2; q++) {
+        if (q < 0 || q >= loud.length) continue;
+        lo = Math.min(lo, loud[q]);
+        if (grid[q] !== grid[q]) unv = true;
+      }
+      for (let q = k - 10; q < k - 2; q++)
+        if (q >= 0) hiB = Math.max(hiB, loud[q]);
+      for (let q = k + 2; q < k + 10; q++)
+        if (q < loud.length) hiA = Math.max(hiA, loud[q]);
       return unv || Math.min(hiB, hiA) - lo >= DIP;
     };
     notes.forEach((n) => {
       const cuts = [];
-      for (let f = Math.ceil((n.pos + MIN) * AI_FPS); f <= Math.floor((n.end - MIN) * AI_FPS); f++) {
+      for (
+        let f = Math.ceil((n.pos + MIN) * AI_FPS);
+        f <= Math.floor((n.end - MIN) * AI_FPS);
+        f++
+      ) {
         const v = onCol(f, n.midi);
-        if (v >= THR && v >= onCol(f - 1, n.midi) && v >= onCol(f + 1, n.midi) && dipAt(f / AI_FPS)) {
-          const t = f / AI_FPS, last = cuts.length ? cuts[cuts.length - 1] : n.pos;
+        if (
+          v >= THR &&
+          v >= onCol(f - 1, n.midi) &&
+          v >= onCol(f + 1, n.midi) &&
+          dipAt(f / AI_FPS)
+        ) {
+          const t = f / AI_FPS,
+            last = cuts.length ? cuts[cuts.length - 1] : n.pos;
           if (t - last >= MIN && n.end - t >= MIN) cuts.push(t);
         }
       }
       let st = n.pos;
-      cuts.forEach((t, i) => { out.push({ ...n, pos: st, end: t, cut: i === 0 ? n.cut : "dip" }); st = t; });
+      cuts.forEach((t, i) => {
+        out.push({ ...n, pos: st, end: t, cut: i === 0 ? n.cut : "dip" });
+        st = t;
+      });
       out.push({ ...n, pos: st, end: n.end, cut: cuts.length ? "dip" : n.cut });
     });
     return out;
   }
   async function aiNotes(buffer, data, onProgress) {
     const m = await loadBasicPitch();
-    try { await m.tf.setBackend("webgl"); } catch (e) {}
+    try {
+      await m.tf.setBackend("webgl");
+    } catch (e) {}
     await m.tf.ready();
-    const sr = 22050, len = Math.ceil(buffer.duration * sr);
+    const sr = 22050,
+      len = Math.ceil(buffer.duration * sr);
     const Off = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-    const off = new Off(1, len, sr), src = off.createBufferSource();
-    src.buffer = buffer; src.connect(off.destination); src.start();
-    const rendered = await new Promise((res, rej) => { off.oncomplete = (e) => res(e.renderedBuffer); const pr = off.startRendering(); if (pr && pr.then) pr.then(res, rej); });
-    const bp = new m.BasicPitch(new URL("bp-model/model.json", document.baseURI).href);
+    const off = new Off(1, len, sr),
+      src = off.createBufferSource();
+    src.buffer = buffer;
+    src.connect(off.destination);
+    src.start();
+    const rendered = await new Promise((res, rej) => {
+      off.oncomplete = (e) => res(e.renderedBuffer);
+      const pr = off.startRendering();
+      if (pr && pr.then) pr.then(res, rej);
+    });
+    const bp = new m.BasicPitch(
+      new URL("bp-model/model.json", document.baseURI).href,
+    );
     const onsets = [];
-    await bp.evaluateModel(rendered.getChannelData(0), (f, o) => { onsets.push(...o); }, (p) => onProgress && onProgress(p));
+    await bp.evaluateModel(
+      rendered.getChannelData(0),
+      (f, o) => {
+        onsets.push(...o);
+      },
+      (p) => onProgress && onProgress(p),
+    );
     return aiRefine(data.notes, onsets, data.grid, data.loud);
   }
-
 
   /* ---------- snap notes to the song's key ---------- */
   // A sung note sitting between two piano keys can round to the out-of-key one. If the song's key is clear,
@@ -3763,23 +10040,40 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     if (!notes || notes.length < 8) return notes;
     const key = estimateKey(notes);
     if (!(key.conf >= 0.9)) return notes; // only when the key is really clear: a wrong key would move good notes
-    const scale = (key.minor ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11]).map((x) => (x + key.tonic) % 12);
+    const scale = (
+      key.minor ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11]
+    ).map((x) => (x + key.tonic) % 12);
     const inKey = (m) => scale.includes(((m % 12) + 12) % 12);
     const out = [];
     notes.forEach((n) => {
       let m = n.midi;
       if (!inKey(m)) {
-        const k0 = Math.round((n.pos + (n.end - n.pos) * 0.15) / GRID), k1 = Math.max(k0 + 1, Math.round((n.end - (n.end - n.pos) * 0.15) / GRID));
+        const k0 = Math.round((n.pos + (n.end - n.pos) * 0.15) / GRID),
+          k1 = Math.max(
+            k0 + 1,
+            Math.round((n.end - (n.end - n.pos) * 0.15) / GRID),
+          );
         const vals = [];
-        for (let k = k0; k < k1 && k < grid.length; k++) if (grid[k] === grid[k]) vals.push(grid[k]);
+        for (let k = k0; k < k1 && k < grid.length; k++)
+          if (grid[k] === grid[k]) vals.push(grid[k]);
         if (vals.length >= 3) {
           const v = median(vals);
-          const cand = [m + 1, m - 1].filter(inKey).sort((a, b) => Math.abs(v - a) - Math.abs(v - b))[0];
+          const cand = [m + 1, m - 1]
+            .filter(inKey)
+            .sort((a, b) => Math.abs(v - a) - Math.abs(v - b))[0];
           if (cand != null && Math.abs(v - cand) <= 0.65) m = cand;
         }
       }
       const last = out[out.length - 1];
-      if (last && m === last.midi && n.cut === "pitch" && n.pos - last.end < 0.03) { last.end = n.end; return; }
+      if (
+        last &&
+        m === last.midi &&
+        n.cut === "pitch" &&
+        n.pos - last.end < 0.03
+      ) {
+        last.end = n.end;
+        return;
+      }
       out.push(m === n.midi ? n : { ...n, midi: m, snapped: true });
     });
     return out;
@@ -3790,12 +10084,16 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   function parseUltraStar(text) {
     const rows = text.replace(/^﻿/, "").split(/\r?\n/);
     const hdr = {};
-    rows.forEach((r) => { const m = r.match(/^#([^:]+):(.*)$/); if (m) hdr[m[1].trim().toUpperCase()] = m[2].trim(); });
+    rows.forEach((r) => {
+      const m = r.match(/^#([^:]+):(.*)$/);
+      if (m) hdr[m[1].trim().toUpperCase()] = m[2].trim();
+    });
     const bpm = parseFloat((hdr.BPM || "").replace(",", "."));
     if (!(bpm > 0)) return null;
     const gap = parseFloat((hdr.GAP || "0").replace(",", ".")) || 0;
     const rel = /^yes$/i.test(hdr.RELATIVE || "");
-    const spb = 60 / (bpm * 4), time = (b) => gap / 1000 + b * spb;
+    const spb = 60 / (bpm * 4),
+      time = (b) => gap / 1000 + b * spb;
     const items = [];
     let base = 0;
     for (const r of rows) {
@@ -3803,69 +10101,162 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       if (c === "E") break;
       if (c === ":" || c === "*" || c === "F" || c === "R" || c === "G") {
         const m = r.match(/^[:*FRG]\s*(-?\d+)\s+(\d+)\s+(-?\d+)\s?(.*)$/);
-        if (m) items.push({ kind: "n", type: c, beat: +m[1] + base, len: +m[2], pitch: +m[3], text: m[4] });
+        if (m)
+          items.push({
+            kind: "n",
+            type: c,
+            beat: +m[1] + base,
+            len: +m[2],
+            pitch: +m[3],
+            text: m[4],
+          });
       } else if (c === "-") {
         const m = r.match(/^-\s*(-?\d+)(?:\s+(-?\d+))?/);
-        if (m) { items.push({ kind: "b", beat: +m[1] + base }); if (rel) base += m[2] != null ? +m[2] : +m[1]; }
+        if (m) {
+          items.push({ kind: "b", beat: +m[1] + base });
+          if (rel) base += m[2] != null ? +m[2] : +m[1];
+        }
       }
     }
-    const lines = [], notes = [];
-    let cur = null, word = null;
-    const flush = () => { if (cur && cur.words.length) { cur.text = cur.words.map((w) => w.w).join(" "); lines.push(cur); } cur = null; word = null; };
+    const lines = [],
+      notes = [];
+    let cur = null,
+      word = null;
+    const flush = () => {
+      if (cur && cur.words.length) {
+        cur.text = cur.words.map((w) => w.w).join(" ");
+        lines.push(cur);
+      }
+      cur = null;
+      word = null;
+    };
     items.forEach((it) => {
-      if (it.kind === "b") { flush(); return; }
-      const t0 = time(it.beat), t1 = time(it.beat + Math.max(1, it.len));
+      if (it.kind === "b") {
+        flush();
+        return;
+      }
+      const t0 = time(it.beat),
+        t1 = time(it.beat + Math.max(1, it.len));
       const raw = it.text || "";
-      const cont = /^\s*~/.test(raw), newWord = !cur || /^\s/.test(raw) || !word;
+      const cont = /^\s*~/.test(raw),
+        newWord = !cur || /^\s/.test(raw) || !word;
       const syl = raw.replace(/~/g, "").trim();
       if (!cur) cur = { t: t0, text: "", words: [] };
-      if (!cont && (newWord || !word)) { word = { t: t0, w: syl }; cur.words.push(word); }
-      else if (!cont && word) word.w += syl;
-      if (it.type !== "F" && it.type !== "R" && it.type !== "G") notes.push({ midi: it.pitch + 60, pos: t0, end: t1, cut: cont ? "pitch" : newWord ? "silence" : "dip", gold: it.type === "*" });
+      if (!cont && (newWord || !word)) {
+        word = { t: t0, w: syl };
+        cur.words.push(word);
+      } else if (!cont && word) word.w += syl;
+      if (it.type !== "F" && it.type !== "R" && it.type !== "G")
+        notes.push({
+          midi: it.pitch + 60,
+          pos: t0,
+          end: t1,
+          cut: cont ? "pitch" : newWord ? "silence" : "dip",
+          gold: it.type === "*",
+        });
     });
     flush();
-    lines.forEach((l) => { l.words = l.words.filter((w) => w.w); });
-    return { title: hdr.TITLE || "", artist: hdr.ARTIST || "", lines: lines.filter((l) => l.words.length), notes };
+    lines.forEach((l) => {
+      l.words = l.words.filter((w) => w.w);
+    });
+    return {
+      title: hdr.TITLE || "",
+      artist: hdr.ARTIST || "",
+      lines: lines.filter((l) => l.words.length),
+      notes,
+    };
   }
   // UltraStar charts often sit an octave or two away from the real voice: move them to where the vocal actually is
   function usNotesFor(entry, data) {
     if (!entry || !entry.us || !entry.us.length) return null;
     const off = entry.offset || 0;
-    const ns = entry.us.map(([midi, pos, end, c]) => ({ midi, pos: pos + off, end: end + off, cut: ["silence", "dip", "pitch"][c] || "pitch" }));
+    const ns = entry.us.map(([midi, pos, end, c]) => ({
+      midi,
+      pos: pos + off,
+      end: end + off,
+      cut: ["silence", "dip", "pitch"][c] || "pitch",
+    }));
     const diffs = [];
-    ns.forEach((n) => { for (let k = Math.round(n.pos / GRID); k < Math.round(n.end / GRID) && k < data.grid.length; k++) if (data.grid[k] === data.grid[k]) diffs.push(data.grid[k] - n.midi); });
+    ns.forEach((n) => {
+      for (
+        let k = Math.round(n.pos / GRID);
+        k < Math.round(n.end / GRID) && k < data.grid.length;
+        k++
+      )
+        if (data.grid[k] === data.grid[k]) diffs.push(data.grid[k] - n.midi);
+    });
     const sh = diffs.length > 20 ? 12 * Math.round(median(diffs) / 12) : 0;
     return ns.map((n) => ({ ...n, midi: n.midi + sh }));
   }
   function toUltraStar({ title, artist, audio, instrumental, notes, spans }) {
-    const spb = 0.05, gapMs = Math.max(0, Math.round((notes.length ? notes[0].pos : 0) * 1000));
+    const spb = 0.05,
+      gapMs = Math.max(0, Math.round((notes.length ? notes[0].pos : 0) * 1000));
     const beat = (t) => Math.max(0, Math.round((t - gapMs / 1000) / spb));
     const tl = looksTagalog(spans);
-    const out = ["#VERSION:1.1.0", "#TITLE:" + (title || "Untitled"), "#ARTIST:" + (artist || "Unknown")];
-    if (audio) { out.push("#MP3:" + audio, "#AUDIO:" + audio, "#VOCALS:" + audio); }
+    const out = [
+      "#VERSION:1.1.0",
+      "#TITLE:" + (title || "Untitled"),
+      "#ARTIST:" + (artist || "Unknown"),
+    ];
+    if (audio) {
+      out.push("#MP3:" + audio, "#AUDIO:" + audio, "#VOCALS:" + audio);
+    }
     if (instrumental) out.push("#INSTRUMENTAL:" + instrumental);
     out.push("#BPM:300", "#GAP:" + gapMs);
     let lastEnd = null;
     spans.forEach((l) => {
       const idx = [];
-      notes.forEach((n, i) => { if (n.pos >= l.start - 0.08 && n.pos < l.end - 0.02) idx.push(i); });
+      notes.forEach((n, i) => {
+        if (n.pos >= l.start - 0.08 && n.pos < l.end - 0.02) idx.push(i);
+      });
       if (!idx.length || !l.text) return;
       let words;
-      if (l.words && l.words.length) words = l.words.map((w, k) => { const e = k + 1 < l.words.length ? l.words[k + 1].t : l.end; return { w: w.w, idx: idx.filter((i) => notes[i].pos >= w.t - 0.08 && notes[i].pos < e - 0.02) }; });
-      else { const m = wordsToNotes(l.text, idx.map((i) => notes[i]), tl); words = m ? m.map((x) => ({ w: x.w, idx: x.idx.map((j) => idx[j]) })) : []; }
+      if (l.words && l.words.length)
+        words = l.words.map((w, k) => {
+          const e = k + 1 < l.words.length ? l.words[k + 1].t : l.end;
+          return {
+            w: w.w,
+            idx: idx.filter(
+              (i) => notes[i].pos >= w.t - 0.08 && notes[i].pos < e - 0.02,
+            ),
+          };
+        });
+      else {
+        const m = wordsToNotes(
+          l.text,
+          idx.map((i) => notes[i]),
+          tl,
+        );
+        words = m
+          ? m.map((x) => ({ w: x.w, idx: x.idx.map((j) => idx[j]) }))
+          : [];
+      }
       if (lastEnd != null) out.push("- " + beat(lastEnd));
-      let first = true, pending = "";
+      let first = true,
+        pending = "";
       words.forEach((w) => {
         // a word with no note of its own rides along with the next sung word, so no lyrics are lost
-        if (!w.idx.length) { pending += (pending ? " " : "") + w.w; return; }
+        if (!w.idx.length) {
+          pending += (pending ? " " : "") + w.w;
+          return;
+        }
         w.idx.forEach((i, j) => {
-          const n = notes[i], b = beat(n.pos), len = Math.max(1, Math.round((n.end - n.pos) / spb));
-          const txt = j === 0 ? (first ? "" : " ") + (pending ? pending + " " : "") + w.w : "~";
+          const n = notes[i],
+            b = beat(n.pos),
+            len = Math.max(1, Math.round((n.end - n.pos) / spb));
+          const txt =
+            j === 0
+              ? (first ? "" : " ") + (pending ? pending + " " : "") + w.w
+              : "~";
           out.push(": " + b + " " + len + " " + (n.midi - 60) + " " + txt);
-          first = false; lastEnd = n.end; pending = "";
+          first = false;
+          lastEnd = n.end;
+          pending = "";
         });
       });
-      if (pending && out.length && out[out.length - 1].startsWith(":")) out[out.length - 1] = out[out.length - 1].replace(/ ~$/, " ~") + " " + pending;
+      if (pending && out.length && out[out.length - 1].startsWith(":"))
+        out[out.length - 1] =
+          out[out.length - 1].replace(/ ~$/, " ~") + " " + pending;
     });
     out.push("E");
     return out.join("\n") + "\n";
@@ -3875,12 +10266,11 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   const KARA_SYNC_KEY = "pitchstaff.karasync.v1";
   const KARA_BEST_KEY = "pitchstaff.karabest.v1";
 
-
-
   // onset strength at 50 fps: how sharply the loudness rises
   function onsetEnvelope(audio) {
     const { data, sr } = monoHalf(audio);
-    const hop = Math.round(sr * GRID), n = Math.floor(data.length / hop);
+    const hop = Math.round(sr * GRID),
+      n = Math.floor(data.length / hop);
     const db = new Float32Array(n);
     for (let k = 0; k < n; k++) {
       let s = 0;
@@ -3895,34 +10285,46 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   // find where the music lines up with the vocal: returns seconds to add to song time to get music time
   function autoSync(a, b) {
     const maxLag = 1000; // ±20 s
-    const ma = mean(Array.from(a)), mb = mean(Array.from(b));
-    const A = a.map((v) => v - ma), Bv = b.map((v) => v - mb);
+    const ma = mean(Array.from(a)),
+      mb = mean(Array.from(b));
+    const A = a.map((v) => v - ma),
+      Bv = b.map((v) => v - mb);
     const scores = [];
-    let best = -Infinity, bestL = 0;
+    let best = -Infinity,
+      bestL = 0;
     for (let L = -maxLag; L <= maxLag; L++) {
       let s = 0;
-      for (let k = 0; k < A.length; k++) { const j = k + L; if (j >= 0 && j < Bv.length) s += A[k] * Bv[j]; }
+      for (let k = 0; k < A.length; k++) {
+        const j = k + L;
+        if (j >= 0 && j < Bv.length) s += A[k] * Bv[j];
+      }
       scores.push(s);
-      if (s > best) { best = s; bestL = L; }
+      if (s > best) {
+        best = s;
+        bestL = L;
+      }
     }
-    const mu = mean(scores), sd = Math.sqrt(mean(scores.map((s) => (s - mu) ** 2))) || 1;
+    const mu = mean(scores),
+      sd = Math.sqrt(mean(scores.map((s) => (s - mu) ** 2))) || 1;
     return { off: bestL * GRID, z: (best - mu) / sd };
   }
-
- 
-
-
 
   // how many piano keys the music sits above the vocal (0 = same key)
   function keyGap(notes, instChroma) {
     const v = new Array(12).fill(0);
-    notes.forEach((n) => { v[((n.midi % 12) + 12) % 12] += n.end - n.pos; });
-    let best = 0, bc = -2;
+    notes.forEach((n) => {
+      v[((n.midi % 12) + 12) % 12] += n.end - n.pos;
+    });
+    let best = 0,
+      bc = -2;
     const c0 = pearson(v, instChroma);
     for (let r = 0; r < 12; r++) {
       const rot = v.map((_, i) => v[(i - r + 12) % 12]);
       const c = pearson(rot, instChroma);
-      if (c > bc) { bc = c; best = r; }
+      if (c > bc) {
+        bc = c;
+        best = r;
+      }
     }
     if (best !== 0 && bc - c0 > 0.15) return best > 6 ? best - 12 : best;
     return 0;
@@ -3930,74 +10332,96 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
 
   // a line's words with start times; spreads them by length when the lyrics file has no word timing
   function lineWords(line) {
-    if (line.words && line.words.length) return line.words.map((w, i, arr) => ({ ...w, end: i + 1 < arr.length ? arr[i + 1].t : line.end }));
+    if (line.words && line.words.length)
+      return line.words.map((w, i, arr) => ({
+        ...w,
+        end: i + 1 < arr.length ? arr[i + 1].t : line.end,
+      }));
     const parts = (line.text || "").split(/\s+/).filter(Boolean);
     const total = parts.reduce((s, p) => s + p.length + 1, 0) || 1;
     const span = Math.max(0.3, (line.end - line.start) * 0.92);
     let acc = 0;
-    return parts.map((w) => { const t = line.start + (span * acc) / total; acc += w.length + 1; return { t, w, end: line.start + (span * acc) / total }; });
+    return parts.map((w) => {
+      const t = line.start + (span * acc) / total;
+      acc += w.length + 1;
+      return { t, w, end: line.start + (span * acc) / total };
+    });
   }
   function KaraokeLine({ line, t, size, dim }) {
-    if (!line) return html`<p class="kline" style=${{ fontSize: size, opacity: 0.0 }}>·</p>`;
+    if (!line)
+      return html`<p class="kline" style=${{ fontSize: size, opacity: 0.0 }}>
+        ·
+      </p>`;
     const words = lineWords(line);
     // only fill word by word when the lyrics file has real word timing; otherwise light the whole line at its start
     const timed = !!(line.words && line.words.length);
-    return html`<p class=${"kline" + (dim ? " dim" : "")} style=${{ fontSize: size }}>
+    return html`<p
+      class=${"kline" + (dim ? " dim" : "")}
+      style=${{ fontSize: size }}
+    >
       ${words.map((w, i) => {
-        const p = t == null ? 0 : !timed ? (t >= line.start ? 1 : 0) : Math.max(0, Math.min(1, (t - w.t) / Math.max(0.05, w.end - w.t)));
-        return html`<span key=${i} class="kw" style=${{ "--p": p * 100 + "%" }}>${w.w}${" "}</span>`;
+        const p =
+          t == null
+            ? 0
+            : !timed
+              ? t >= line.start
+                ? 1
+                : 0
+              : Math.max(
+                  0,
+                  Math.min(1, (t - w.t) / Math.max(0.05, w.end - w.t)),
+                );
+        return html`<span key=${i} class="kw" style=${{ "--p": p * 100 + "%" }}
+          >${w.w}${" "}</span
+        >`;
       })}
     </p>`;
   }
 
-  // 16-bit mono WAV, gently normalized so quiet phone recordings are easy to hear
-  function encodeWav(buf, maxGain = 8) {
-    const nc = Math.min(2, buf.numberOfChannels || 1), sr = buf.sampleRate;
-    const ch = [buf.getChannelData(0), nc > 1 ? buf.getChannelData(1) : null];
-    const n = ch[0].length, bytes = n * nc * 2;
-    const ab = new ArrayBuffer(44 + bytes), v = new DataView(ab);
-    const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
-    w(0, "RIFF"); v.setUint32(4, 36 + bytes, true); w(8, "WAVE"); w(12, "fmt ");
-    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, nc, true); v.setUint32(24, sr, true);
-    v.setUint32(28, sr * nc * 2, true); v.setUint16(32, nc * 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, bytes, true);
-    let peak = 0;
-    for (let c = 0; c < nc; c++) { const d = ch[c]; for (let i = 0; i < n; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; } }
-    const g = peak > 0 ? Math.min(0.9 / peak, maxGain) : 1;
-    let o = 44;
-    for (let i = 0; i < n; i++) for (let c = 0; c < nc; c++) { v.setInt16(o, Math.max(-1, Math.min(1, ch[c][i] * g)) * 32767, true); o += 2; }
-    return new Blob([ab], { type: "audio/wav" });
-  }
-  // a soft room echo, made from decaying noise
-  function makeImpulse(ctx, secs = 1.8) {
-    const len = Math.floor(ctx.sampleRate * secs), ir = ctx.createBuffer(2, len, ctx.sampleRate);
-    for (let c = 0; c < 2; c++) {
-      const d = ir.getChannelData(c);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3) * (i < 300 ? i / 300 : 1);
-    }
-    return ir;
-  }
-  function peakOf(buf) { let p = 0; const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > p) p = a; } return p || 1; }
-  async function saveBlob(blob, filename) {
-    let dl = null;
-    try { dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch (e) { dl = null; }
-    if (dl) { await dl.save({ filename, data: blob }); return; }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-  }
+  const karaStars = (sc) =>
+    sc >= 90 ? 5 : sc >= 75 ? 4 : sc >= 60 ? 3 : sc >= 40 ? 2 : 1;
+  const KARA_RANKS = [
+    "Warming up",
+    "Getting there",
+    "Rising star",
+    "Showstopper",
+    "Superstar",
+  ];
+  <Stars />;
+  const CONFETTI = Array.from({ length: 36 }, (_, i) => ({
+    l: (i * 37) % 100,
+    d: ((i * 53) % 90) / 100,
+    c: ["#f3d18c", "#8b5cf6", "#8fbcff", "#5fd39a", "#ff7a9c"][i % 5],
+    r: (i * 29) % 360,
+    w: i % 3 ? 7 : 9,
+    h: i % 2 ? 12 : 8,
+  }));
 
-  const karaStars = (sc) => (sc >= 90 ? 5 : sc >= 75 ? 4 : sc >= 60 ? 3 : sc >= 40 ? 2 : 1);
-  const KARA_RANKS = ["Warming up", "Getting there", "Rising star", "Showstopper", "Superstar"];
-  <Stars/>
-  const CONFETTI = Array.from({ length: 36 }, (_, i) => ({ l: (i * 37) % 100, d: ((i * 53) % 90) / 100, c: ["#f3d18c", "#8b5cf6", "#8fbcff", "#5fd39a", "#ff7a9c"][i % 5], r: (i * 29) % 360, w: i % 3 ? 7 : 9, h: i % 2 ? 12 : 8 }));
-
-  function Karaoke({ themeKey, active, orig, onPickOrig, lyrics, updateLyrics, onSendTake, onTakeReady, onPractice, inst, onPickInst, sync, syncMsg, keyWarn, onSync, onAutoSync }) {
+  function Karaoke({
+    themeKey,
+    active,
+    orig,
+    onPickOrig,
+    lyrics,
+    updateLyrics,
+    onSendTake,
+    onTakeReady,
+    onPractice,
+    inst,
+    onPickInst,
+    sync,
+    syncMsg,
+    keyWarn,
+    onSync,
+    onAutoSync,
+  }) {
     const data = orig && orig.data ? orig.data : null;
     const notes = data ? data.notes : [];
     const songName = data ? orig.name : null;
     const [hp, setHp] = useState("unknown"); // unknown | checking | ok | heard | override | nomic
-    const [mix, setMix] = useState(() => loadJSON("pitchstaff.karamix.v1", { m: 0.9, v: 0.25, g: 0 }));
+    const [mix, setMix] = useState(() =>
+      loadJSON("pitchstaff.karamix.v1", { m: 0.9, v: 0.25, g: 0 }),
+    );
     const [playing, setPlaying] = useState(false);
     const [cursor, setCursor] = useState(0);
     const [overlay, setOverlay] = useState(null);
@@ -4014,7 +10438,9 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [showMix, setShowMix] = useState(false);
     const [pl, setPl] = useState({ on: false, pos: 0 });
     const player = useRef({ nodes: [], g: null, raf: 0 });
-    const [mixVol, setMixVol] = useState(() => loadJSON("pitchstaff.karaout.v1", { v: 1, m: 0.75, verb: true }));
+    const [mixVol, setMixVol] = useState(() =>
+      loadJSON("pitchstaff.karaout.v1", { v: 1, m: 0.75, verb: true }),
+    );
     const [lat, setLat] = useState(0);
     const [nudgeV, setNudgeV] = useState(0);
     const [mixBusy, setMixBusy] = useState("");
@@ -4028,43 +10454,109 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [count, setCount] = useState(null);
     const countTimers = useRef([]);
     const ringRef = useRef(null);
-    const mixRef = useRef(mix), syncRef = useRef(0), loopRef = useRef(null), hpRef = useRef("unknown");
+    const mixRef = useRef(mix),
+      syncRef = useRef(0),
+      loopRef = useRef(null),
+      hpRef = useRef("unknown");
     const play = useRef({ ctx: null, srcs: [], guide: [], buses: [], raf: 0 });
     const mic = useRef({});
-    const run = useRef({ her: null, lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {}, combo: 0, bestCombo: 0, perfect: 0 });
+    const run = useRef({
+      her: null,
+      lastK: -1,
+      points: [],
+      judgedNotes: new Set(),
+      judgedLines: new Set(),
+      tally: {},
+      combo: 0,
+      bestCombo: 0,
+      perfect: 0,
+    });
     const fileRef = useRef(null);
     syncRef.current = sync;
 
-    const spans = useMemo(() => (data ? lyricSpans(lyrics, data.duration) : []), [lyrics, data]);
-    const phrases = useMemo(() => buildPhrases(notes, spans, data && data.grid), [notes, spans, data]);
-    const lines = useMemo(() => (spans.length ? spans : phrases.map((p) => ({ start: p.start, end: p.end, text: "", phrase: p.i }))), [spans, phrases]);
-    const songEnd = data ? Math.max(data.duration, inst && inst.buffer ? inst.buffer.duration - sync : 0) : 0;
+    const spans = useMemo(
+      () => (data ? lyricSpans(lyrics, data.duration) : []),
+      [lyrics, data],
+    );
+    const phrases = useMemo(
+      () => buildPhrases(notes, spans, data && data.grid),
+      [notes, spans, data],
+    );
+    const lines = useMemo(
+      () =>
+        spans.length
+          ? spans
+          : phrases.map((p) => ({
+              start: p.start,
+              end: p.end,
+              text: "",
+              phrase: p.i,
+            })),
+      [spans, phrases],
+    );
+    const songEnd = data
+      ? Math.max(
+          data.duration,
+          inst && inst.buffer ? inst.buffer.duration - sync : 0,
+        )
+      : 0;
     const listening = hp === "ok" || hp === "override";
-    const isListening = () => hpRef.current === "ok" || hpRef.current === "override";
+    const isListening = () =>
+      hpRef.current === "ok" || hpRef.current === "override";
 
     const ensureCtx = () => {
       const p = play.current;
-      if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
+      if (!p.ctx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        p.ctx = new Ctx();
+      }
       if (p.ctx.state === "suspended") p.ctx.resume().catch(() => {});
       return p.ctx;
     };
     const killSources = () => {
       const p = play.current;
-      tape.current.on = false; tape.current.pos = null; p.songAt = null;
+      tape.current.on = false;
+      tape.current.pos = null;
+      p.songAt = null;
       cancelAnimationFrame(p.raf);
       if (ringRef.current) ringRef.current.style.setProperty("--lv", "0");
-      if (p.hear) { try { p.hear.stop(); } catch (e) {} p.hear = null; setHearing(false); }
+      if (p.hear) {
+        try {
+          p.hear.stop();
+        } catch (e) {}
+        p.hear = null;
+        setHearing(false);
+      }
       stopPlayerNodes();
-      [...p.srcs, ...p.guide].forEach((s) => { try { s.stop(); } catch (e) {} });
-      p.buses.forEach((g) => { try { g.disconnect(); } catch (e) {} });
-      p.srcs = []; p.guide = []; p.buses = [];
+      [...p.srcs, ...p.guide].forEach((s) => {
+        try {
+          s.stop();
+        } catch (e) {}
+      });
+      p.buses.forEach((g) => {
+        try {
+          g.disconnect();
+        } catch (e) {}
+      });
+      p.srcs = [];
+      p.guide = [];
+      p.buses = [];
     };
-    const stopAll = useCallback(() => { killSources(); setPlaying(false); }, []);
+    const stopAll = useCallback(() => {
+      killSources();
+      setPlaying(false);
+    }, []);
     const closeMic = useCallback(() => {
       const m = mic.current;
       if (m.stream) m.stream.getTracks().forEach((t) => t.stop());
       if (m.proc) m.proc.onaudioprocess = null;
-      [m.src, m.an, m.proc, m.sink].forEach((n) => { if (n) { try { n.disconnect(); } catch (e) {} } });
+      [m.src, m.an, m.proc, m.sink].forEach((n) => {
+        if (n) {
+          try {
+            n.disconnect();
+          } catch (e) {}
+        }
+      });
       mic.current = {};
     }, []);
     const ensureMic = async () => {
@@ -4073,71 +10565,143 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         const ctx = ensureCtx();
         const stream = await getMicStream();
         const src = ctx.createMediaStreamSource(stream);
-        const an = ctx.createAnalyser(); an.fftSize = 2048;
+        const an = ctx.createAnalyser();
+        an.fftSize = 2048;
         src.connect(an);
         // record your voice onto a "tape" laid out in song time, so pauses and loops stay lined up
-        const proc = ctx.createScriptProcessor(4096, 1, 1), sink = ctx.createGain(); sink.gain.value = 0;
-        src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+        const proc = ctx.createScriptProcessor(4096, 1, 1),
+          sink = ctx.createGain();
+        sink.gain.value = 0;
+        src.connect(proc);
+        proc.connect(sink);
+        sink.connect(ctx.destination);
         proc.onaudioprocess = (e) => {
-          const T = tape.current, p = play.current;
+          const T = tape.current,
+            p = play.current;
           if (!T.on || !p.songAt) return;
-          const inp = e.inputBuffer.getChannelData(0), sr = e.inputBuffer.sampleRate;
+          const inp = e.inputBuffer.getChannelData(0),
+            sr = e.inputBuffer.sampleRate;
           const half = sr >= 44100;
           const out = new Float32Array(half ? inp.length >> 1 : inp.length);
-          if (half) for (let i = 0; i < out.length; i++) out[i] = (inp[2 * i] + inp[2 * i + 1]) / 2; else out.set(inp);
+          if (half)
+            for (let i = 0; i < out.length; i++)
+              out[i] = (inp[2 * i] + inp[2 * i + 1]) / 2;
+          else out.set(inp);
           T.sr = half ? sr / 2 : sr;
           // place the first block by song time, then lay the rest end to end so there are no gaps or overlaps (which click)
           const expected = Math.round((p.songAt() - inp.length / sr) * T.sr);
           let fade = false;
-          if (T.pos == null) { T.pos = Math.max(0, expected); T.lag = []; fade = true; }
-          else {
+          if (T.pos == null) {
+            T.pos = Math.max(0, expected);
+            T.lag = [];
+            fade = true;
+          } else {
             // callbacks only ever run late, so the smallest gap over the last few blocks is the real drift;
             // if audio was dropped (common on iPhone), re-line up with the song clock
             T.lag.push(expected - T.pos);
             if (T.lag.length > 12) T.lag.shift();
             const drift = T.lag.length >= 8 ? Math.min(...T.lag) : 0;
-            if (Math.abs(drift) > T.sr * 0.03) { T.pos = Math.max(0, T.pos + drift); T.lag = []; fade = true; }
+            if (Math.abs(drift) > T.sr * 0.03) {
+              T.pos = Math.max(0, T.pos + drift);
+              T.lag = [];
+              fade = true;
+            }
           }
-          if (fade) { const f = Math.min(240, out.length); for (let i = 0; i < f; i++) out[i] *= i / f; }
+          if (fade) {
+            const f = Math.min(240, out.length);
+            for (let i = 0; i < f; i++) out[i] *= i / f;
+          }
           T.chunks.push({ i: T.pos, d: out });
           T.pos += out.length;
         };
         mic.current = { stream, src, an, proc, sink };
         return true;
-      } catch (e) { closeMic(); return false; }
+      } catch (e) {
+        closeMic();
+        return false;
+      }
     };
-    const cancelCount = () => { countTimers.current.forEach(clearTimeout); countTimers.current = []; setCount(null); };
-    useEffect(() => { if (!active) { stopAll(); closeMic(); cancelCount(); } }, [active, stopAll, closeMic]);
+    const cancelCount = () => {
+      countTimers.current.forEach(clearTimeout);
+      countTimers.current = [];
+      setCount(null);
+    };
+    useEffect(() => {
+      if (!active) {
+        stopAll();
+        closeMic();
+        cancelCount();
+      }
+    }, [active, stopAll, closeMic]);
     useEffect(() => () => countTimers.current.forEach(clearTimeout), []);
-    useEffect(() => () => { killSources(); closeMic(); if (play.current.ctx) play.current.ctx.close().catch(() => {}); }, []);
+    useEffect(
+      () => () => {
+        killSources();
+        closeMic();
+        if (play.current.ctx) play.current.ctx.close().catch(() => {});
+      },
+      [],
+    );
 
     // new song: reset the session and bring back saved timing/best score
     useEffect(() => {
-      stopAll(); setCursor(0); setOverlay(null); setMarks([]); setLineScores({}); setFinal(null);
-      loopRef.current = null; setLoop(null);
-      setBest(songName ? (loadJSON(KARA_BEST_KEY, {})[songName] ?? null) : null);
+      stopAll();
+      setCursor(0);
+      setOverlay(null);
+      setMarks([]);
+      setLineScores({});
+      setFinal(null);
+      loopRef.current = null;
+      setLoop(null);
+      setBest(
+        songName ? (loadJSON(KARA_BEST_KEY, {})[songName] ?? null) : null,
+      );
     }, [data, songName, stopAll]);
 
-    const saveSync = (v) => { syncRef.current = v; onSync(v); };
+    const saveSync = (v) => {
+      syncRef.current = v;
+      onSync(v);
+    };
     const runAutoSync = () => onAutoSync();
-    const pickInst = (file) => { stopAll(); onPickInst(file); };
+    const pickInst = (file) => {
+      stopAll();
+      onPickInst(file);
+    };
 
     const runCheck = async () => {
       stopAll();
-      setHp("checking"); hpRef.current = "checking";
+      setHp("checking");
+      hpRef.current = "checking";
       const ok = await ensureMic();
-      if (!ok) { setHp("nomic"); hpRef.current = "nomic"; return "nomic"; }
-      const ctx = ensureCtx(), an = mic.current.an, buf = new Float32Array(an.fftSize);
-      const f = SETTINGS.a4 * 2, t0 = ctx.currentTime + 0.05;
+      if (!ok) {
+        setHp("nomic");
+        hpRef.current = "nomic";
+        return "nomic";
+      }
+      const ctx = ensureCtx(),
+        an = mic.current.an,
+        buf = new Float32Array(an.fftSize);
+      const f = SETTINGS.a4 * 2,
+        t0 = ctx.currentTime + 0.05;
       [0, 0.45, 0.9].forEach((d) => {
-        const o = ctx.createOscillator(), g = ctx.createGain();
-        o.frequency.value = f; g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.3, t0 + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.35);
-        o.connect(g); g.connect(ctx.destination); o.start(t0 + d); o.stop(t0 + d + 0.4);
+        const o = ctx.createOscillator(),
+          g = ctx.createGain();
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t0 + d);
+        g.gain.exponentialRampToValueAtTime(0.3, t0 + d + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.35);
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start(t0 + d);
+        o.stop(t0 + d + 0.4);
       });
       let hits = 0;
       await new Promise((res) => {
         const loopFn = () => {
-          if (ctx.currentTime - t0 > 1.45) { res(); return; }
+          if (ctx.currentTime - t0 > 1.45) {
+            res();
+            return;
+          }
           an.getFloatTimeDomainData(buf);
           const d = detectPitch(buf, ctx.sampleRate, micGate());
           if (d.freq > 0 && Math.abs(12 * Math.log2(d.freq / f)) < 0.5) hits++;
@@ -4146,16 +10710,23 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         loopFn();
       });
       const st = hits >= 3 ? "heard" : "ok";
-      setHp(st); hpRef.current = st;
+      setHp(st);
+      hpRef.current = st;
       return st;
     };
 
     // ---- scoring as you sing ----
-    const SLACK0 = 5, SLACK1 = 20; // look 0.1 s early to 0.4 s late (headphone delay)
+    const SLACK0 = 5,
+      SLACK1 = 20; // look 0.1 s early to 0.4 s late (headphone delay)
     const matchAt = (k) => {
-      const a = data.grid[k], her = run.current.her;
+      const a = data.grid[k],
+        her = run.current.her;
       if (a !== a || !her) return false;
-      for (let j = Math.max(0, k - SLACK0); j <= Math.min(her.length - 1, k + SLACK1); j++) {
+      for (
+        let j = Math.max(0, k - SLACK0);
+        j <= Math.min(her.length - 1, k + SLACK1);
+        j++
+      ) {
         const h = her[j];
         if (h === h && Math.abs(foldOct(h - a)) <= 0.5) return true;
       }
@@ -4166,42 +10737,97 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const newMarks = [];
       notes.forEach((n, i) => {
         if (R.judgedNotes.has(i) || n.end + 0.45 > songT) return;
-        if (loopRef.current && (n.pos < loopRef.current.a - 0.3 || n.end > loopRef.current.b + 0.3)) return;
+        if (
+          loopRef.current &&
+          (n.pos < loopRef.current.a - 0.3 || n.end > loopRef.current.b + 0.3)
+        )
+          return;
         R.judgedNotes.add(i);
-        const k0 = Math.round(n.pos / GRID), k1 = Math.max(k0 + 1, Math.round(n.end / GRID));
+        const k0 = Math.round(n.pos / GRID),
+          k1 = Math.max(k0 + 1, Math.round(n.end / GRID));
         const cut = Math.floor((k1 - k0) * 0.2);
-        let v = 0, ok = 0;
-        for (let k = k0 + cut; k < k1 - cut; k++) { if (data.grid[k] !== data.grid[k]) continue; v++; if (matchAt(k)) ok++; }
-        if (v) newMarks.push({ i, pos: n.pos, end: n.end, midi: n.midi, ok: ok / v >= 0.5, q: ok / v });
+        let v = 0,
+          ok = 0;
+        for (let k = k0 + cut; k < k1 - cut; k++) {
+          if (data.grid[k] !== data.grid[k]) continue;
+          v++;
+          if (matchAt(k)) ok++;
+        }
+        if (v)
+          newMarks.push({
+            i,
+            pos: n.pos,
+            end: n.end,
+            midi: n.midi,
+            ok: ok / v >= 0.5,
+            q: ok / v,
+          });
       });
       if (newMarks.length) {
         newMarks.sort((x, y) => x.pos - y.pos);
         let last = null;
         newMarks.forEach((mk) => {
-          if (mk.ok) { R.combo++; if (mk.q >= 0.85) R.perfect++; R.bestCombo = Math.max(R.bestCombo, R.combo); last = mk; }
-          else R.combo = 0;
+          if (mk.ok) {
+            R.combo++;
+            if (mk.q >= 0.85) R.perfect++;
+            R.bestCombo = Math.max(R.bestCombo, R.combo);
+            last = mk;
+          } else R.combo = 0;
         });
         setCombo(R.combo);
         // combo pop-ups only at big milestones (25, 50, 75…), crossed in this batch
         const mile = Math.floor(R.combo / 25) * 25;
-        if (last && mile >= 25 && mile > (R.lastMile || 0)) { R.lastMile = mile; R.milePop = true; setPop({ id: Date.now() + Math.random(), kind: "perfect", text: "×" + mile + " combo!" }); }
+        if (last && mile >= 25 && mile > (R.lastMile || 0)) {
+          R.lastMile = mile;
+          R.milePop = true;
+          setPop({
+            id: Date.now() + Math.random(),
+            kind: "perfect",
+            text: "×" + mile + " combo!",
+          });
+        }
         if (R.combo < 25) R.lastMile = 0;
       }
-      if (newMarks.length) setMarks((m) => [...m.filter((x) => !newMarks.some((y) => y.i === x.i)), ...newMarks]);
+      if (newMarks.length)
+        setMarks((m) => [
+          ...m.filter((x) => !newMarks.some((y) => y.i === x.i)),
+          ...newMarks,
+        ]);
       const upd = {};
       lines.forEach((l, i) => {
         if (R.judgedLines.has(i) || l.end + 0.45 > songT) return;
-        if (loopRef.current && (l.start < loopRef.current.a - 0.3 || l.end > loopRef.current.b + 0.3)) return;
+        if (
+          loopRef.current &&
+          (l.start < loopRef.current.a - 0.3 || l.end > loopRef.current.b + 0.3)
+        )
+          return;
         R.judgedLines.add(i);
-        let v = 0, ok = 0;
-        for (let k = Math.round(l.start / GRID); k < Math.round(l.end / GRID); k++) { if (data.grid[k] !== data.grid[k]) continue; v++; if (matchAt(k)) ok++; }
-        if (v >= 10) { R.tally[i] = { v, ok }; upd[i] = Math.round((100 * ok) / v); }
+        let v = 0,
+          ok = 0;
+        for (
+          let k = Math.round(l.start / GRID);
+          k < Math.round(l.end / GRID);
+          k++
+        ) {
+          if (data.grid[k] !== data.grid[k]) continue;
+          v++;
+          if (matchAt(k)) ok++;
+        }
+        if (v >= 10) {
+          R.tally[i] = { v, ok };
+          upd[i] = Math.round((100 * ok) / v);
+        }
       });
       // at most one reaction per lyric line, when it ends, and only for a strong line
       const ended = Object.keys(upd).map(Number);
       if (ended.length && !R.milePop) {
         const sc = upd[ended[ended.length - 1]];
-        if (sc >= 75) setPop({ id: Date.now() + Math.random(), kind: sc >= 90 ? "perfect" : "great", text: sc >= 90 ? "Perfect!" : "Great!" });
+        if (sc >= 75)
+          setPop({
+            id: Date.now() + Math.random(),
+            kind: sc >= 90 ? "perfect" : "great",
+            text: sc >= 90 ? "Perfect!" : "Great!",
+          });
       }
       R.milePop = false;
       if (Object.keys(upd).length) setLineScores((s) => ({ ...s, ...upd }));
@@ -4212,8 +10838,15 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const len = T.chunks.reduce((m, c) => Math.max(m, c.i + c.d.length), 0);
       if (len < T.sr * 1) return null;
       let ab;
-      try { ab = new AudioBuffer({ length: len, sampleRate: T.sr, numberOfChannels: 1 }); }
-      catch (e) { ab = ensureCtx().createBuffer(1, len, T.sr); }
+      try {
+        ab = new AudioBuffer({
+          length: len,
+          sampleRate: T.sr,
+          numberOfChannels: 1,
+        });
+      } catch (e) {
+        ab = ensureCtx().createBuffer(1, len, T.sr);
+      }
       const ch = ab.getChannelData(0);
       T.chunks.forEach((c) => ch.set(c.d, c.i));
       return ab;
@@ -4221,19 +10854,52 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const finish = () => {
       const R = run.current;
       const t = Object.values(R.tally);
-      const v = t.reduce((s, x) => s + x.v, 0), ok = t.reduce((s, x) => s + x.ok, 0);
+      const v = t.reduce((s, x) => s + x.v, 0),
+        ok = t.reduce((s, x) => s + x.ok, 0);
       const tb = buildTake();
-      if (tb && onTakeReady) onTakeReady({ id: Date.now(), name: "Karaoke take · " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), buffer: tb });
-      setTakeBuf(tb); setSaveMsg(""); setMixMsg(""); setNudgeV(0); setPl({ on: false, pos: 0 });
+      if (tb && onTakeReady)
+        onTakeReady({
+          id: Date.now(),
+          name:
+            "Karaoke take · " +
+            new Date().toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            }),
+          buffer: tb,
+        });
+      setTakeBuf(tb);
+      setSaveMsg("");
+      setMixMsg("");
+      setNudgeV(0);
+      setPl({ on: false, pos: 0 });
       setLat(tb ? estimateLatency() : 0);
-      const reached = Math.max(0, Math.min(songEnd, play.current.lastSongT || cursor || 0));
+      const reached = Math.max(
+        0,
+        Math.min(songEnd, play.current.lastSongT || cursor || 0),
+      );
       const lis = isListening();
-      if (!lis || v < 50) { setFinal({ score: null, lines: 0, scoring: lis, reached }); return; }
+      if (!lis || v < 50) {
+        setFinal({ score: null, lines: 0, scoring: lis, reached });
+        return;
+      }
       const score = Math.round((100 * ok) / v);
-      setFinal({ score, lines: Object.keys(R.tally).length, scoring: true, reached, bestCombo: R.bestCombo, perfect: R.perfect, prevBest: best });
+      setFinal({
+        score,
+        lines: Object.keys(R.tally).length,
+        scoring: true,
+        reached,
+        bestCombo: R.bestCombo,
+        perfect: R.perfect,
+        prevBest: best,
+      });
       if (songName) {
         const all = loadJSON(KARA_BEST_KEY, {});
-        if (!(all[songName] >= score)) { all[songName] = score; saveJSON(KARA_BEST_KEY, all); setBest(score); }
+        if (!(all[songName] >= score)) {
+          all[songName] = score;
+          saveJSON(KARA_BEST_KEY, all);
+          setBest(score);
+        }
       }
     };
 
@@ -4243,31 +10909,83 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const ctx = ensureCtx();
       const lis = isListening();
       if (lis) await ensureMic();
-      const p = play.current, mx = mixRef.current, sy = syncRef.current, lp = loopRef.current;
+      const p = play.current,
+        mx = mixRef.current,
+        sy = syncRef.current,
+        lp = loopRef.current;
       const end = lp ? lp.b : songEnd;
       if (lp && (t < lp.a - 1 || t >= lp.b)) t = Math.max(0, lp.a - 0.6);
       if (t >= end - 0.1) t = lp ? Math.max(0, lp.a - 0.6) : 0;
       if (fresh || t < 0.05) {
-        run.current = { her: new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN), lastK: -1, points: [], judgedNotes: new Set(), judgedLines: new Set(), tally: {}, combo: 0, bestCombo: 0, perfect: 0 };
-        setCombo(0); setPop(null);
+        run.current = {
+          her: new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN),
+          lastK: -1,
+          points: [],
+          judgedNotes: new Set(),
+          judgedLines: new Set(),
+          tally: {},
+          combo: 0,
+          bestCombo: 0,
+          perfect: 0,
+        };
+        setCombo(0);
+        setPop(null);
         tape.current = { on: false, sr: 24000, chunks: [], pos: null };
         play.current.lastSongT = 0;
-        setMarks([]); setLineScores({}); setFinal(null); setOverlay(null); setTakeBuf(null);
+        setMarks([]);
+        setLineScores({});
+        setFinal(null);
+        setOverlay(null);
+        setTakeBuf(null);
       } else if (!run.current.her) {
-        run.current.her = new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(NaN);
+        run.current.her = new Float32Array(Math.ceil(songEnd / GRID) + 30).fill(
+          NaN,
+        );
       }
       if (lp) {
         // forget earlier scores inside the loop so each pass is judged fresh
         const R = run.current;
-        notes.forEach((n, i) => { if (n.pos >= lp.a - 0.3 && n.end <= lp.b + 0.3) R.judgedNotes.delete(i); });
-        lines.forEach((l, i) => { if (l.start >= lp.a - 0.3 && l.end <= lp.b + 0.3) { R.judgedLines.delete(i); delete R.tally[i]; } });
-        for (let k = Math.max(0, Math.round(lp.a / GRID) - 30); k < Math.min(R.her.length, Math.round(lp.b / GRID) + 30); k++) R.her[k] = NaN;
+        notes.forEach((n, i) => {
+          if (n.pos >= lp.a - 0.3 && n.end <= lp.b + 0.3)
+            R.judgedNotes.delete(i);
+        });
+        lines.forEach((l, i) => {
+          if (l.start >= lp.a - 0.3 && l.end <= lp.b + 0.3) {
+            R.judgedLines.delete(i);
+            delete R.tally[i];
+          }
+        });
+        for (
+          let k = Math.max(0, Math.round(lp.a / GRID) - 30);
+          k < Math.min(R.her.length, Math.round(lp.b / GRID) + 30);
+          k++
+        )
+          R.her[k] = NaN;
       }
       const now = ctx.currentTime + 0.08;
-      const bus = (v) => { const g = ctx.createGain(); g.gain.value = v; g.connect(ctx.destination); p.buses.push(g); return g; };
-      p.gM = bus(check ? Math.max(0.7, mx.m) : mx.m); p.gV = bus(check ? 1 : mx.v); p.gG = bus(check ? 0 : mx.g);
-      if (check) { p.gV.gain.setValueAtTime(1, now + 8); p.gV.gain.linearRampToValueAtTime(mx.v, now + 9); p.gG.gain.setValueAtTime(mx.g, now + 9); }
-      const start = (buf, at, dest) => { const s = ctx.createBufferSource(); s.buffer = buf; s.connect(dest); if (at >= 0) s.start(now, at); else s.start(now - at, 0); p.srcs.push(s); };
+      const bus = (v) => {
+        const g = ctx.createGain();
+        g.gain.value = v;
+        g.connect(ctx.destination);
+        p.buses.push(g);
+        return g;
+      };
+      p.gM = bus(check ? Math.max(0.7, mx.m) : mx.m);
+      p.gV = bus(check ? 1 : mx.v);
+      p.gG = bus(check ? 0 : mx.g);
+      if (check) {
+        p.gV.gain.setValueAtTime(1, now + 8);
+        p.gV.gain.linearRampToValueAtTime(mx.v, now + 9);
+        p.gG.gain.setValueAtTime(mx.g, now + 9);
+      }
+      const start = (buf, at, dest) => {
+        const s = ctx.createBufferSource();
+        s.buffer = buf;
+        s.connect(dest);
+        if (at >= 0) s.start(now, at);
+        else s.start(now - at, 0);
+        p.srcs.push(s);
+      };
       if (inst && inst.buffer) start(inst.buffer, t + sy, p.gM);
       start(orig.buffer, t, p.gV);
       p.guide = scheduleGuide(ctx, p.gG, notes, t, end, now, 0, 1);
@@ -4275,32 +10993,62 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       tape.current.pos = null;
       tape.current.on = !!(lis && mic.current.an && !check);
       setPlaying(true);
-      const an = lis ? mic.current.an : null, buf = an ? new Float32Array(an.fftSize) : null;
+      const an = lis ? mic.current.an : null,
+        buf = an ? new Float32Array(an.fftSize) : null;
       let frame = 0;
       const tick = () => {
         const songT = t + Math.max(0, ctx.currentTime - now);
         if (an) {
           an.getFloatTimeDomainData(buf);
           const d = detectPitch(buf, ctx.sampleRate, micGate());
-          const m = d.freq > 0 ? 69 + 12 * Math.log2(d.freq / SETTINGS.a4) : NaN;
-          if (ringRef.current) ringRef.current.style.setProperty("--lv", Math.min(1, (d.rms || 0) * 9).toFixed(2));
-          const R = run.current, k = Math.round(songT / GRID);
-          if (k < R.her.length) { for (let q = Math.max(R.lastK + 1, k - 4); q <= k; q++) R.her[q] = m; R.lastK = k; }
+          const m =
+            d.freq > 0 ? 69 + 12 * Math.log2(d.freq / SETTINGS.a4) : NaN;
+          if (ringRef.current)
+            ringRef.current.style.setProperty(
+              "--lv",
+              Math.min(1, (d.rms || 0) * 9).toFixed(2),
+            );
+          const R = run.current,
+            k = Math.round(songT / GRID);
+          if (k < R.her.length) {
+            for (let q = Math.max(R.lastK + 1, k - 4); q <= k; q++)
+              R.her[q] = m;
+            R.lastK = k;
+          }
           R.points.push({ t: songT, m });
-          if (R.points.length > 2400) R.points.splice(0, R.points.length - 2400);
+          if (R.points.length > 2400)
+            R.points.splice(0, R.points.length - 2400);
           if (++frame % 4 === 0) {
             const recent = R.points.slice(-600).filter((x) => x.m === x.m);
-            const ks = recent.map((x) => { const kk = Math.round(x.t / GRID); return data.grid[kk] === data.grid[kk] ? x.m - data.grid[kk] : NaN; }).filter((x) => x === x);
+            const ks = recent
+              .map((x) => {
+                const kk = Math.round(x.t / GRID);
+                return data.grid[kk] === data.grid[kk]
+                  ? x.m - data.grid[kk]
+                  : NaN;
+              })
+              .filter((x) => x === x);
             const oct = ks.length ? 12 * Math.round(median(ks) / 12) : 0;
-            setOverlay({ start: 0, speed: 1, oct, points: R.points.filter((x) => x.t > songT - 25) });
+            setOverlay({
+              start: 0,
+              speed: 1,
+              oct,
+              points: R.points.filter((x) => x.t > songT - 25),
+            });
           }
           if (frame % 10 === 0) judge(songT);
         }
-        setCursor(songT); p.lastSongT = songT;
+        setCursor(songT);
+        p.lastSongT = songT;
         if (songT >= end) {
           if (an) judge(end + 1);
-          if (loopRef.current) { startAt(Math.max(0, loopRef.current.a - 0.6), false); return; }
-          killSources(); setPlaying(false); finish();
+          if (loopRef.current) {
+            startAt(Math.max(0, loopRef.current.a - 0.6), false);
+            return;
+          }
+          killSources();
+          setPlaying(false);
+          finish();
           return;
         }
         p.raf = requestAnimationFrame(tick);
@@ -4310,89 +11058,162 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
 
     const setVol = (k, v) => {
       const next = { ...mixRef.current, [k]: v };
-      mixRef.current = next; setMix(next); saveJSON("pitchstaff.karamix.v1", next);
-      const p = play.current, node = { m: p.gM, v: p.gV, g: p.gG }[k];
+      mixRef.current = next;
+      setMix(next);
+      saveJSON("pitchstaff.karamix.v1", next);
+      const p = play.current,
+        node = { m: p.gM, v: p.gV, g: p.gG }[k];
       if (node && p.ctx) node.gain.setTargetAtTime(v, p.ctx.currentTime, 0.02);
     };
-    const nudge = (d) => { const v = Math.round((syncRef.current + d) * 100) / 100; saveSync(v); if (playing) startAt(cursor, false); };
+    const nudge = (d) => {
+      const v = Math.round((syncRef.current + d) * 100) / 100;
+      saveSync(v);
+      if (playing) startAt(cursor, false);
+    };
     const checkTiming = () => {
       const first = notes.length ? notes[0].pos : 0;
-      loopRef.current = null; setLoop(null);
+      loopRef.current = null;
+      setLoop(null);
       startAt(Math.max(0, first - 1), false, true);
     };
-    const loopLine = (l) => { const lp = { a: Math.max(0, l.start), b: l.end + 0.3 }; loopRef.current = lp; setLoop(lp); startAt(Math.max(0, lp.a - 0.6), false); };
-    const clearLoop = () => { loopRef.current = null; setLoop(null); };
+    const loopLine = (l) => {
+      const lp = { a: Math.max(0, l.start), b: l.end + 0.3 };
+      loopRef.current = lp;
+      setLoop(lp);
+      startAt(Math.max(0, lp.a - 0.6), false);
+    };
+    const clearLoop = () => {
+      loopRef.current = null;
+      setLoop(null);
+    };
     const stopSession = () => {
       if (isListening()) judge(cursor + 0.5);
-      killSources(); setPlaying(false);
+      killSources();
+      setPlaying(false);
       finish();
     };
-    const takeName = () => "Karaoke take · " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const takeName = () =>
+      "Karaoke take · " +
+      new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     const saveTake = async () => {
       if (!takeBuf) return;
-      const base = (songName || "song").replace(/\.[^.]+$/, "").replace(/[^\w\- ]+/g, "").trim().slice(0, 40) || "song";
-      try { await saveBlob(encodeWav(takeBuf), base + " - my take.wav"); setSaveMsg("Saved."); }
-      catch (e) { setSaveMsg(e && e.code === "declined" ? "Save cancelled." : "Saving isn't available here."); }
+      const base =
+        (songName || "song")
+          .replace(/\.[^.]+$/, "")
+          .replace(/[^\w\- ]+/g, "")
+          .trim()
+          .slice(0, 40) || "song";
+      try {
+        await saveBlob(encodeWav(takeBuf), base + " - my take.wav");
+        setSaveMsg("Saved.");
+      } catch (e) {
+        setSaveMsg(
+          e && e.code === "declined"
+            ? "Save cancelled."
+            : "Saving isn't available here.",
+        );
+      }
     };
-    const sendToAnalyst = () => { if (takeBuf && onSendTake) { stopAll(); onSendTake({ id: Date.now(), name: takeName(), buffer: takeBuf }); } };
+    const sendToAnalyst = () => {
+      if (takeBuf && onSendTake) {
+        stopAll();
+        onSendTake({ id: Date.now(), name: takeName(), buffer: takeBuf });
+      }
+    };
 
     // ---- karaoke track with music ----
     // headphones delay your voice a little; find that delay by matching what you sang to the original melody
     const estimateLatency = () => {
-      const her = run.current.her, a = data.grid;
+      const her = run.current.her,
+        a = data.grid;
       if (!her) return 0;
-      let best = 0, bestL = 0;
+      let best = 0,
+        bestL = 0;
       for (let L = -3; L <= 25; L++) {
         let m = 0;
         for (let k = 0; k < a.length; k += 2) {
           const j = k + L;
-          if (a[k] !== a[k] || j < 0 || j >= her.length || her[j] !== her[j]) continue;
+          if (a[k] !== a[k] || j < 0 || j >= her.length || her[j] !== her[j])
+            continue;
           if (Math.abs(foldOct(her[j] - a[k])) < 0.5) m++;
         }
-        if (m > best * 1.03) { best = m; bestL = L; }
+        if (m > best * 1.03) {
+          best = m;
+          bestL = L;
+        }
       }
       return best > 40 ? bestL * GRID : 0;
     };
     const setOut = (k, v) => {
       const next = { ...mixVol, [k]: v };
-      setMixVol(next); saveJSON("pitchstaff.karaout.v1", next);
-      const g = player.current.g, ctx = play.current.ctx;
+      setMixVol(next);
+      saveJSON("pitchstaff.karaout.v1", next);
+      const g = player.current.g,
+        ctx = play.current.ctx;
       if (g && ctx) {
-        if (k === "v" && g.vG) g.vG.gain.setTargetAtTime(v * g.norm, ctx.currentTime, 0.03);
-        if (k === "m" && g.mG) g.mG.gain.setTargetAtTime(v, ctx.currentTime, 0.03);
-        if (k === "verb" && g.wet) g.wet.gain.setTargetAtTime(v ? 0.22 : 0, ctx.currentTime, 0.03);
+        if (k === "v" && g.vG)
+          g.vG.gain.setTargetAtTime(v * g.norm, ctx.currentTime, 0.03);
+        if (k === "m" && g.mG)
+          g.mG.gain.setTargetAtTime(v, ctx.currentTime, 0.03);
+        if (k === "verb" && g.wet)
+          g.wet.gain.setTargetAtTime(v ? 0.22 : 0, ctx.currentTime, 0.03);
       }
     };
     const mixLength = () => takeBuf.duration + 2;
     // builds the mix into any audio context (live for the player, offline for the file); from = song time to start at
     const buildMix = (ctx, from, music, live) => {
-      const nodes = [], g = {};
+      const nodes = [],
+        g = {};
       const shift = music ? Math.max(-0.5, lat + nudgeV) : 0;
       const out = ctx.createDynamicsCompressor();
-      out.threshold.value = -8; out.ratio.value = 4; out.attack.value = 0.005; out.release.value = 0.2;
+      out.threshold.value = -8;
+      out.ratio.value = 4;
+      out.attack.value = 0.005;
+      out.release.value = 0.2;
       out.connect(ctx.destination);
       const when = ctx.currentTime + (live ? 0.05 : 0);
       if (music && inst && inst.buffer) {
-        g.mG = ctx.createGain(); g.mG.gain.value = mixVol.m; g.mG.connect(out);
-        const mSrc = ctx.createBufferSource(); mSrc.buffer = inst.buffer; mSrc.connect(g.mG);
+        g.mG = ctx.createGain();
+        g.mG.gain.value = mixVol.m;
+        g.mG.connect(out);
+        const mSrc = ctx.createBufferSource();
+        mSrc.buffer = inst.buffer;
+        mSrc.connect(g.mG);
         const mAt = from + syncRef.current;
-        if (mAt >= 0) mSrc.start(when, mAt); else mSrc.start(when - mAt, 0);
+        if (mAt >= 0) mSrc.start(when, mAt);
+        else mSrc.start(when - mAt, 0);
         nodes.push(mSrc);
       }
       // voice: cleaned up, brought to a steady level, then a touch of echo
-      const vSrc = ctx.createBufferSource(); vSrc.buffer = takeBuf;
-      const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 90;
-      const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -24; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25;
+      const vSrc = ctx.createBufferSource();
+      vSrc.buffer = takeBuf;
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 90;
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -24;
+      comp.ratio.value = 3;
+      comp.attack.value = 0.01;
+      comp.release.value = 0.25;
       g.norm = Math.min(8, 0.5 / peakOf(takeBuf));
-      g.vG = ctx.createGain(); g.vG.gain.value = (music ? mixVol.v : 1) * g.norm;
-      vSrc.connect(hp); hp.connect(comp); comp.connect(g.vG); g.vG.connect(out);
+      g.vG = ctx.createGain();
+      g.vG.gain.value = (music ? mixVol.v : 1) * g.norm;
+      vSrc.connect(hp);
+      hp.connect(comp);
+      comp.connect(g.vG);
+      g.vG.connect(out);
       if (music && (live || mixVol.verb)) {
-        const conv = ctx.createConvolver(); conv.buffer = makeImpulse(ctx);
-        g.wet = ctx.createGain(); g.wet.gain.value = mixVol.verb ? 0.22 : 0;
-        g.vG.connect(conv); conv.connect(g.wet); g.wet.connect(out);
+        const conv = ctx.createConvolver();
+        conv.buffer = makeImpulse(ctx);
+        g.wet = ctx.createGain();
+        g.wet.gain.value = mixVol.verb ? 0.22 : 0;
+        g.vG.connect(conv);
+        conv.connect(g.wet);
+        g.wet.connect(out);
       }
       const vAt = from + shift;
-      if (vAt >= 0) vSrc.start(when, vAt); else vSrc.start(when - vAt, 0);
+      if (vAt >= 0) vSrc.start(when, vAt);
+      else vSrc.start(when - vAt, 0);
       nodes.push(vSrc);
       return { nodes, g, when };
     };
@@ -4400,46 +11221,72 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     function stopPlayerNodes() {
       const P = player.current;
       cancelAnimationFrame(P.raf);
-      P.nodes.forEach((n) => { try { n.stop(); } catch (e) {} });
-      P.nodes = []; P.g = null;
+      P.nodes.forEach((n) => {
+        try {
+          n.stop();
+        } catch (e) {}
+      });
+      P.nodes = [];
+      P.g = null;
     }
     const plEnd = () => (takeBuf ? takeBuf.duration + 0.5 : 0);
     const playerStart = (from) => {
       if (!takeBuf) return;
-      killSources(); setPlaying(false);
+      killSources();
+      setPlaying(false);
       const ctx = ensureCtx();
       if (from >= plEnd() - 0.1) from = 0;
       const music = withMusic && !!(inst && inst.buffer);
       const { nodes, g, when } = buildMix(ctx, from, music, true);
       const P = player.current;
-      P.nodes = nodes; P.g = g;
+      P.nodes = nodes;
+      P.g = g;
       setPl({ on: true, pos: from });
       const tick = () => {
         const pos = from + Math.max(0, ctx.currentTime - when);
-        if (pos >= plEnd()) { stopPlayerNodes(); setPl({ on: false, pos: 0 }); return; }
+        if (pos >= plEnd()) {
+          stopPlayerNodes();
+          setPl({ on: false, pos: 0 });
+          return;
+        }
         setPl({ on: true, pos });
         P.raf = requestAnimationFrame(tick);
       };
       tick();
     };
-    const playerPause = () => { stopPlayerNodes(); setPl((x) => ({ on: false, pos: x.pos })); };
-    const playerStop = () => { stopPlayerNodes(); setPl({ on: false, pos: 0 }); };
-    const playerSeek = (v) => { if (pl.on) playerStart(v); else setPl({ on: false, pos: v }); };
-    const plRef = useRef(pl); plRef.current = pl;
+    const playerPause = () => {
+      stopPlayerNodes();
+      setPl((x) => ({ on: false, pos: x.pos }));
+    };
+    const playerStop = () => {
+      stopPlayerNodes();
+      setPl({ on: false, pos: 0 });
+    };
+    const playerSeek = (v) => {
+      if (pl.on) playerStart(v);
+      else setPl({ on: false, pos: v });
+    };
+    const plRef = useRef(pl);
+    plRef.current = pl;
     // timing or mode changes: restart from where you are so you hear the change right away
     const restartTimer = useRef(0);
     useEffect(() => {
       if (!plRef.current.on) return;
       clearTimeout(restartTimer.current);
-      restartTimer.current = setTimeout(() => { if (plRef.current.on) playerStart(plRef.current.pos); }, 120);
+      restartTimer.current = setTimeout(() => {
+        if (plRef.current.on) playerStart(plRef.current.pos);
+      }, 120);
     }, [nudgeV, withMusic]);
     const downloadMix = async () => {
       if (!takeBuf || !inst || !inst.buffer) return;
       stopAll();
-      setMixBusy("Mixing…"); setMixMsg("");
+      setMixBusy("Mixing…");
+      setMixMsg("");
       try {
-        const sr = inst.buffer.sampleRate, len = Math.ceil(mixLength() * sr);
-        const Off = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        const sr = inst.buffer.sampleRate,
+          len = Math.ceil(mixLength() * sr);
+        const Off =
+          window.OfflineAudioContext || window.webkitOfflineAudioContext;
         const off = new Off(2, len, sr);
         buildMix(off, 0, true, false);
         const rendered = await new Promise((res, rej) => {
@@ -4448,251 +11295,1000 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
           if (pr && pr.then) pr.then(res, rej);
         });
         setMixBusy("Saving…");
-        const base = (songName || "song").replace(/\.[^.]+$/, "").replace(/[^\w\- ]+/g, "").trim().slice(0, 40) || "song";
+        const base =
+          (songName || "song")
+            .replace(/\.[^.]+$/, "")
+            .replace(/[^\w\- ]+/g, "")
+            .trim()
+            .slice(0, 40) || "song";
         await saveBlob(encodeWav(rendered, 1), base + " - karaoke.wav");
         setMixMsg("Saved.");
       } catch (e) {
-        setMixMsg(e && e.code === "declined" ? "Save cancelled." : e && e.code ? "Saving isn't available here." : "Couldn't build the mix on this device.");
+        setMixMsg(
+          e && e.code === "declined"
+            ? "Save cancelled."
+            : e && e.code
+              ? "Saving isn't available here."
+              : "Couldn't build the mix on this device.",
+        );
       }
       setMixBusy("");
     };
 
     if (!data) {
       return html`<div class="grid gap-4 sm:grid-cols-2">
-        <${UploadSlot} id="kara-file" step="1" title="Song vocal (acapella)" hint="Upload the acapella of the song. It's shared with Practice and the Singing Analyst, so you only upload it once. Then add the instrumental." slot=${orig} onPick=${onPickOrig} />
+        <${UploadSlot}
+          id="kara-file"
+          step="1"
+          title="Song vocal (acapella)"
+          hint="Upload the acapella of the song. It's shared with Practice and the Singing Analyst, so you only upload it once. Then add the instrumental."
+          slot=${orig}
+          onPick=${onPickOrig}
+        />
         <div class="panel p-5 flex flex-col gap-2">
           <h3 class="display text-lg font-bold">How Karaoke works</h3>
-          <p class="muted text-sm" style=${{ maxWidth: "62ch" }}>Add the song's acapella and its instrumental (karaoke version). The music plays with big scrolling lyrics while the app listens through your headphones, draws your voice over the melody and scores every line. At the end you get a final score and your weakest lines to practice.</p>
+          <p class="muted text-sm" style=${{ maxWidth: "62ch" }}>
+            Add the song's acapella and its instrumental (karaoke version). The
+            music plays with big scrolling lyrics while the app listens through
+            your headphones, draws your voice over the melody and scores every
+            line. At the end you get a final score and your weakest lines to
+            practice.
+          </p>
         </div>
       </div>`;
     }
 
-    const curLineIdx = lines.findIndex((l) => cursor >= l.start && cursor < l.end);
-    const nextIdx = curLineIdx >= 0 ? curLineIdx + 1 : lines.findIndex((l) => l.start > cursor);
-    const prevIdx = curLineIdx >= 0 ? curLineIdx - 1 : nextIdx > 0 ? nextIdx - 1 : -1;
+    const curLineIdx = lines.findIndex(
+      (l) => cursor >= l.start && cursor < l.end,
+    );
+    const nextIdx =
+      curLineIdx >= 0
+        ? curLineIdx + 1
+        : lines.findIndex((l) => l.start > cursor);
+    const prevIdx =
+      curLineIdx >= 0 ? curLineIdx - 1 : nextIdx > 0 ? nextIdx - 1 : -1;
     const showLine = curLineIdx >= 0 ? lines[curLineIdx] : null;
     const curIdx = notes.findIndex((n) => cursor >= n.pos && cursor < n.end);
     const nameOf = (m) => pretty(midiInfo(m).label);
-    const scored = Object.entries(lineScores).map(([i, s]) => ({ i: +i, s })).sort((a, b) => a.s - b.s);
-    const lineLabel = (i) => (lines[i].text ? "“" + lines[i].text + "”" : "Phrase " + (i + 1));
+    const scored = Object.entries(lineScores)
+      .map(([i, s]) => ({ i: +i, s }))
+      .sort((a, b) => a.s - b.s);
+    const lineLabel = (i) =>
+      lines[i].text ? "“" + lines[i].text + "”" : "Phrase " + (i + 1);
     const small = { padding: "5px 10px", fontSize: 13 };
     const hpText = {
-      unknown: "Run a quick check so the app knows the mic can't hear the music.",
+      unknown:
+        "Run a quick check so the app knows the mic can't hear the music.",
       checking: "Playing three beeps and listening…",
       ok: "All good: the mic can't hear the music. Scoring is on.",
-      heard: "The mic heard the test beeps, so it would hear the music too. Plug in headphones and check again.",
+      heard:
+        "The mic heard the test beeps, so it would hear the music too. Plug in headphones and check again.",
       override: "Scoring is on without headphones. Expect messy results.",
-      nomic: "The microphone isn't available here, so you can sing along but without scoring. Use your GitHub Pages site or Chrome on your computer for scoring.",
+      nomic:
+        "The microphone isn't available here, so you can sing along but without scoring. Use your GitHub Pages site or Chrome on your computer for scoring.",
       skip: "Singing without scoring. Check your headphones to turn scoring and recording on.",
     }[hp];
 
     const ready = !playing && cursor < 0.05;
     const firstLines = spans.slice(0, 2).map((l) => l.text);
-    const liveScore = (() => { const v = Object.values(lineScores); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; })();
+    const liveScore = (() => {
+      const v = Object.values(lineScores);
+      return v.length
+        ? Math.round(v.reduce((a, b) => a + b, 0) / v.length)
+        : null;
+    })();
     // 3-2-1 before a fresh start, so it feels like stepping on stage
     const countIn = (fn) => {
-      cancelCount(); ensureCtx();
+      cancelCount();
+      ensureCtx();
       setCount(3);
-      countTimers.current = [setTimeout(() => setCount(2), 700), setTimeout(() => setCount(1), 1400), setTimeout(() => { countTimers.current = []; setCount(null); fn(); }, 2100)];
+      countTimers.current = [
+        setTimeout(() => setCount(2), 700),
+        setTimeout(() => setCount(1), 1400),
+        setTimeout(() => {
+          countTimers.current = [];
+          setCount(null);
+          fn();
+        }, 2100),
+      ];
     };
     const startPressed = (fresh) => {
-      if (count != null) { cancelCount(); return; }
-      if (!playing && (fresh || cursor < 0.05) && hpRef.current === "unknown") { setHpAsk(true); return; }
-      if (playing && !fresh) { stopAll(); return; }
+      if (count != null) {
+        cancelCount();
+        return;
+      }
+      if (!playing && (fresh || cursor < 0.05) && hpRef.current === "unknown") {
+        setHpAsk(true);
+        return;
+      }
+      if (playing && !fresh) {
+        stopAll();
+        return;
+      }
       const t = cursor >= songEnd - 0.2 ? 0 : cursor;
-      if (fresh || t < 0.05) { if (playing) stopAll(); countIn(() => startAt(0, true)); } else startAt(t, false);
+      if (fresh || t < 0.05) {
+        if (playing) stopAll();
+        countIn(() => startAt(0, true));
+      } else startAt(t, false);
     };
     const checkThenSing = async () => {
       const st = await runCheck();
-      if (st === "ok") { setHpAsk(false); countIn(() => startAt(0, true)); }
+      if (st === "ok") {
+        setHpAsk(false);
+        countIn(() => startAt(0, true));
+      }
     };
-    const singWithout = () => { setHp("skip"); hpRef.current = "skip"; setHpAsk(false); countIn(() => startAt(0, true)); };
+    const singWithout = () => {
+      setHp("skip");
+      hpRef.current = "skip";
+      setHpAsk(false);
+      countIn(() => startAt(0, true));
+    };
 
     return html`<div class="flex flex-col gap-4">
-      ${final ? html`<${React.Fragment}>
-      <section class="flex flex-col gap-4">
-        <div class="flex items-center justify-between gap-3">
-          <button class="btn btn-ghost" style=${{ padding: "6px 10px" }} onClick=${() => { playerStop(); setFinal(null); }}><span class="flex items-center gap-1"><${Icon} name="back" size=${18} />Back to the song</span></button>
-          <button class="btn btn-primary" onClick=${() => { playerStop(); clearLoop(); setCursor(0); startPressed(true); }}>Sing again</button>
-        </div>
-        <div class="flex flex-wrap items-end justify-center gap-3">
-          <div class="flex items-end gap-3" style=${{ width: final.score != null ? "100%" : undefined }}>
-            ${final.score != null
-              ? html`<div class="kara-hero" style=${{ width: "100%" }}>
-                  ${final.score >= 75 && html`<div class="confetti" aria-hidden="true">${CONFETTI.map((c, i) => html`<i key=${i} style=${{ left: c.l + "%", background: c.c, width: c.w, height: c.h, animationDelay: c.d + "s", transform: "rotate(" + c.r + "deg)" }}></i>`)}</div>`}
-                  <${Stars} n=${karaStars(final.score)} size=${36} big=${true} />
-                  <span class="rank-title">${KARA_RANKS[karaStars(final.score) - 1]}</span>
-                  <span class="display font-bold" style=${{ fontSize: 64, lineHeight: 1, color: "#f3d18c", textShadow: "0 0 28px rgba(226,182,92,.45)" }}>${final.score}<span style=${{ fontSize: 28 }}>%</span></span>
-                  <span class="text-sm muted">${final.bestCombo ? html`Best combo <b style=${{ color: "#c4b5fd" }}>×${final.bestCombo}</b> · ` : ""}${final.perfect || 0} perfect note${final.perfect === 1 ? "" : "s"} · ${final.lines} lines</span>
-                  ${final.prevBest == null || final.score > final.prevBest ? html`<span class="tag tag-good" style=${{ marginTop: 4 }}>${final.prevBest == null ? "First score on this song" : "New best!"}</span>` : html`<span class="text-xs muted">Your best: ${best}%</span>`}
-                </div>`
-              : html`<div class="flex flex-col gap-1">
-                  <span class="label">${takeBuf ? "Your take" : "Session ended"}</span>
-                  <span class="display text-2xl font-bold">You sang to ${fmt(final.reached || 0)}</span>
-                  <span class="text-sm muted">${final.scoring ? (takeBuf ? "Not enough singing to score, but your recording is ready." : "Not enough singing to score.") : "You sang without scoring, so there's no score or recording."}</span>
-                  ${!final.scoring && html`<button class="btn" style=${{ alignSelf: "flex-start", marginTop: 6 }} onClick=${() => { setFinal(null); setHpAsk(true); }}><span class="flex items-center gap-2"><${Icon} name="headphones" size=${18} />Check headphones to get scored</span></button>`}
+      ${final
+        ? html`<${React.Fragment}>
+            <section class="flex flex-col gap-4">
+              <div class="flex items-center justify-between gap-3">
+                <button
+                  class="btn btn-ghost"
+                  style=${{ padding: "6px 10px" }}
+                  onClick=${() => {
+                    playerStop();
+                    setFinal(null);
+                  }}
+                >
+                  <span class="flex items-center gap-1"
+                    ><${Icon} name="back" size=${18} />Back to the song</span
+                  >
+                </button>
+                <button
+                  class="btn btn-primary"
+                  onClick=${() => {
+                    playerStop();
+                    clearLoop();
+                    setCursor(0);
+                    startPressed(true);
+                  }}
+                >
+                  Sing again
+                </button>
+              </div>
+              <div class="flex flex-wrap items-end justify-center gap-3">
+                <div
+                  class="flex items-end gap-3"
+                  style=${{ width: final.score != null ? "100%" : undefined }}
+                >
+                  ${final.score != null
+                    ? html`<div class="kara-hero" style=${{ width: "100%" }}>
+                        ${final.score >= 75 &&
+                        html`<div class="confetti" aria-hidden="true">
+                          ${CONFETTI.map(
+                            (c, i) =>
+                              html`<i
+                                key=${i}
+                                style=${{
+                                  left: c.l + "%",
+                                  background: c.c,
+                                  width: c.w,
+                                  height: c.h,
+                                  animationDelay: c.d + "s",
+                                  transform: "rotate(" + c.r + "deg)",
+                                }}
+                              ></i>`,
+                          )}
+                        </div>`}
+                        <${Stars}
+                          n=${karaStars(final.score)}
+                          size=${36}
+                          big=${true}
+                        />
+                        <span class="rank-title"
+                          >${KARA_RANKS[karaStars(final.score) - 1]}</span
+                        >
+                        <span
+                          class="display font-bold"
+                          style=${{
+                            fontSize: 64,
+                            lineHeight: 1,
+                            color: "#f3d18c",
+                            textShadow: "0 0 28px rgba(226,182,92,.45)",
+                          }}
+                          >${final.score}<span style=${{ fontSize: 28 }}
+                            >%</span
+                          ></span
+                        >
+                        <span class="text-sm muted"
+                          >${final.bestCombo
+                            ? html`Best combo
+                                <b style=${{ color: "#c4b5fd" }}
+                                  >×${final.bestCombo}</b
+                                >
+                                · `
+                            : ""}${final.perfect || 0}
+                          perfect note${final.perfect === 1 ? "" : "s"} ·
+                          ${final.lines} lines</span
+                        >
+                        ${final.prevBest == null || final.score > final.prevBest
+                          ? html`<span
+                              class="tag tag-good"
+                              style=${{ marginTop: 4 }}
+                              >${final.prevBest == null
+                                ? "First score on this song"
+                                : "New best!"}</span
+                            >`
+                          : html`<span class="text-xs muted"
+                              >Your best: ${best}%</span
+                            >`}
+                      </div>`
+                    : html`<div class="flex flex-col gap-1">
+                        <span class="label"
+                          >${takeBuf ? "Your take" : "Session ended"}</span
+                        >
+                        <span class="display text-2xl font-bold"
+                          >You sang to ${fmt(final.reached || 0)}</span
+                        >
+                        <span class="text-sm muted"
+                          >${final.scoring
+                            ? takeBuf
+                              ? "Not enough singing to score, but your recording is ready."
+                              : "Not enough singing to score."
+                            : "You sang without scoring, so there's no score or recording."}</span
+                        >
+                        ${!final.scoring &&
+                        html`<button
+                          class="btn"
+                          style=${{ alignSelf: "flex-start", marginTop: 6 }}
+                          onClick=${() => {
+                            setFinal(null);
+                            setHpAsk(true);
+                          }}
+                        >
+                          <span class="flex items-center gap-2"
+                            ><${Icon} name="headphones" size=${18} />Check
+                            headphones to get scored</span
+                          >
+                        </button>`}
+                      </div>`}
+                </div>
+              </div>
+              ${scored.length > 0 &&
+              html`<div class="flex flex-col gap-2">
+                ${(() => {
+                  const b = scored[scored.length - 1];
+                  return html`<div class="part-card">
+                    <span class="flex flex-col min-w-0" style=${{ flex: 1 }}
+                      ><span class="label"
+                        >Best part ·
+                        <span class="mono">${fmt(lines[b.i].start)}</span></span
+                      ><span
+                        class="text-sm"
+                        style=${{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        >${lineLabel(b.i)}</span
+                      ></span
+                    >
+                    <span
+                      class="display font-bold"
+                      style=${{ fontSize: 18, color: "var(--good)" }}
+                      >${b.s}%</span
+                    >
+                  </div>`;
+                })()}
+                ${scored.length > 1 &&
+                scored
+                  .slice(0, Math.min(3, scored.length - 1))
+                  .filter(({ s }) => s < 90)
+                  .slice(0, scored.length > 4 ? 2 : 1)
+                  .map(
+                    ({ i, s }, k) =>
+                      html`<div key=${i} class="part-card">
+                        <span class="flex flex-col min-w-0" style=${{ flex: 1 }}
+                          ><span class="label"
+                            >${k === 0 ? "Hardest part" : "Also practise"} ·
+                            <span class="mono"
+                              >${fmt(lines[i].start)}</span
+                            ></span
+                          ><span
+                            class="text-sm"
+                            style=${{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                            >${lineLabel(i)}</span
+                          ></span
+                        >
+                        <span
+                          class="display font-bold"
+                          style=${{
+                            fontSize: 18,
+                            color:
+                              s >= 80
+                                ? "var(--good)"
+                                : s >= 50
+                                  ? "var(--warn)"
+                                  : "var(--bad)",
+                          }}
+                          >${s}%</span
+                        >
+                        <button
+                          class="link-btn text-sm"
+                          style=${{ textDecoration: "none" }}
+                          onClick=${() =>
+                            onPractice &&
+                            onPractice(lines[i].start, lines[i].end + 0.3)}
+                        >
+                          Practise
+                        </button>
+                      </div>`,
+                  )}
+              </div>`}
+              ${takeBuf &&
+              html`<div class="take-box">
+                <div class="flex flex-wrap items-end justify-between gap-2">
+                  <div class="flex flex-col min-w-0">
+                    <span class="label">Your recording</span>
+                    <span class="text-sm"
+                      >${fmt(takeBuf.duration)} of your voice, lined up with the
+                      song</span
+                    >
+                  </div>
+                  <div class="seg" role="group" aria-label="What to hear">
+                    <button
+                      aria-pressed=${!withMusic || !(inst && inst.buffer)
+                        ? "true"
+                        : "false"}
+                      onClick=${() => setWithMusic(false)}
+                    >
+                      Just me
+                    </button>
+                    <button
+                      aria-pressed=${withMusic && inst && inst.buffer
+                        ? "true"
+                        : "false"}
+                      disabled=${!(inst && inst.buffer)}
+                      onClick=${() => setWithMusic(true)}
+                      title=${inst && inst.buffer
+                        ? ""
+                        : "Add the instrumental above first"}
+                    >
+                      Me + music
+                    </button>
+                  </div>
+                </div>
+                <div class="player">
+                  <button
+                    class="round-btn primary"
+                    onClick=${() =>
+                      pl.on ? playerPause() : playerStart(pl.pos)}
+                    aria-label=${pl.on ? "Pause" : "Play"}
+                  >
+                    <${Icon} name=${pl.on ? "pause" : "play"} />
+                  </button>
+
+                  <button
+                    class="round-btn"
+                    onClick=${playerStop}
+                    aria-label="Stop"
+                    disabled=${!pl.on && pl.pos === 0}
+                  >
+                    <${Icon} name="stop" size=${16} />
+                  </button>
+                  <input
+                    id="take-seek"
+                    type="range"
+                    min="0"
+                    max=${plEnd()}
+                    step="0.05"
+                    value=${pl.pos}
+                    onChange=${(e) => playerSeek(parseFloat(e.target.value))}
+                    aria-label="Position in your recording"
+                    style=${{ accentColor: "var(--accent)" }}
+                  />
+                  <span
+                    class="mono text-xs muted"
+                    style=${{ whiteSpace: "nowrap" }}
+                    >${fmt(pl.pos)} / ${fmt(takeBuf.duration)}</span
+                  >
+                </div>
+                ${withMusic &&
+                inst &&
+                inst.buffer &&
+                html`<button
+                  class="btn btn-ghost"
+                  style=${{
+                    alignSelf: "flex-start",
+                    padding: "4px 2px",
+                    color: "var(--accent)",
+                  }}
+                  onClick=${() => setShowMix((v) => !v)}
+                  aria-expanded=${showMix ? "true" : "false"}
+                >
+                  ${showMix ? "Hide mix and timing" : "Adjust mix and timing"}
+                </button>`}
+                ${withMusic &&
+                inst &&
+                inst.buffer &&
+                showMix &&
+                html`<div class="flex flex-col gap-3">
+                  <div
+                    class="mixer"
+                    style=${{
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    }}
+                  >
+                    ${[
+                      ["v", "My voice", 1.6],
+                      ["m", "Music", 1.2],
+                    ].map(
+                      ([k, l, mx]) =>
+                        html`<label key=${k} class="mix-row" for=${"out-" + k}>
+                          <span class="text-xs font-semibold">${l}</span>
+                          <input
+                            id=${"out-" + k}
+                            type="range"
+                            min="0"
+                            max=${mx}
+                            step="0.05"
+                            value=${mixVol[k]}
+                            onInput=${(e) =>
+                              setOut(k, parseFloat(e.target.value))}
+                            onChange=${(e) =>
+                              setOut(k, parseFloat(e.target.value))}
+                            style=${{ accentColor: "var(--accent)" }}
+                          />
+                          <span
+                            class="mono text-xs muted"
+                            style=${{ width: 34, textAlign: "right" }}
+                            >${Math.round(mixVol[k] * 100)}</span
+                          >
+                        </label>`,
+                    )}
+                  </div>
+                  <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+                    <button
+                      class="switch"
+                      role="switch"
+                      aria-checked=${mixVol.verb ? "true" : "false"}
+                      onClick=${() => setOut("verb", !mixVol.verb)}
+                      style=${{ fontSize: 13 }}
+                    >
+                      <span class="track"><span class="knob"></span></span>Echo
+                      (reverb)
+                    </button>
+                    <label
+                      class="mix-row"
+                      for="voice-timing"
+                      style=${{ flex: "1 1 260px" }}
+                    >
+                      <span class="text-xs font-semibold">Voice timing</span>
+                      <input
+                        id="voice-timing"
+                        type="range"
+                        min=${-0.3 - lat}
+                        max=${0.6 - lat}
+                        step="0.01"
+                        value=${nudgeV}
+                        onChange=${(e) => setNudgeV(parseFloat(e.target.value))}
+                        style=${{ accentColor: "var(--accent)" }}
+                      />
+                      <span
+                        class="mono text-xs muted"
+                        style=${{ minWidth: 86, textAlign: "right" }}
+                        >${Math.abs(lat + nudgeV) < 0.005
+                          ? "no shift"
+                          : (lat + nudgeV > 0 ? "earlier " : "later ") +
+                            Math.abs(lat + nudgeV).toFixed(2) +
+                            " s"}</span
+                      >
+                    </label>
+                  </div>
+                  <p class="text-xs muted">
+                    Drag Voice timing while it plays until your voice sits on
+                    the beat.
+                    ${lat > 0
+                      ? "It starts " +
+                        lat.toFixed(2) +
+                        " s earlier to make up for headphone delay."
+                      : ""}
+                  </p>
                 </div>`}
-          </div>
-        </div>
-        ${scored.length > 0 && html`<div class="flex flex-col gap-2">
-          ${(() => { const b = scored[scored.length - 1]; return html`<div class="part-card">
-            <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><span class="label">Best part · <span class="mono">${fmt(lines[b.i].start)}</span></span><span class="text-sm" style=${{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${lineLabel(b.i)}</span></span>
-            <span class="display font-bold" style=${{ fontSize: 18, color: "var(--good)" }}>${b.s}%</span></div>`; })()}
-          ${scored.length > 1 && scored.slice(0, Math.min(3, scored.length - 1)).filter(({ s }) => s < 90).slice(0, scored.length > 4 ? 2 : 1).map(({ i, s }, k) => html`<div key=${i} class="part-card">
-            <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><span class="label">${k === 0 ? "Hardest part" : "Also practise"} · <span class="mono">${fmt(lines[i].start)}</span></span><span class="text-sm" style=${{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${lineLabel(i)}</span></span>
-            <span class="display font-bold" style=${{ fontSize: 18, color: s >= 80 ? "var(--good)" : s >= 50 ? "var(--warn)" : "var(--bad)" }}>${s}%</span>
-            <button class="link-btn text-sm" style=${{ textDecoration: "none" }} onClick=${() => onPractice && onPractice(lines[i].start, lines[i].end + 0.3)}>Practise</button></div>`)}
-        </div>`}
-        ${takeBuf && html`<div class="take-box">
-          <div class="flex flex-wrap items-end justify-between gap-2">
-            <div class="flex flex-col min-w-0">
-              <span class="label">Your recording</span>
-              <span class="text-sm">${fmt(takeBuf.duration)} of your voice, lined up with the song</span>
-            </div>
-            <div class="seg" role="group" aria-label="What to hear">
-              <button aria-pressed=${!withMusic || !(inst && inst.buffer) ? "true" : "false"} onClick=${() => setWithMusic(false)}>Just me</button>
-              <button aria-pressed=${withMusic && inst && inst.buffer ? "true" : "false"} disabled=${!(inst && inst.buffer)} onClick=${() => setWithMusic(true)} title=${inst && inst.buffer ? "" : "Add the instrumental above first"}>Me + music</button>
-            </div>
-          </div>
-          <div class="player">
-            <button class="round-btn primary" onClick=${() => (pl.on ? playerPause() : playerStart(pl.pos))} aria-label=${pl.on ? "Pause" : "Play"}><${Icon} name=${pl.on ? "pause" : "play"} /></button>
-            
-            <button class="round-btn" onClick=${playerStop} aria-label="Stop" disabled=${!pl.on && pl.pos === 0}><${Icon} name="stop" size=${16} /></button>
-            <input id="take-seek" type="range" min="0" max=${plEnd()} step="0.05" value=${pl.pos} onChange=${(e) => playerSeek(parseFloat(e.target.value))} aria-label="Position in your recording" style=${{ accentColor: "var(--accent)" }} />
-            <span class="mono text-xs muted" style=${{ whiteSpace: "nowrap" }}>${fmt(pl.pos)} / ${fmt(takeBuf.duration)}</span>
-          </div>
-          ${withMusic && inst && inst.buffer && html`<button class="btn btn-ghost" style=${{ alignSelf: "flex-start", padding: "4px 2px", color: "var(--accent)" }} onClick=${() => setShowMix((v) => !v)} aria-expanded=${showMix ? "true" : "false"}>${showMix ? "Hide mix and timing" : "Adjust mix and timing"}</button>`}
-          ${withMusic && inst && inst.buffer && showMix && html`<div class="flex flex-col gap-3">
-            <div class="mixer" style=${{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-              ${[["v", "My voice", 1.6], ["m", "Music", 1.2]].map(([k, l, mx]) => html`<label key=${k} class="mix-row" for=${"out-" + k}>
-                <span class="text-xs font-semibold">${l}</span>
-                <input id=${"out-" + k} type="range" min="0" max=${mx} step="0.05" value=${mixVol[k]} onInput=${(e) => setOut(k, parseFloat(e.target.value))} onChange=${(e) => setOut(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
-                <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${Math.round(mixVol[k] * 100)}</span>
-              </label>`)}
-            </div>
-            <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
-              <button class="switch" role="switch" aria-checked=${mixVol.verb ? "true" : "false"} onClick=${() => setOut("verb", !mixVol.verb)} style=${{ fontSize: 13 }}>
-                <span class="track"><span class="knob"></span></span>Echo (reverb)
-              </button>
-              <label class="mix-row" for="voice-timing" style=${{ flex: "1 1 260px" }}>
-                <span class="text-xs font-semibold">Voice timing</span>
-                <input id="voice-timing" type="range" min=${-0.3 - lat} max=${0.6 - lat} step="0.01" value=${nudgeV} onChange=${(e) => setNudgeV(parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
-                <span class="mono text-xs muted" style=${{ minWidth: 86, textAlign: "right" }}>${Math.abs(lat + nudgeV) < 0.005 ? "no shift" : (lat + nudgeV > 0 ? "earlier " : "later ") + Math.abs(lat + nudgeV).toFixed(2) + " s"}</span>
-              </label>
-            </div>
-            <p class="text-xs muted">Drag Voice timing while it plays until your voice sits on the beat. ${lat > 0 ? "It starts " + lat.toFixed(2) + " s earlier to make up for headphone delay." : ""}</p>
-          </div>`}
-          <div class="flex flex-wrap items-center gap-2">
-            <button class="btn" onClick=${saveTake}>${withMusic && inst && inst.buffer ? "Save just me" : "Save recording"}</button>
-            <button class="btn" onClick=${downloadMix} disabled=${!!mixBusy || !(inst && inst.buffer)} title=${inst && inst.buffer ? "" : "Add the instrumental above first"}>${mixBusy || "Save with music"}</button>
-            <button class="btn btn-primary" onClick=${sendToAnalyst}>Analyze →</button>
-          </div>
-          ${(saveMsg || mixMsg) && html`<span class="text-xs muted">${mixMsg || saveMsg}</span>`}
-          ${!mixMsg && inst && inst.buffer && html`<span class="text-xs muted">Save with music makes a WAV file of what you hear in "Me + music", about ${Math.max(1, Math.round(mixLength() / 60 * 10))} MB.</span>`}
-        </div>`}
-      </section>
-      <//>` : html`<${React.Fragment}>
-      ${ready ? html`<section class="flex flex-col items-center gap-4 text-center" style=${{ paddingTop: 12 }}>
-        <span class="label" style=${{ color: "#c4b5fd", letterSpacing: "0.12em" }}>Up first</span>
-        <p class="display font-bold" style=${{ fontSize: 30, lineHeight: 1.15, margin: 0, maxWidth: "20ch" }}>${firstLines[0] || "♪"}</p>
-        ${firstLines[1] && html`<p class="display font-semibold muted" style=${{ fontSize: 17, margin: 0, maxWidth: "26ch" }}>${firstLines[1]}</p>`}
-        ${!spans.length && html`<p class="text-xs muted" style=${{ margin: 0 }}>No lyrics for this song yet. Add an .lrc file under Change.</p>`}
-        ${best != null && html`<span class="k-chip" style=${{ cursor: "default" }}><span class="muted" style=${{ fontWeight: 500 }}>Your best</span><span class="mono" style=${{ color: "#f3d18c" }}>${best}%</span><span style=${{ color: "#f3d18c", letterSpacing: 1 }} aria-label=${karaStars(best) + " stars"}>${"★".repeat(karaStars(best))}</span></span>`}
-        <div class="flex flex-col items-center gap-3" style=${{ marginTop: 18 }}>
-          <button class="ready-mic" onClick=${() => startPressed(false)} aria-label="Start singing"><${Icon} name="mic" size=${36} /></button>
-          <span class="display font-bold" style=${{ fontSize: 18, marginTop: 6 }}>Tap to sing</span>
-          <span class="text-sm muted">3-2-1 countdown, then the music starts</span>
-          <div class="flex flex-wrap justify-center gap-2" style=${{ marginTop: 4 }}>
-            <button class="k-chip" onClick=${() => setHpAsk(true)}><${Icon} name="headphones" size=${16} />${hp === "ok" ? "Headphones on" : hp === "override" ? "No headphones" : "Check headphones"}</button>
-            <span class="k-chip" style=${{ cursor: "default", color: listening ? "var(--good)" : "var(--muted)", borderColor: listening ? "rgba(95,211,154,.35)" : undefined }}>${listening ? "Scoring on" : "Scoring off"}</span>
-            <button class="k-chip" onClick=${() => setOptOpen(true)}><${Icon} name="sliders" size=${16} />Mix</button>
-          </div>
-        </div>
-      </section>` : html`<${React.Fragment}>
-      <div class="flex items-center justify-between gap-3">
-        <span class="flex items-center gap-2 text-sm muted">
-          ${listening ? html`<span class="rec-dot"></span>${playing ? "Recording" : "Paused"}` : html`<${Icon} name="headphones" size=${18} />${hp === "skip" || hp === "nomic" ? "Singing without scoring" : "Headphones needed for scoring"}`}
-        </span>
-        <span class="flex items-center gap-2">
-          ${combo >= 2 && html`<span class="combo-chip">Combo <span class="mono" style=${{ fontSize: 14 }}>×${combo}</span></span>`}
-          ${listening && html`<span class="score-chip"><span class="label" style=${{ fontSize: 9, color: "#c9a866" }}>Score</span><b>${liveScore != null ? liveScore + "%" : "—"}</b></span>`}
-        </span>
-      </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button class="btn" onClick=${saveTake}>
+                    ${withMusic && inst && inst.buffer
+                      ? "Save just me"
+                      : "Save recording"}
+                  </button>
+                  <button
+                    class="btn"
+                    onClick=${downloadMix}
+                    disabled=${!!mixBusy || !(inst && inst.buffer)}
+                    title=${inst && inst.buffer
+                      ? ""
+                      : "Add the instrumental above first"}
+                  >
+                    ${mixBusy || "Save with music"}
+                  </button>
+                  <button class="btn btn-primary" onClick=${sendToAnalyst}>
+                    Analyze →
+                  </button>
+                </div>
+                ${(saveMsg || mixMsg) &&
+                html`<span class="text-xs muted">${mixMsg || saveMsg}</span>`}
+                ${!mixMsg &&
+                inst &&
+                inst.buffer &&
+                html`<span class="text-xs muted"
+                  >Save with music makes a WAV file of what you hear in "Me +
+                  music", about
+                  ${Math.max(1, Math.round((mixLength() / 60) * 10))} MB.</span
+                >`}
+              </div>`}
+            </section>
+          <//>`
+        : html`<${React.Fragment}>
+            ${ready
+              ? html`<section
+                  class="flex flex-col items-center gap-4 text-center"
+                  style=${{ paddingTop: 12 }}
+                >
+                  <span
+                    class="label"
+                    style=${{ color: "#c4b5fd", letterSpacing: "0.12em" }}
+                    >Up first</span
+                  >
+                  <p
+                    class="display font-bold"
+                    style=${{
+                      fontSize: 30,
+                      lineHeight: 1.15,
+                      margin: 0,
+                      maxWidth: "20ch",
+                    }}
+                  >
+                    ${firstLines[0] || "♪"}
+                  </p>
+                  ${firstLines[1] &&
+                  html`<p
+                    class="display font-semibold muted"
+                    style=${{ fontSize: 17, margin: 0, maxWidth: "26ch" }}
+                  >
+                    ${firstLines[1]}
+                  </p>`}
+                  ${!spans.length &&
+                  html`<p class="text-xs muted" style=${{ margin: 0 }}>
+                    No lyrics for this song yet. Add an .lrc file under Change.
+                  </p>`}
+                  ${best != null &&
+                  html`<span class="k-chip" style=${{ cursor: "default" }}
+                    ><span class="muted" style=${{ fontWeight: 500 }}
+                      >Your best</span
+                    ><span class="mono" style=${{ color: "#f3d18c" }}
+                      >${best}%</span
+                    ><span
+                      style=${{ color: "#f3d18c", letterSpacing: 1 }}
+                      aria-label=${karaStars(best) + " stars"}
+                      >${"★".repeat(karaStars(best))}</span
+                    ></span
+                  >`}
+                  <div
+                    class="flex flex-col items-center gap-3"
+                    style=${{ marginTop: 18 }}
+                  >
+                    <button
+                      class="ready-mic"
+                      onClick=${() => startPressed(false)}
+                      aria-label="Start singing"
+                    >
+                      <${Icon} name="mic" size=${36} />
+                    </button>
+                    <span
+                      class="display font-bold"
+                      style=${{ fontSize: 18, marginTop: 6 }}
+                      >Tap to sing</span
+                    >
+                    <span class="text-sm muted"
+                      >3-2-1 countdown, then the music starts</span
+                    >
+                    <div
+                      class="flex flex-wrap justify-center gap-2"
+                      style=${{ marginTop: 4 }}
+                    >
+                      <button class="k-chip" onClick=${() => setHpAsk(true)}>
+                        <${Icon} name="headphones" size=${16} />${hp === "ok"
+                          ? "Headphones on"
+                          : hp === "override"
+                            ? "No headphones"
+                            : "Check headphones"}
+                      </button>
+                      <span
+                        class="k-chip"
+                        style=${{
+                          cursor: "default",
+                          color: listening ? "var(--good)" : "var(--muted)",
+                          borderColor: listening
+                            ? "rgba(95,211,154,.35)"
+                            : undefined,
+                        }}
+                        >${listening ? "Scoring on" : "Scoring off"}</span
+                      >
+                      <button class="k-chip" onClick=${() => setOptOpen(true)}>
+                        <${Icon} name="sliders" size=${16} />Mix
+                      </button>
+                    </div>
+                  </div>
+                </section>`
+              : html`<${React.Fragment}>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="flex items-center gap-2 text-sm muted">
+                      ${listening
+                        ? html`<span class="rec-dot"></span>${playing
+                              ? "Recording"
+                              : "Paused"}`
+                        : html`<${Icon} name="headphones" size=${18} />${hp ===
+                              "skip" || hp === "nomic"
+                              ? "Singing without scoring"
+                              : "Headphones needed for scoring"}`}
+                    </span>
+                    <span class="flex items-center gap-2">
+                      ${combo >= 2 &&
+                      html`<span class="combo-chip"
+                        >Combo
+                        <span class="mono" style=${{ fontSize: 14 }}
+                          >×${combo}</span
+                        ></span
+                      >`}
+                      ${listening &&
+                      html`<span class="score-chip"
+                        ><span
+                          class="label"
+                          style=${{ fontSize: 9, color: "#c9a866" }}
+                          >Score</span
+                        ><b
+                          >${liveScore != null ? liveScore + "%" : "—"}</b
+                        ></span
+                      >`}
+                    </span>
+                  </div>
 
-        <div class="stage stage-big">
-          <${KaraokeLine} line=${prevIdx >= 0 ? lines[prevIdx] : null} t=${null} size=${15} dim=${true} />
-          <${KaraokeLine} line=${showLine || (nextIdx >= 0 ? lines[nextIdx] : null)} t=${showLine ? cursor : null} size=${30} />
-          <${KaraokeLine} line=${showLine && nextIdx >= 0 ? lines[nextIdx] : null} t=${null} size=${17} dim=${true} />
-          ${!spans.length && html`<p class="text-xs muted">No lyrics for this song yet. Add an .lrc file under Change.</p>`}
-        </div>
+                  <div class="stage stage-big">
+                    <${KaraokeLine}
+                      line=${prevIdx >= 0 ? lines[prevIdx] : null}
+                      t=${null}
+                      size=${15}
+                      dim=${true}
+                    />
+                    <${KaraokeLine}
+                      line=${showLine || (nextIdx >= 0 ? lines[nextIdx] : null)}
+                      t=${showLine ? cursor : null}
+                      size=${30}
+                    />
+                    <${KaraokeLine}
+                      line=${showLine && nextIdx >= 0 ? lines[nextIdx] : null}
+                      t=${null}
+                      size=${17}
+                      dim=${true}
+                    />
+                    ${!spans.length &&
+                    html`<p class="text-xs muted">
+                      No lyrics for this song yet. Add an .lrc file under
+                      Change.
+                    </p>`}
+                  </div>
 
-        <div class="kara-lane">
-          ${pop && playing && html`<span key=${pop.id} class=${"kara-pop" + (pop.kind === "great" ? " great" : "")} aria-hidden="true">${pop.text}</span>`}
-          <${MelodyMap} data=${data} notes=${notes} tr=${0} nameOf=${nameOf} phrases=${phrases} lyrics=${[]} loop=${loop} cursor=${cursor} curIdx=${curIdx}
-            onTapNote=${(n) => { setCursor(n.pos); if (playing) startAt(n.pos, false); }} onSeek=${(t) => { setCursor(t); if (playing) startAt(t, false); }} themeKey=${themeKey} overlay=${overlay} height=${170} marks=${marks} />
-        </div>
+                  <div class="kara-lane">
+                    ${pop &&
+                    playing &&
+                    html`<span
+                      key=${pop.id}
+                      class=${"kara-pop" +
+                      (pop.kind === "great" ? " great" : "")}
+                      aria-hidden="true"
+                      >${pop.text}</span
+                    >`}
+                    <${MelodyMap}
+                      data=${data}
+                      notes=${notes}
+                      tr=${0}
+                      nameOf=${nameOf}
+                      phrases=${phrases}
+                      lyrics=${[]}
+                      loop=${loop}
+                      cursor=${cursor}
+                      curIdx=${curIdx}
+                      onTapNote=${(n) => {
+                        setCursor(n.pos);
+                        if (playing) startAt(n.pos, false);
+                      }}
+                      onSeek=${(t) => {
+                        setCursor(t);
+                        if (playing) startAt(t, false);
+                      }}
+                      themeKey=${themeKey}
+                      overlay=${overlay}
+                      height=${170}
+                      marks=${marks}
+                    />
+                  </div>
 
+                  <div
+                    class="playbar"
+                    style=${{
+                      flexDirection: "column",
+                      alignItems: "stretch",
+                      gap: "10px",
+                    }}
+                  >
+                    <span class="flex items-center gap-3">
+                      <span class="mono text-xs muted">${fmt(cursor)}</span>
+                      <input
+                        id="kara-seek"
+                        type="range"
+                        min="0"
+                        max=${songEnd}
+                        step="0.1"
+                        value=${cursor}
+                        onChange=${(e) => {
+                          const t = parseFloat(e.target.value);
+                          setCursor(t);
+                          if (playing) startAt(t, false);
+                        }}
+                        aria-label="Position in the song"
+                      />
+                      <span class="mono text-xs muted">${fmt(songEnd)}</span>
+                    </span>
+                    <span class="flex items-center justify-center gap-5">
+                      <button
+                        class="round-btn"
+                        onClick=${() => setOptOpen(true)}
+                        aria-label="Mix and options"
+                      >
+                        <${Icon} name="sliders" />
+                      </button>
+                      <span class="mic-ring" ref=${ringRef}
+                        ><button
+                          class="round-btn primary big"
+                          onClick=${() => startPressed(false)}
+                          aria-label=${playing
+                            ? "Pause"
+                            : cursor > 0.05 && cursor < songEnd - 0.2
+                              ? "Resume"
+                              : "Start"}
+                        >
+                          <${Icon}
+                            name=${playing ? "pause" : "play"}
+                            size=${26}
+                          /></button
+                      ></span>
+                      <button
+                        class="round-btn"
+                        onClick=${stopSession}
+                        aria-label="Stop and see results"
+                        disabled=${!(
+                          playing ||
+                          (cursor > 0.05 && cursor < songEnd - 0.2)
+                        )}
+                      >
+                        <${Icon} name="stop" size=${16} />
+                      </button>
+                    </span>
+                    ${loop &&
+                    html`<span
+                      class="flex items-center justify-center gap-2 text-xs"
+                      ><span style=${{ color: "var(--accent)" }}
+                        >Looping ${fmt(loop.a)}–${fmt(loop.b)}</span
+                      ><button
+                        class="btn btn-ghost"
+                        style=${{ padding: "2px 8px", fontSize: 12 }}
+                        onClick=${clearLoop}
+                      >
+                        Stop looping
+                      </button></span
+                    >`}
+                  </div>
+                <//>`}
+          <//>`}
+      ${count != null &&
+      html`<button
+        class="kara-count"
+        onClick=${cancelCount}
+        aria-label="Cancel countdown"
+      >
+        <span key=${count} class="count-num" aria-live="assertive"
+          >${count}</span
+        >
+      </button>`}
 
-      <div class="playbar" style=${{ flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
-        <span class="flex items-center gap-3">
-          <span class="mono text-xs muted">${fmt(cursor)}</span>
-          <input id="kara-seek" type="range" min="0" max=${songEnd} step="0.1" value=${cursor} onChange=${(e) => { const t = parseFloat(e.target.value); setCursor(t); if (playing) startAt(t, false); }} aria-label="Position in the song" />
-          <span class="mono text-xs muted">${fmt(songEnd)}</span>
-        </span>
-        <span class="flex items-center justify-center gap-5">
-          <button class="round-btn" onClick=${() => setOptOpen(true)} aria-label="Mix and options"><${Icon} name="sliders" /></button>
-          <span class="mic-ring" ref=${ringRef}><button class="round-btn primary big" onClick=${() => startPressed(false)} aria-label=${playing ? "Pause" : cursor > 0.05 && cursor < songEnd - 0.2 ? "Resume" : "Start"}><${Icon} name=${playing ? "pause" : "play"} size=${26} /></button></span>
-          <button class="round-btn" onClick=${stopSession} aria-label="Stop and see results" disabled=${!(playing || (cursor > 0.05 && cursor < songEnd - 0.2))}><${Icon} name="stop" size=${16} /></button>
-        </span>
-        ${loop && html`<span class="flex items-center justify-center gap-2 text-xs"><span style=${{ color: "var(--accent)" }}>Looping ${fmt(loop.a)}–${fmt(loop.b)}</span><button class="btn btn-ghost" style=${{ padding: "2px 8px", fontSize: 12 }} onClick=${clearLoop}>Stop looping</button></span>`}
-      </div>
-      <//>`}
-      <//>`}
-      ${count != null && html`<button class="kara-count" onClick=${cancelCount} aria-label="Cancel countdown"><span key=${count} class="count-num" aria-live="assertive">${count}</span></button>`}
-
-      <${Sheet} open=${optOpen} title="Karaoke options" onClose=${() => setOptOpen(false)}>
+      <${Sheet}
+        open=${optOpen}
+        title="Karaoke options"
+        onClose=${() => setOptOpen(false)}
+      >
         <div class="opt-group">
           <span class="label">Mix</span>
-        <div class="mixer">
-          ${[["m", "Music"], ["v", "Guide vocal"], ["g", "Guide notes"]].map(([k, l]) => html`<label key=${k} class="mix-row" for=${"kmix-" + k}>
-            <span class="text-xs font-semibold">${l}</span>
-            <input id=${"kmix-" + k} type="range" min="0" max="1" step="0.05" value=${mix[k]} onInput=${(e) => setVol(k, parseFloat(e.target.value))} onChange=${(e) => setVol(k, parseFloat(e.target.value))} style=${{ accentColor: "var(--accent)" }} />
-            <span class="mono text-xs muted" style=${{ width: 34, textAlign: "right" }}>${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span>
-          </label>`)}
-        </div>
-        <p class="text-xs muted">Guide vocal is the original singer, quietly, like the guide button on a karaoke machine. Turn it off once you know the song. Any octave counts when scoring.</p>
-
+          <div class="mixer">
+            ${[
+              ["m", "Music"],
+              ["v", "Guide vocal"],
+              ["g", "Guide notes"],
+            ].map(
+              ([k, l]) =>
+                html`<label key=${k} class="mix-row" for=${"kmix-" + k}>
+                  <span class="text-xs font-semibold">${l}</span>
+                  <input
+                    id=${"kmix-" + k}
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value=${mix[k]}
+                    onInput=${(e) => setVol(k, parseFloat(e.target.value))}
+                    onChange=${(e) => setVol(k, parseFloat(e.target.value))}
+                    style=${{ accentColor: "var(--accent)" }}
+                  />
+                  <span
+                    class="mono text-xs muted"
+                    style=${{ width: 34, textAlign: "right" }}
+                    >${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span
+                  >
+                </label>`,
+            )}
+          </div>
+          <p class="text-xs muted">
+            Guide vocal is the original singer, quietly, like the guide button
+            on a karaoke machine. Turn it off once you know the song. Any octave
+            counts when scoring.
+          </p>
         </div>
         <div class="opt-group">
           <span class="label">Music timing</span>
           ${inst && inst.buffer
             ? html`<div class="flex flex-wrap items-center gap-2">
-                <button class="btn" style=${small} onClick=${() => nudge(-0.1)} aria-label="Music earlier">−0.1 s</button>
-                <span class="mono text-xs" style=${{ minWidth: 110, textAlign: "center" }}>${sync === 0 ? "No shift" : "Music " + (sync > 0 ? "skips " + sync.toFixed(2) + " s" : "waits " + (-sync).toFixed(2) + " s")}</span>
-                <button class="btn" style=${small} onClick=${() => nudge(0.1)} aria-label="Music later">+0.1 s</button>
-                <button class="btn btn-ghost" style=${small} onClick=${runAutoSync}>Auto-sync</button>
-                <button class="btn" style=${small} onClick=${() => { setOptOpen(false); checkTiming(); }}>▶ Check timing</button>
-              </div>
-              <p class="text-xs muted">${syncMsg || "Check timing plays the music with the original voice up loud. Nudge until they line up."}</p>`
-            : html`<p class="text-sm muted">No instrumental for this song. Add one under Change to sing with music.</p>`}
+                  <button
+                    class="btn"
+                    style=${small}
+                    onClick=${() => nudge(-0.1)}
+                    aria-label="Music earlier"
+                  >
+                    −0.1 s
+                  </button>
+                  <span
+                    class="mono text-xs"
+                    style=${{ minWidth: 110, textAlign: "center" }}
+                    >${sync === 0
+                      ? "No shift"
+                      : "Music " +
+                        (sync > 0
+                          ? "skips " + sync.toFixed(2) + " s"
+                          : "waits " + (-sync).toFixed(2) + " s")}</span
+                  >
+                  <button
+                    class="btn"
+                    style=${small}
+                    onClick=${() => nudge(0.1)}
+                    aria-label="Music later"
+                  >
+                    +0.1 s
+                  </button>
+                  <button
+                    class="btn btn-ghost"
+                    style=${small}
+                    onClick=${runAutoSync}
+                  >
+                    Auto-sync
+                  </button>
+                  <button
+                    class="btn"
+                    style=${small}
+                    onClick=${() => {
+                      setOptOpen(false);
+                      checkTiming();
+                    }}
+                  >
+                    ▶ Check timing
+                  </button>
+                </div>
+                <p class="text-xs muted">
+                  ${syncMsg ||
+                  "Check timing plays the music with the original voice up loud. Nudge until they line up."}
+                </p>`
+            : html`<p class="text-sm muted">
+                No instrumental for this song. Add one under Change to sing with
+                music.
+              </p>`}
         </div>
         <div class="opt-group">
           <span class="label">Headphones</span>
-          <p class="text-sm" style=${{ color: hp === "ok" ? "var(--good)" : hp === "heard" ? "var(--warn)" : undefined }}>${hpText}</p>
+          <p
+            class="text-sm"
+            style=${{
+              color:
+                hp === "ok"
+                  ? "var(--good)"
+                  : hp === "heard"
+                    ? "var(--warn)"
+                    : undefined,
+            }}
+          >
+            ${hpText}
+          </p>
           <div class="flex flex-wrap gap-2">
-            <button class="btn" disabled=${hp === "checking"} onClick=${runCheck}>${hp === "unknown" || hp === "skip" ? "Check headphones" : "Check again"}</button>
-            ${hp === "heard" && html`<button class="btn btn-ghost" onClick=${() => { setHp("override"); hpRef.current = "override"; }}>Score anyway</button>`}
+            <button
+              class="btn"
+              disabled=${hp === "checking"}
+              onClick=${runCheck}
+            >
+              ${hp === "unknown" || hp === "skip"
+                ? "Check headphones"
+                : "Check again"}
+            </button>
+            ${hp === "heard" &&
+            html`<button
+              class="btn btn-ghost"
+              onClick=${() => {
+                setHp("override");
+                hpRef.current = "override";
+              }}
+            >
+              Score anyway
+            </button>`}
           </div>
         </div>
       <//>
 
-      <${Sheet} open=${hpAsk} title="Headphones on?" onClose=${() => setHpAsk(false)}>
-        <p class="text-sm">For scoring and recording, the mic must hear only you, not the music. A quick check plays three beeps and listens.</p>
-        ${hp !== "unknown" && html`<p class="text-sm" style=${{ color: hp === "ok" ? "var(--good)" : "var(--warn)" }}>${hpText}</p>`}
+      <${Sheet}
+        open=${hpAsk}
+        title="Headphones on?"
+        onClose=${() => setHpAsk(false)}
+      >
+        <p class="text-sm">
+          For scoring and recording, the mic must hear only you, not the music.
+          A quick check plays three beeps and listens.
+        </p>
+        ${hp !== "unknown" &&
+        html`<p
+          class="text-sm"
+          style=${{ color: hp === "ok" ? "var(--good)" : "var(--warn)" }}
+        >
+          ${hpText}
+        </p>`}
         <div class="flex flex-col gap-2">
-          <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} disabled=${hp === "checking"} onClick=${checkThenSing}>${hp === "checking" ? "Listening…" : hp === "heard" ? "Check again" : "Check and start"}</button>
-          ${hp === "heard" && html`<button class="btn" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => { setHp("override"); hpRef.current = "override"; setHpAsk(false); countIn(() => startAt(0, true)); }}>Score anyway</button>`}
-          <button class="btn btn-ghost" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${singWithout}>Sing without scoring</button>
+          <button
+            class="btn btn-primary"
+            style=${{ justifyContent: "center", minHeight: 48 }}
+            disabled=${hp === "checking"}
+            onClick=${checkThenSing}
+          >
+            ${hp === "checking"
+              ? "Listening…"
+              : hp === "heard"
+                ? "Check again"
+                : "Check and start"}
+          </button>
+          ${hp === "heard" &&
+          html`<button
+            class="btn"
+            style=${{ justifyContent: "center", minHeight: 48 }}
+            onClick=${() => {
+              setHp("override");
+              hpRef.current = "override";
+              setHpAsk(false);
+              countIn(() => startAt(0, true));
+            }}
+          >
+            Score anyway
+          </button>`}
+          <button
+            class="btn btn-ghost"
+            style=${{ justifyContent: "center", minHeight: 48 }}
+            onClick=${singWithout}
+          >
+            Sing without scoring
+          </button>
         </div>
       <//>
     </div>`;
@@ -4703,28 +12299,60 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   const DRIVE_KEY = "AIzaSyBxpIBmELpY8JDFsYggMuZU_eROl4KYRrI"; // restricted to seeknowhere.github.io and the Drive API
   const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
   async function driveList(parent) {
-    const q = encodeURIComponent("'" + parent + "' in parents and trashed = false");
-    const r = await fetch(DRIVE_API + "?q=" + q + "&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=name&pageSize=200&key=" + DRIVE_KEY);
+    const q = encodeURIComponent(
+      "'" + parent + "' in parents and trashed = false",
+    );
+    const r = await fetch(
+      DRIVE_API +
+        "?q=" +
+        q +
+        "&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=name&pageSize=200&key=" +
+        DRIVE_KEY,
+    );
     if (!r.ok) throw new Error("list " + r.status);
     return (await r.json()).files || [];
   }
   async function driveFile(f) {
     const url = DRIVE_API + "/" + f.id + "?alt=media&key=" + DRIVE_KEY;
-    const cacheKey = "https://tono.cache/" + f.id + "/" + (f.modifiedTime || "");
+    const cacheKey =
+      "https://tono.cache/" + f.id + "/" + (f.modifiedTime || "");
     let cache = null;
-    try { cache = window.caches ? await caches.open("tono-songs-v1") : null; } catch (e) { cache = null; }
-    if (cache) { try { const hit = await cache.match(cacheKey); if (hit) return await hit.blob(); } catch (e) {} }
+    try {
+      cache = window.caches ? await caches.open("tono-songs-v1") : null;
+    } catch (e) {
+      cache = null;
+    }
+    if (cache) {
+      try {
+        const hit = await cache.match(cacheKey);
+        if (hit) return await hit.blob();
+      } catch (e) {}
+    }
     const r = await fetch(url);
     if (!r.ok) throw new Error("file " + r.status);
     const blob = await r.blob();
-    if (cache) { try { await cache.put(cacheKey, new Response(blob)); } catch (e) {} }
+    if (cache) {
+      try {
+        await cache.put(cacheKey, new Response(blob));
+      } catch (e) {}
+    }
     return blob;
   }
   function sortSongFiles(files) {
     const lrc = files.find((f) => /\.lrc$/i.test(f.name));
-    const audio = files.filter((f) => /^audio\//.test(f.mimeType || "") || /\.(mp3|m4a|wav|aac|ogg|flac)$/i.test(f.name));
-    let vocal = audio.find((f) => /vocal|acapella|a ?cappella|voice/i.test(f.name));
-    let inst = audio.find((f) => f !== vocal && /instrument|karaoke|minus ?one|backing|accomp|no ?vocal/i.test(f.name));
+    const audio = files.filter(
+      (f) =>
+        /^audio\//.test(f.mimeType || "") ||
+        /\.(mp3|m4a|wav|aac|ogg|flac)$/i.test(f.name),
+    );
+    let vocal = audio.find((f) =>
+      /vocal|acapella|a ?cappella|voice/i.test(f.name),
+    );
+    let inst = audio.find(
+      (f) =>
+        f !== vocal &&
+        /instrument|karaoke|minus ?one|backing|accomp|no ?vocal/i.test(f.name),
+    );
     if (!vocal) vocal = audio.find((f) => f !== inst);
     if (!inst) inst = audio.find((f) => f !== vocal);
     return { vocal, inst, lrc };
@@ -4739,102 +12367,172 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     useEffect(() => {
       if (!open || songs || blockedHere) return;
       driveList(DRIVE_FOLDER)
-        .then((fs) => setSongs(fs.filter((f) => f.mimeType === "application/vnd.google-apps.folder")))
-        .catch(() => setErr("Couldn't reach the song folder. Check your connection and try again."));
+        .then((fs) =>
+          setSongs(
+            fs.filter(
+              (f) => f.mimeType === "application/vnd.google-apps.folder",
+            ),
+          ),
+        )
+        .catch(() =>
+          setErr(
+            "Couldn't reach the song folder. Check your connection and try again.",
+          ),
+        );
     }, [open]);
     const load = async (song) => {
-      setErr(""); setBusy({ id: song.id, step: "Finding files…" });
+      setErr("");
+      setBusy({ id: song.id, step: "Finding files…" });
       try {
         const parts = sortSongFiles(await driveList(song.id));
         if (!parts.vocal) throw new Error("no vocal");
         let lyricText = null;
-        if (parts.lrc) { setBusy({ id: song.id, step: "Getting lyrics…" }); lyricText = await (await driveFile(parts.lrc)).text(); }
+        if (parts.lrc) {
+          setBusy({ id: song.id, step: "Getting lyrics…" });
+          lyricText = await (await driveFile(parts.lrc)).text();
+        }
         setBusy({ id: song.id, step: "Downloading vocal…" });
         const vBlob = await driveFile(parts.vocal);
         let iBlob = null;
-        if (parts.inst) { setBusy({ id: song.id, step: "Downloading music…" }); iBlob = await driveFile(parts.inst); }
+        if (parts.inst) {
+          setBusy({ id: song.id, step: "Downloading music…" });
+          iBlob = await driveFile(parts.inst);
+        }
         await onLoad({
           name: song.name,
-          vocal: new File([vBlob], parts.vocal.name, { type: vBlob.type || "audio/mpeg" }),
-          inst: iBlob ? new File([iBlob], parts.inst.name, { type: iBlob.type || "audio/mpeg" }) : null,
-          lyricText, lyricName: parts.lrc ? parts.lrc.name : null,
+          vocal: new File([vBlob], parts.vocal.name, {
+            type: vBlob.type || "audio/mpeg",
+          }),
+          inst: iBlob
+            ? new File([iBlob], parts.inst.name, {
+                type: iBlob.type || "audio/mpeg",
+              })
+            : null,
+          lyricText,
+          lyricName: parts.lrc ? parts.lrc.name : null,
         });
         if (!inline) setOpen(false);
       } catch (e) {
-        setErr(e && e.message === "no vocal" ? "That song folder has no audio files." : "Couldn't download that song. Try again in a moment.");
+        setErr(
+          e && e.message === "no vocal"
+            ? "That song folder has no audio files."
+            : "Couldn't download that song. Try again in a moment.",
+        );
       }
       setBusy(null);
     };
-    return html`<div class=${inline ? "flex flex-col gap-3" : "panel p-4 flex flex-col gap-3"}>
-      <div class="flex flex-wrap items-center justify-between gap-3" hidden=${inline}>
+    return html`<div
+      class=${inline ? "flex flex-col gap-3" : "panel p-4 flex flex-col gap-3"}
+    >
+      <div
+        class="flex flex-wrap items-center justify-between gap-3"
+        hidden=${inline}
+      >
         <div class="min-w-0">
           <span class="label">Sample songs</span>
-          <p class="text-sm">${current ? html`Now loaded: <b>${current}</b>` : "Pick a song to load its vocal, music and lyrics in one go."}</p>
+          <p class="text-sm">
+            ${current
+              ? html`Now loaded: <b>${current}</b>`
+              : "Pick a song to load its vocal, music and lyrics in one go."}
+          </p>
         </div>
-        <button class=${"btn" + (open ? "" : " btn-primary")} onClick=${() => setOpen((v) => !v)} aria-expanded=${open ? "true" : "false"}>${open ? "Close" : "Browse songs"}</button>
+        <button
+          class=${"btn" + (open ? "" : " btn-primary")}
+          onClick=${() => setOpen((v) => !v)}
+          aria-expanded=${open ? "true" : "false"}
+        >
+          ${open ? "Close" : "Browse songs"}
+        </button>
       </div>
-      ${open && (blockedHere
-        ? html`<p class="text-sm muted">${!DRIVE_KEY ? "The song library isn't connected yet." : "The song library works on your Tono website (seeknowhere.github.io). Here, upload the files yourself below."}</p>`
+      ${open &&
+      (blockedHere
+        ? html`<p class="text-sm muted">
+            ${!DRIVE_KEY
+              ? "The song library isn't connected yet."
+              : "The song library works on your Tono website (seeknowhere.github.io). Here, upload the files yourself below."}
+          </p>`
         : html`<div class="flex flex-col gap-2">
-            ${err && html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${err}</p>`}
-            ${!songs && !err && html`<p class="text-sm muted">Loading songs…</p>`}
-            ${songs && songs.length === 0 && html`<p class="text-sm muted">No songs yet. Add a folder per song inside Tono › Songs in your Google Drive.</p>`}
-            ${songs && songs.map((sg) => html`<div key=${sg.id} class="song-row">
-              <span class="flex items-center gap-3 min-w-0">
-                <span class="song-ico"><${Icon} name="music" size=${20} /></span>
-                <span class="display font-bold" style=${{ overflowWrap: "anywhere" }}>${sg.name}</span>
-              </span>
-              ${busy && busy.id === sg.id
-                ? html`<span class="text-xs muted">${busy.step}</span>`
-                : current === sg.name
-                  ? html`<span class="flex items-center gap-1 text-xs" style=${{ color: "var(--good)" }}><${Icon} name="check" size=${16} />Loaded</span>`
-                  : html`<button class="btn btn-primary" style=${{ padding: "6px 14px", fontSize: 13 }} disabled=${!!busy} onClick=${() => load(sg)}>Load</button>`}
-            </div>`)}
-            <p class="text-xs muted">Add more in Google Drive › Tono › Songs. Each song downloads once, then loads instantly.</p>
+            ${err &&
+            html`<p class="text-sm" style=${{ color: "var(--bad)" }}>
+              ${err}
+            </p>`}
+            ${!songs &&
+            !err &&
+            html`<p class="text-sm muted">Loading songs…</p>`}
+            ${songs &&
+            songs.length === 0 &&
+            html`<p class="text-sm muted">
+              No songs yet. Add a folder per song inside Tono › Songs in your
+              Google Drive.
+            </p>`}
+            ${songs &&
+            songs.map(
+              (sg) =>
+                html`<div key=${sg.id} class="song-row">
+                  <span class="flex items-center gap-3 min-w-0">
+                    <span class="song-ico"
+                      ><${Icon} name="music" size=${20}
+                    /></span>
+                    <span
+                      class="display font-bold"
+                      style=${{ overflowWrap: "anywhere" }}
+                      >${sg.name}</span
+                    >
+                  </span>
+                  ${busy && busy.id === sg.id
+                    ? html`<span class="text-xs muted">${busy.step}</span>`
+                    : current === sg.name
+                      ? html`<span
+                          class="flex items-center gap-1 text-xs"
+                          style=${{ color: "var(--good)" }}
+                          ><${Icon} name="check" size=${16} />Loaded</span
+                        >`
+                      : html`<button
+                          class="btn btn-primary"
+                          style=${{ padding: "6px 14px", fontSize: 13 }}
+                          disabled=${!!busy}
+                          onClick=${() => load(sg)}
+                        >
+                          Load
+                        </button>`}
+                </div>`,
+            )}
+            <p class="text-xs muted">
+              Add more in Google Drive › Tono › Songs. Each song downloads once,
+              then loads instantly.
+            </p>
           </div>`)}
     </div>`;
   }
 
-  /* ---------- shared UI pieces ---------- */
-  const ICONS = {
-    play: '<path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"></path>',
-    pause: '<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"></rect><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"></rect>',
-    stop: '<rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none"></rect>',
-    loop: '<path d="M17 2l4 4-4 4"></path><path d="M3 11v-1a4 4 0 0 1 4-4h14"></path><path d="M7 22l-4-4 4-4"></path><path d="M21 13v1a4 4 0 0 1-4 4H3"></path>',
-    check: '<path d="M20 6L9 17l-5-5"></path>',
-    sliders: '<path d="M4 6h10"></path><circle cx="16" cy="6" r="2"></circle><path d="M10 12h10"></path><circle cx="8" cy="12" r="2"></circle><path d="M4 18h12"></path><circle cx="18" cy="18" r="2"></circle>',
-    music: '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>',
-    mic: '<rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0"></path><path d="M12 17v5"></path>',
-    chart: '<path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-7"></path><path d="M22 20H2"></path>',
-    gauge: '<path d="M3 15a9 9 0 0 1 18 0"></path><path d="M12 15l4-5"></path><circle cx="12" cy="15" r="1.5"></circle>',
-    gear: '<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path>',
-    back: '<path d="M15 18l-6-6 6-6"></path>',
-    x: '<path d="M18 6L6 18"></path><path d="M6 6l12 12"></path>',
-    sun: '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>',
-    moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>',
-    list: '<path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h10"></path>',
-    bars: '<path d="M3 17h5"></path><path d="M9 11h5"></path><path d="M15 7h6"></path>',
-    cap: '<path d="M2 7l10-4 10 4-10 4z"></path><path d="M6 9v5c0 1.7 2.7 3 6 3s6-1.3 6-3V9"></path>',
-    lock: '<rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path>',
-    headphones: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1v-6h3zM3 19a2 2 0 0 0 2 2h1v-6H3z"></path>',
-  };
-  function Icon({ name, size = 20 }) {
-    return html`<svg width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" dangerouslySetInnerHTML=${{ __html: ICONS[name] || "" }}></svg>`;
-  }
+<Icon/>
   // a panel that slides up from the bottom, for settings that don't need to be on screen all the time
   function Sheet({ open, title, onClose, children }) {
     useEffect(() => {
       if (!open) return;
-      const k = (e) => { if (e.key === "Escape") onClose(); };
+      const k = (e) => {
+        if (e.key === "Escape") onClose();
+      };
       document.addEventListener("keydown", k);
       return () => document.removeEventListener("keydown", k);
     }, [open]);
     if (!open) return null;
-    return html`<div class="sheet-wrap" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    return html`<div
+      class="sheet-wrap"
+      onClick=${(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div class="sheet" role="dialog" aria-modal="true" aria-label=${title}>
         <div class="sheet-head">
           <h2 class="display text-lg font-bold">${title}</h2>
-          <button class="btn btn-ghost" style=${{ padding: "6px 12px" }} onClick=${onClose}>Done</button>
+          <button
+            class="btn btn-ghost"
+            style=${{ padding: "6px 12px" }}
+            onClick=${onClose}
+          >
+            Done
+          </button>
         </div>
         <div class="sheet-body">${children}</div>
       </div>
@@ -4843,68 +12541,150 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   /* ---------- split a normal song into vocal + music, on the device ---------- */
   // Uses the MDX-Net karaoke model from the Ultimate Vocal Remover project, run with ONNX Runtime
   // in a worker (graphics chip via WebGPU when the browser allows, otherwise the CPU).
-  const SEP_BASE = "sep/", SEP_MODEL = "UVR_MDXNET_KARA_2.onnx", SEP_MODEL_BYTES = 52786726;
+  const SEP_BASE = "sep/",
+    SEP_MODEL = "UVR_MDXNET_KARA_2.onnx",
+    SEP_MODEL_BYTES = 52786726;
   let sepCheck = null;
   function canSplitSongs() {
-    if (!sepCheck) sepCheck = /^https?:$/.test(location.protocol) && typeof Worker !== "undefined" ? fetch(SEP_BASE + "sep-worker.js", { method: "HEAD" }).then((r) => r.ok).catch(() => false) : Promise.resolve(false);
+    if (!sepCheck)
+      sepCheck =
+        /^https?:$/.test(location.protocol) && typeof Worker !== "undefined"
+          ? fetch(SEP_BASE + "sep-worker.js", { method: "HEAD" })
+              .then((r) => r.ok)
+              .catch(() => false)
+          : Promise.resolve(false);
     return sepCheck;
   }
   let gpuCheck = null;
   function hasWebGPU() {
-    if (!gpuCheck) gpuCheck = (async () => { try { return !!(navigator.gpu && (await navigator.gpu.requestAdapter())); } catch (e) { return false; } })();
+    if (!gpuCheck)
+      gpuCheck = (async () => {
+        try {
+          return !!(navigator.gpu && (await navigator.gpu.requestAdapter()));
+        } catch (e) {
+          return false;
+        }
+      })();
     return gpuCheck;
   }
   async function sepModel(onBytes) {
     const url = SEP_BASE + SEP_MODEL;
     let cache = null;
-    try { cache = await caches.open("tono-models-v1"); const hit = await cache.match(url); if (hit) return await hit.arrayBuffer(); } catch (e) { cache = null; }
+    try {
+      cache = await caches.open("tono-models-v1");
+      const hit = await cache.match(url);
+      if (hit) return await hit.arrayBuffer();
+    } catch (e) {
+      cache = null;
+    }
     const res = await fetch(url);
     if (!res.ok) throw new Error("Couldn't download the splitting model.");
-    const total = +res.headers.get("content-length") || SEP_MODEL_BYTES, rd = res.body.getReader(), parts = [];
+    const total = +res.headers.get("content-length") || SEP_MODEL_BYTES,
+      rd = res.body.getReader(),
+      parts = [];
     let got = 0;
-    for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; onBytes(got, total); }
-    const out = new Uint8Array(got); let o = 0;
-    parts.forEach((p) => { out.set(p, o); o += p.length; });
-    if (cache) cache.put(url, new Response(out.slice(0), { headers: { "content-type": "application/octet-stream" } })).catch(() => {});
+    for (;;) {
+      const { done, value } = await rd.read();
+      if (done) break;
+      parts.push(value);
+      got += value.length;
+      onBytes(got, total);
+    }
+    const out = new Uint8Array(got);
+    let o = 0;
+    parts.forEach((p) => {
+      out.set(p, o);
+      o += p.length;
+    });
+    if (cache)
+      cache
+        .put(
+          url,
+          new Response(out.slice(0), {
+            headers: { "content-type": "application/octet-stream" },
+          }),
+        )
+        .catch(() => {});
     return out.buffer;
   }
   const splitter = { worker: null, cancel: null };
   // returns { vocals: [L, R], inst: [L, R], sr }
   async function splitSong(file, onStage) {
-    const Ctx = window.AudioContext || window.webkitAudioContext, ctx = new Ctx({ sampleRate: 44100 });
+    const Ctx = window.AudioContext || window.webkitAudioContext,
+      ctx = new Ctx({ sampleRate: 44100 });
     let audio;
-    try { audio = await ctx.decodeAudioData(await file.arrayBuffer()); } finally { if (ctx.close) ctx.close().catch(() => {}); }
+    try {
+      audio = await ctx.decodeAudioData(await file.arrayBuffer());
+    } finally {
+      if (ctx.close) ctx.close().catch(() => {});
+    }
     const gpu = await hasWebGPU();
-    const model = await sepModel((got, total) => onStage({ stage: "model", p: got / total }));
+    const model = await sepModel((got, total) =>
+      onStage({ stage: "model", p: got / total }),
+    );
     if (splitter.worker) splitter.worker.terminate();
     const w = (splitter.worker = new Worker(SEP_BASE + "sep-worker.js"));
-    const call = (msg, transfer) => new Promise((resolve, reject) => {
-      splitter.cancel = () => reject(new Error("cancelled"));
-      w.onmessage = (e) => {
-        const m = e.data;
-        if (m.type === "progress") onStage({ stage: "split", p: m.p });
-        else if (m.type === "error") reject(new Error(m.text));
-        else if (m.type !== "log") resolve(m);
-      };
-      w.onerror = () => reject(new Error("The splitter stopped unexpectedly."));
-      w.postMessage(msg, transfer || []);
-    });
+    const call = (msg, transfer) =>
+      new Promise((resolve, reject) => {
+        splitter.cancel = () => reject(new Error("cancelled"));
+        w.onmessage = (e) => {
+          const m = e.data;
+          if (m.type === "progress") onStage({ stage: "split", p: m.p });
+          else if (m.type === "error") reject(new Error(m.text));
+          else if (m.type !== "log") resolve(m);
+        };
+        w.onerror = () =>
+          reject(new Error("The splitter stopped unexpectedly."));
+        w.postMessage(msg, transfer || []);
+      });
     try {
       onStage({ stage: "start", p: 0 });
       const r = await call({ type: "load", model, cpuOnly: !gpu }, [model]);
       onStage({ stage: "split", p: 0, backend: r.backend });
-      const L = audio.getChannelData(0).slice(), R = (audio.numberOfChannels > 1 ? audio.getChannelData(1) : audio.getChannelData(0)).slice();
+      const L = audio.getChannelData(0).slice(),
+        R = (
+          audio.numberOfChannels > 1
+            ? audio.getChannelData(1)
+            : audio.getChannelData(0)
+        ).slice();
       const d = await call({ type: "run", L, R }, [L.buffer, R.buffer]);
-      return { vocals: [d.bufs[0], d.bufs[1]], inst: [d.bufs[2], d.bufs[3]], sr: 44100 };
-    } finally { w.terminate(); if (splitter.worker === w) splitter.worker = null; splitter.cancel = null; }
+      return {
+        vocals: [d.bufs[0], d.bufs[1]],
+        inst: [d.bufs[2], d.bufs[3]],
+        sr: 44100,
+      };
+    } finally {
+      w.terminate();
+      if (splitter.worker === w) splitter.worker = null;
+      splitter.cancel = null;
+    }
   }
-  function cancelSplit() { if (splitter.worker) splitter.worker.terminate(); splitter.worker = null; if (splitter.cancel) splitter.cancel(); }
+  function cancelSplit() {
+    if (splitter.worker) splitter.worker.terminate();
+    splitter.worker = null;
+    if (splitter.cancel) splitter.cancel();
+  }
   function wavFile(chs, sr, name) {
-    const n = chs[0].length, b = new ArrayBuffer(44 + n * 4), v = new DataView(b);
-    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-    w(0, "RIFF"); v.setUint32(4, 36 + n * 4, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
-    v.setUint32(24, sr, true); v.setUint32(28, sr * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 4, true);
-    const a = chs[0], c = chs[1];
+    const n = chs[0].length,
+      b = new ArrayBuffer(44 + n * 4),
+      v = new DataView(b);
+    const w = (o, s) => {
+      for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
+    };
+    w(0, "RIFF");
+    v.setUint32(4, 36 + n * 4, true);
+    w(8, "WAVEfmt ");
+    v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true);
+    v.setUint16(22, 2, true);
+    v.setUint32(24, sr, true);
+    v.setUint32(28, sr * 4, true);
+    v.setUint16(32, 4, true);
+    v.setUint16(34, 16, true);
+    w(36, "data");
+    v.setUint32(40, n * 4, true);
+    const a = chs[0],
+      c = chs[1];
     for (let i = 0, o = 44; i < n; i++, o += 4) {
       v.setInt16(o, Math.max(-1, Math.min(1, a[i])) * 32767, true);
       v.setInt16(o + 2, Math.max(-1, Math.min(1, c[i])) * 32767, true);
@@ -4918,11 +12698,41 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     return html`<div class="file-row">
       <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
         <span class="font-semibold text-sm">${title}</span>
-        <span class="text-xs muted" style=${{ overflowWrap: "anywhere" }}>${slot && slot.busy ? (slot.progress != null ? "Analyzing " + Math.round(slot.progress * 100) + "%" : "Reading…") : slot && slot.error ? slot.error : ready ? slot.name : sub}</span>
+        <span class="text-xs muted" style=${{ overflowWrap: "anywhere" }}
+          >${slot && slot.busy
+            ? slot.progress != null
+              ? "Analyzing " + Math.round(slot.progress * 100) + "%"
+              : "Reading…"
+            : slot && slot.error
+              ? slot.error
+              : ready
+                ? slot.name
+                : sub}</span
+        >
       </span>
-      ${ready && html`<span style=${{ color: "var(--good)" }}><${Icon} name="check" size=${18} /></span>`}
-      <button class="btn" style=${{ padding: "6px 12px", fontSize: 13 }} disabled=${disabled || (slot && slot.busy)} onClick=${() => ref.current && ref.current.click()}>${ready ? "Replace" : "Upload"}</button>
-      <input id=${id} ref=${ref} type="file" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onPick(f); }} />
+      ${ready &&
+      html`<span style=${{ color: "var(--good)" }}
+        ><${Icon} name="check" size=${18}
+      /></span>`}
+      <button
+        class="btn"
+        style=${{ padding: "6px 12px", fontSize: 13 }}
+        disabled=${disabled || (slot && slot.busy)}
+        onClick=${() => ref.current && ref.current.click()}
+      >
+        ${ready ? "Replace" : "Upload"}
+      </button>
+      <input
+        id=${id}
+        ref=${ref}
+        type="file"
+        class="hidden"
+        onChange=${(e) => {
+          const f = e.target.files && e.target.files[0];
+          e.target.value = "";
+          if (f) onPick(f);
+        }}
+      />
     </div>`;
   }
   function songTitle(sampleName, vocal) {
@@ -4933,390 +12743,1471 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
   function SplitRow({ split, onSplit, onCancel }) {
     const ref = useRef(null);
     const [gpu, setGpu] = useState(null);
-    useEffect(() => { hasWebGPU().then(setGpu); }, []);
+    useEffect(() => {
+      hasWebGPU().then(setGpu);
+    }, []);
     const busy = split && !split.error && !split.done;
     const pct = busy ? Math.round((split.p || 0) * 100) : 0;
-    const left = busy && split.stage === "split" && split.p > 0.02 && split.t0 ? Math.max(0, ((Date.now() - split.t0) / 1000) * (1 / split.p - 1)) : null;
-    const msg = !split ? (gpu === false ? "Any song file with singing and music. This device can't use its graphics chip, so splitting may take 10+ minutes." : "Any song file with singing and music. Tono splits the voice from the music on your device, about a minute on most laptops.")
-      : split.error ? split.error
-      : split.done ? "Split " + split.name + "."
-      : split.stage === "decode" ? "Reading " + split.name + "…"
-      : split.stage === "model" ? "Downloading the splitter (once): " + pct + "%"
-      : split.stage === "start" ? "Starting the splitter…"
-      : "Splitting voice from music… " + pct + "%" + (left != null ? " · about " + (left < 60 ? Math.ceil(left / 5) * 5 + " s" : Math.ceil(left / 60) + " min") + " left" : "");
-    return html`<div class="file-row" style=${{ flexDirection: "column", alignItems: "stretch", gap: 10, borderColor: "color-mix(in srgb, var(--accent) 45%, var(--line))" }}>
+    const left =
+      busy && split.stage === "split" && split.p > 0.02 && split.t0
+        ? Math.max(0, ((Date.now() - split.t0) / 1000) * (1 / split.p - 1))
+        : null;
+    const msg = !split
+      ? gpu === false
+        ? "Any song file with singing and music. This device can't use its graphics chip, so splitting may take 10+ minutes."
+        : "Any song file with singing and music. Tono splits the voice from the music on your device, about a minute on most laptops."
+      : split.error
+        ? split.error
+        : split.done
+          ? "Split " + split.name + "."
+          : split.stage === "decode"
+            ? "Reading " + split.name + "…"
+            : split.stage === "model"
+              ? "Downloading the splitter (once): " + pct + "%"
+              : split.stage === "start"
+                ? "Starting the splitter…"
+                : "Splitting voice from music… " +
+                  pct +
+                  "%" +
+                  (left != null
+                    ? " · about " +
+                      (left < 60
+                        ? Math.ceil(left / 5) * 5 + " s"
+                        : Math.ceil(left / 60) + " min") +
+                      " left"
+                    : "");
+    return html`<div
+      class="file-row"
+      style=${{
+        flexDirection: "column",
+        alignItems: "stretch",
+        gap: 10,
+        borderColor: "color-mix(in srgb, var(--accent) 45%, var(--line))",
+      }}
+    >
       <div class="flex items-center gap-3">
         <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
           <span class="font-semibold text-sm">Load a song</span>
-          <span class="text-xs muted" role="status" style=${{ overflowWrap: "anywhere", color: split && split.error ? "var(--warn)" : undefined }}>${msg}</span>
+          <span
+            class="text-xs muted"
+            role="status"
+            style=${{
+              overflowWrap: "anywhere",
+              color: split && split.error ? "var(--warn)" : undefined,
+            }}
+            >${msg}</span
+          >
         </span>
-        ${busy ? html`<button class="btn" style=${{ padding: "6px 12px", fontSize: 13 }} onClick=${onCancel}>Stop</button>`
-          : html`<button class="btn btn-primary" style=${{ padding: "6px 12px", fontSize: 13 }} onClick=${() => ref.current && ref.current.click()}>Choose song</button>`}
-        <input id="setup-song" ref=${ref} type="file" accept="audio/*,.mp3,.m4a,.wav,.flac,.ogg" class="hidden" onChange=${(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) onSplit(f); }} />
+        ${busy
+          ? html`<button
+              class="btn"
+              style=${{ padding: "6px 12px", fontSize: 13 }}
+              onClick=${onCancel}
+            >
+              Stop
+            </button>`
+          : html`<button
+              class="btn btn-primary"
+              style=${{ padding: "6px 12px", fontSize: 13 }}
+              onClick=${() => ref.current && ref.current.click()}
+            >
+              Choose song
+            </button>`}
+        <input
+          id="setup-song"
+          ref=${ref}
+          type="file"
+          accept="audio/*,.mp3,.m4a,.wav,.flac,.ogg"
+          class="hidden"
+          onChange=${(e) => {
+            const f = e.target.files && e.target.files[0];
+            e.target.value = "";
+            if (f) onSplit(f);
+          }}
+        />
       </div>
-      ${split && split.done && split.files && html`<div class="flex flex-wrap items-center gap-3 text-xs">
+      ${split &&
+      split.done &&
+      split.files &&
+      html`<div class="flex flex-wrap items-center gap-3 text-xs">
         <span class="muted">Save the split files:</span>
-        <button class="link-btn text-xs" onClick=${() => saveBlob(split.files.vocal, split.base + " (vocal).wav")}>Save vocal</button>
-        <button class="link-btn text-xs" onClick=${() => saveBlob(split.files.music, split.base + " (music).wav")}>Save music</button>
-        <span class="muted">WAV, about ${Math.max(1, Math.round(split.files.vocal.size / 1e6))} MB each</span>
+        <button
+          class="link-btn text-xs"
+          onClick=${() =>
+            saveBlob(split.files.vocal, split.base + " (vocal).wav")}
+        >
+          Save vocal
+        </button>
+        <button
+          class="link-btn text-xs"
+          onClick=${() =>
+            saveBlob(split.files.music, split.base + " (music).wav")}
+        >
+          Save music
+        </button>
+        <span class="muted"
+          >WAV, about ${Math.max(1, Math.round(split.files.vocal.size / 1e6))}
+          MB each</span
+        >
       </div>`}
-      ${busy && html`<div style=${{ height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden" }}><div style=${{ height: "100%", width: pct + "%", background: "var(--accent)", transition: "width .3s" }}></div></div>`}
+      ${busy &&
+      html`<div
+        style=${{
+          height: 6,
+          borderRadius: 3,
+          background: "var(--line)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style=${{
+            height: "100%",
+            width: pct + "%",
+            background: "var(--accent)",
+            transition: "width .3s",
+          }}
+        ></div>
+      </div>`}
     </div>`;
   }
-  function SongSetup({ vocal, music, lyricsEntry, updateLyrics, onPickVocal, onPickMusic, onLoadSample, sampleName, sync, onSync, onAutoSync, syncMsg, keyWarn, onDone, onContinue, canSplit, split, onSplit, onCancelSplit }) {
+  function SongSetup({
+    vocal,
+    music,
+    lyricsEntry,
+    updateLyrics,
+    onPickVocal,
+    onPickMusic,
+    onLoadSample,
+    sampleName,
+    sync,
+    onSync,
+    onAutoSync,
+    syncMsg,
+    keyWarn,
+    onDone,
+    onContinue,
+    canSplit,
+    split,
+    onSplit,
+    onCancelSplit,
+  }) {
     const ready = vocal && vocal.data;
     const spans = ready ? lyricSpans(lyricsEntry, vocal.data.duration) : [];
     const small = { padding: "5px 10px", fontSize: 13 };
     return html`<div class="flex flex-col gap-5">
-      ${canSplit && html`<section class="flex flex-col gap-2">
+      ${canSplit &&
+      html`<section class="flex flex-col gap-2">
         <span class="label">Your song</span>
-        <${SplitRow} split=${split} onSplit=${onSplit} onCancel=${onCancelSplit} />
+        <${SplitRow}
+          split=${split}
+          onSplit=${onSplit}
+          onCancel=${onCancelSplit}
+        />
       </section>`}
       <section class="flex flex-col gap-2">
         <span class="label">Sample songs</span>
-        <${SongLibrary} inline=${true} onLoad=${async (x) => { await onLoadSample(x); onDone && onDone(); }} current=${ready ? sampleName : null} />
+        <${SongLibrary}
+          inline=${true}
+          onLoad=${async (x) => {
+            await onLoadSample(x);
+            onDone && onDone();
+          }}
+          current=${ready ? sampleName : null}
+        />
       </section>
       <section class="flex flex-col gap-2">
-        <span class="label">${canSplit ? "Or upload the vocal and music separately" : "Or use your own files"}</span>
+        <span class="label"
+          >${canSplit
+            ? "Or upload the vocal and music separately"
+            : "Or use your own files"}</span
+        >
         <div class="file-list">
-          <${FileRow} id="setup-vocal" title="Vocal (acapella)" sub="Needed. The singer's voice on its own." slot=${vocal} onPick=${onPickVocal} />
-          <${FileRow} id="setup-music" title="Instrumental" sub="For Karaoke. The song without vocals." slot=${music} onPick=${onPickMusic} disabled=${!ready} />
-          <${LyricsCard} orig=${vocal} musicName=${music && music.buffer ? music.name : null} lyrics=${lyricsEntry} updateLyrics=${updateLyrics} count=${spans.length} hint="Optional. Timed lyrics show while you sing." />
+          <${FileRow}
+            id="setup-vocal"
+            title="Vocal (acapella)"
+            sub="Needed. The singer's voice on its own."
+            slot=${vocal}
+            onPick=${onPickVocal}
+          />
+          <${FileRow}
+            id="setup-music"
+            title="Instrumental"
+            sub="For Karaoke. The song without vocals."
+            slot=${music}
+            onPick=${onPickMusic}
+            disabled=${!ready}
+          />
+          <${LyricsCard}
+            orig=${vocal}
+            musicName=${music && music.buffer ? music.name : null}
+            lyrics=${lyricsEntry}
+            updateLyrics=${updateLyrics}
+            count=${spans.length}
+            hint="Optional. Timed lyrics show while you sing."
+          />
         </div>
-        ${keyWarn !== 0 && music && music.buffer && html`<p class="text-xs" style=${{ color: "var(--warn)" }}>This instrumental seems to be ${pianoKeys(Math.abs(keyWarn))} ${keyWarn > 0 ? "higher" : "lower"} than the vocal, so they may clash. Look for a version in the original key.</p>`}
+        ${keyWarn !== 0 &&
+        music &&
+        music.buffer &&
+        html`<p class="text-xs" style=${{ color: "var(--warn)" }}>
+          This instrumental seems to be ${pianoKeys(Math.abs(keyWarn))}
+          ${keyWarn > 0 ? "higher" : "lower"} than the vocal, so they may clash.
+          Look for a version in the original key.
+        </p>`}
       </section>
-      ${ready && music && music.buffer && html`<section class="flex flex-col gap-2">
+      ${ready &&
+      music &&
+      music.buffer &&
+      html`<section class="flex flex-col gap-2">
         <span class="label">Music timing</span>
         <div class="flex flex-wrap items-center gap-2">
-          <button class="btn" style=${small} onClick=${() => onSync(Math.round((sync - 0.1) * 100) / 100)}>−0.1 s</button>
-          <span class="mono text-xs" style=${{ minWidth: 110, textAlign: "center" }}>${sync === 0 ? "No shift" : "Music " + (sync > 0 ? "skips " + sync.toFixed(2) + " s" : "waits " + (-sync).toFixed(2) + " s")}</span>
-          <button class="btn" style=${small} onClick=${() => onSync(Math.round((sync + 0.1) * 100) / 100)}>+0.1 s</button>
-          <button class="btn btn-ghost" style=${small} onClick=${onAutoSync}>Auto-sync</button>
+          <button
+            class="btn"
+            style=${small}
+            onClick=${() => onSync(Math.round((sync - 0.1) * 100) / 100)}
+          >
+            −0.1 s
+          </button>
+          <span
+            class="mono text-xs"
+            style=${{ minWidth: 110, textAlign: "center" }}
+            >${sync === 0
+              ? "No shift"
+              : "Music " +
+                (sync > 0
+                  ? "skips " + sync.toFixed(2) + " s"
+                  : "waits " + (-sync).toFixed(2) + " s")}</span
+          >
+          <button
+            class="btn"
+            style=${small}
+            onClick=${() => onSync(Math.round((sync + 0.1) * 100) / 100)}
+          >
+            +0.1 s
+          </button>
+          <button class="btn btn-ghost" style=${small} onClick=${onAutoSync}>
+            Auto-sync
+          </button>
         </div>
-        <p class="text-xs muted">${syncMsg || "Lines the music up with the vocal. Check it by ear in Karaoke's options."}</p>
+        <p class="text-xs muted">
+          ${syncMsg ||
+          "Lines the music up with the vocal. Check it by ear in Karaoke's options."}
+        </p>
       </section>`}
-      ${onContinue && ready && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 50, fontSize: 16 }} onClick=${onContinue}>Continue</button>`}
+      ${onContinue &&
+      ready &&
+      html`<button
+        class="btn btn-primary"
+        style=${{ justifyContent: "center", minHeight: 50, fontSize: 16 }}
+        onClick=${onContinue}
+      >
+        Continue
+      </button>`}
     </div>`;
   }
 
   /* ---------- app ---------- */
   /* ---------- practice plan: drills built from your mistakes ---------- */
   const PLAN_KEY = "pitchstaff.plan.v1";
-  const loadPlan = (song) => (song ? loadJSON(PLAN_KEY, {})[song] || null : null);
-  const savePlan = (song, plan) => { if (!song) return; const all = loadJSON(PLAN_KEY, {}); if (plan) all[song] = plan; else delete all[song]; saveJSON(PLAN_KEY, all); };
+  const loadPlan = (song) =>
+    song ? loadJSON(PLAN_KEY, {})[song] || null : null;
+  const savePlan = (song, plan) => {
+    if (!song) return;
+    const all = loadJSON(PLAN_KEY, {});
+    if (plan) all[song] = plan;
+    else delete all[song];
+    saveJSON(PLAN_KEY, all);
+  };
   const rowRight = (r) => !r.missed && Math.abs(r.cents) <= 50;
   function makePlan(rows, notes, spans, phrases, source) {
     rows = (rows || []).filter((r) => r && r.n);
     if (rows.length < 3 || !notes.length) return null;
     rows = [...rows].sort((a, b) => a.n.pos - b.n.pos);
-    const lines = spans.length ? spans : phrases.map((p) => ({ start: p.start, end: p.end, text: "" }));
-    const lineOf = (t) => { const i = lines.findIndex((l) => t >= l.start - 0.05 && t < l.end); return i >= 0 ? i : null; };
-    const lineRows = (li) => rows.filter((r) => r.n.pos >= lines[li].start - 0.05 && r.n.pos < lines[li].end);
-    const lineScore = (li) => { const rs = lineRows(li); return rs.length ? Math.round((100 * rs.filter(rowRight).length) / rs.length) : null; };
-    const label = (li) => (li == null ? "" : lines[li].text ? "“" + lines[li].text + "”" : "the phrase at " + fmt(lines[li].start));
+    const lines = spans.length
+      ? spans
+      : phrases.map((p) => ({ start: p.start, end: p.end, text: "" }));
+    const lineOf = (t) => {
+      const i = lines.findIndex((l) => t >= l.start - 0.05 && t < l.end);
+      return i >= 0 ? i : null;
+    };
+    const lineRows = (li) =>
+      rows.filter(
+        (r) => r.n.pos >= lines[li].start - 0.05 && r.n.pos < lines[li].end,
+      );
+    const lineScore = (li) => {
+      const rs = lineRows(li);
+      return rs.length
+        ? Math.round((100 * rs.filter(rowRight).length) / rs.length)
+        : null;
+    };
+    const label = (li) =>
+      li == null
+        ? ""
+        : lines[li].text
+          ? "“" + lines[li].text + "”"
+          : "the phrase at " + fmt(lines[li].start);
     const name = (m) => pretty(midiInfo(m).label);
     let hi = 0;
-    notes.forEach((n) => { hi = Math.max(hi, n.midi); });
+    notes.forEach((n) => {
+      hi = Math.max(hi, n.midi);
+    });
     const drills = [];
     // 1. high notes off pitch
-    const highBad = rows.filter((r) => !r.missed && r.n.midi >= hi - 3 && Math.abs(r.cents) > 35);
+    const highBad = rows.filter(
+      (r) => !r.missed && r.n.midi >= hi - 3 && Math.abs(r.cents) > 35,
+    );
     if (highBad.length >= 2) {
       const cnt = {};
-      highBad.forEach((r) => { cnt[r.n.midi] = (cnt[r.n.midi] || 0) + 1; });
-      const targets = Object.keys(cnt).map(Number).sort((a, b) => cnt[b] - cnt[a]).slice(0, 2).sort((a, b) => b - a);
-      const lean = median(highBad.map((r) => r.cents)), li = lineOf(highBad[0].n.pos);
-      drills.push({ id: "high", kind: "slide", title: "Land the high notes", why: "Slide into " + targets.map(name).join(" and ") + ", then hold",
-        detail: "Your high notes" + (li != null ? " in " + label(li) : "") + " came out " + (lean < 0 ? "flat (a bit low)" : "sharp (a bit high)") + ".",
-        tip: lean < 0 ? "Aim a touch higher and keep the breath flowing as you go up." : "Relax and aim a touch lower. Don't push.", line: li,
-        spec: { type: "hold", targets, hold: 1, tol: 30, tries: Math.max(3, targets.length * 2), verb: "Slide up to" } });
+      highBad.forEach((r) => {
+        cnt[r.n.midi] = (cnt[r.n.midi] || 0) + 1;
+      });
+      const targets = Object.keys(cnt)
+        .map(Number)
+        .sort((a, b) => cnt[b] - cnt[a])
+        .slice(0, 2)
+        .sort((a, b) => b - a);
+      const lean = median(highBad.map((r) => r.cents)),
+        li = lineOf(highBad[0].n.pos);
+      drills.push({
+        id: "high",
+        kind: "slide",
+        title: "Land the high notes",
+        why: "Slide into " + targets.map(name).join(" and ") + ", then hold",
+        detail:
+          "Your high notes" +
+          (li != null ? " in " + label(li) : "") +
+          " came out " +
+          (lean < 0 ? "flat (a bit low)" : "sharp (a bit high)") +
+          ".",
+        tip:
+          lean < 0
+            ? "Aim a touch higher and keep the breath flowing as you go up."
+            : "Relax and aim a touch lower. Don't push.",
+        line: li,
+        spec: {
+          type: "hold",
+          targets,
+          hold: 1,
+          tol: 30,
+          tries: Math.max(3, targets.length * 2),
+          verb: "Slide up to",
+        },
+      });
     }
     // 2. a jump you keep missing
     const jumps = {};
     for (let i = 1; i < rows.length; i++) {
-      const a = rows[i - 1], b = rows[i];
-      if (b.n.pos - a.n.end > 0.4 || Math.abs(b.n.midi - a.n.midi) < 5) continue;
+      const a = rows[i - 1],
+        b = rows[i];
+      if (b.n.pos - a.n.end > 0.4 || Math.abs(b.n.midi - a.n.midi) < 5)
+        continue;
       const key = a.n.midi + ">" + b.n.midi;
-      const j = (jumps[key] = jumps[key] || { a: a.n.midi, b: b.n.midi, miss: 0, all: 0, pos: b.n.pos, cents: [] });
+      const j = (jumps[key] = jumps[key] || {
+        a: a.n.midi,
+        b: b.n.midi,
+        miss: 0,
+        all: 0,
+        pos: b.n.pos,
+        cents: [],
+      });
       j.all++;
-      if (!rowRight(b)) { j.miss++; if (!b.missed) j.cents.push(b.cents); }
+      if (!rowRight(b)) {
+        j.miss++;
+        if (!b.missed) j.cents.push(b.cents);
+      }
     }
-    const jb = Object.values(jumps).filter((j) => j.miss >= 1 && j.miss / j.all >= 0.5).sort((x, y) => y.miss - x.miss || Math.abs(y.b - y.a) - Math.abs(x.b - x.a))[0];
+    const jb = Object.values(jumps)
+      .filter((j) => j.miss >= 1 && j.miss / j.all >= 0.5)
+      .sort(
+        (x, y) => y.miss - x.miss || Math.abs(y.b - y.a) - Math.abs(x.b - x.a),
+      )[0];
     if (jb) {
-      const li = lineOf(jb.pos), c = jb.cents.length ? median(jb.cents) : 0;
-      drills.push({ id: "jump", kind: "jump", title: "The big jump", why: name(jb.a) + " → " + name(jb.b) + ", slow then up to speed",
-        detail: (li != null ? "In " + label(li) + " you " : "You ") + (jb.cents.length ? "landed " + (c < 0 ? "flat" : "sharp") + " on " + name(jb.b) : "missed " + name(jb.b)) + " (" + jb.miss + " of " + jb.all + " times).",
-        tip: c < 0 ? "Hear the top note in your head before you jump, and keep it light." : "Keep the top note relaxed instead of reaching for it.", line: li,
-        spec: { type: "pattern", fixed: [jb.a, jb.b, jb.a, jb.b], rounds: 3, steps: [800, 600, 450], stages: ["Slow", "Medium", "Song speed"], tol: 0.5 } });
+      const li = lineOf(jb.pos),
+        c = jb.cents.length ? median(jb.cents) : 0;
+      drills.push({
+        id: "jump",
+        kind: "jump",
+        title: "The big jump",
+        why: name(jb.a) + " → " + name(jb.b) + ", slow then up to speed",
+        detail:
+          (li != null ? "In " + label(li) + " you " : "You ") +
+          (jb.cents.length
+            ? "landed " + (c < 0 ? "flat" : "sharp") + " on " + name(jb.b)
+            : "missed " + name(jb.b)) +
+          " (" +
+          jb.miss +
+          " of " +
+          jb.all +
+          " times).",
+        tip:
+          c < 0
+            ? "Hear the top note in your head before you jump, and keep it light."
+            : "Keep the top note relaxed instead of reaching for it.",
+        line: li,
+        spec: {
+          type: "pattern",
+          fixed: [jb.a, jb.b, jb.a, jb.b],
+          rounds: 3,
+          steps: [800, 600, 450],
+          stages: ["Slow", "Medium", "Song speed"],
+          tol: 0.5,
+        },
+      });
     }
     // 3. a long note that drifted
-    const longs = rows.filter((r) => !r.missed && r.n.end - r.n.pos >= 1 && Math.abs(r.cents) > 25).sort((a, b) => b.n.end - b.n.pos - (a.n.end - a.n.pos));
+    const longs = rows
+      .filter(
+        (r) => !r.missed && r.n.end - r.n.pos >= 1 && Math.abs(r.cents) > 25,
+      )
+      .sort((a, b) => b.n.end - b.n.pos - (a.n.end - a.n.pos));
     if (longs.length) {
-      const r = longs[0], secs = Math.round(Math.min(4, Math.max(2, r.n.end - r.n.pos))), li = lineOf(r.n.pos);
-      drills.push({ id: "long", kind: "hold", title: "Steady long notes", why: "Hold " + name(r.n.midi) + " for " + secs + " s, like in the song",
-        detail: "The long " + name(r.n.midi) + (li != null ? " in " + label(li) : "") + " drifted " + (r.cents < 0 ? "flat" : "sharp") + ".",
-        tip: "Take a full breath first and keep the same vowel the whole way.", line: li,
-        spec: { type: "hold", targets: [r.n.midi], hold: secs, tol: 25, tries: 3, verb: "Hold" } });
+      const r = longs[0],
+        secs = Math.round(Math.min(4, Math.max(2, r.n.end - r.n.pos))),
+        li = lineOf(r.n.pos);
+      drills.push({
+        id: "long",
+        kind: "hold",
+        title: "Steady long notes",
+        why: "Hold " + name(r.n.midi) + " for " + secs + " s, like in the song",
+        detail:
+          "The long " +
+          name(r.n.midi) +
+          (li != null ? " in " + label(li) : "") +
+          " drifted " +
+          (r.cents < 0 ? "flat" : "sharp") +
+          ".",
+        tip: "Take a full breath first and keep the same vowel the whole way.",
+        line: li,
+        spec: {
+          type: "hold",
+          targets: [r.n.midi],
+          hold: secs,
+          tol: 25,
+          tries: 3,
+          verb: "Hold",
+        },
+      });
     }
     // 4. phrase endings going flat
     if (drills.length < 3) {
       const ends = [];
-      lines.forEach((l, li) => { const rs = lineRows(li); if (rs.length >= 3) { const last = rs[rs.length - 1]; if (!last.missed && last.cents < -25) ends.push({ li, rs }); } });
+      lines.forEach((l, li) => {
+        const rs = lineRows(li);
+        if (rs.length >= 3) {
+          const last = rs[rs.length - 1];
+          if (!last.missed && last.cents < -25) ends.push({ li, rs });
+        }
+      });
       if (ends.length >= 2) {
-        const e = ends[0], tail = e.rs.slice(-3).map((r) => r.n.midi);
-        drills.push({ id: "end", kind: "end", title: "Finish the line in tune", why: "Sing the line endings, landing the last note",
-          detail: "The last notes of " + ends.length + " lines went flat, usually when the breath runs low.",
-          tip: "Keep the air going right to the end of the line, and think up on the last note.", line: e.li,
-          spec: { type: "pattern", fixed: tail, rounds: 2, steps: [700, 520], stages: ["Slow", "Song speed"], tol: 0.5 } });
+        const e = ends[0],
+          tail = e.rs.slice(-3).map((r) => r.n.midi);
+        drills.push({
+          id: "end",
+          kind: "end",
+          title: "Finish the line in tune",
+          why: "Sing the line endings, landing the last note",
+          detail:
+            "The last notes of " +
+            ends.length +
+            " lines went flat, usually when the breath runs low.",
+          tip: "Keep the air going right to the end of the line, and think up on the last note.",
+          line: e.li,
+          spec: {
+            type: "pattern",
+            fixed: tail,
+            rounds: 2,
+            steps: [700, 520],
+            stages: ["Slow", "Song speed"],
+            tol: 0.5,
+          },
+        });
       }
     }
     // 5. polish your weakest line
     if (drills.length < 3) {
       const used = new Set(drills.map((d) => d.line));
-      const cand = lines.map((l, li) => ({ li, n: lineRows(li).length, s: lineScore(li) })).filter((x) => x.n >= 3 && x.s != null && x.s < 90 && !used.has(x.li)).sort((a, b) => a.s - b.s)[0];
+      const cand = lines
+        .map((l, li) => ({ li, n: lineRows(li).length, s: lineScore(li) }))
+        .filter((x) => x.n >= 3 && x.s != null && x.s < 90 && !used.has(x.li))
+        .sort((a, b) => a.s - b.s)[0];
       if (cand) {
-        const ln = notes.filter((n) => n.pos >= lines[cand.li].start - 0.05 && n.pos < lines[cand.li].end).slice(0, 6).map((n) => n.midi);
-        if (ln.length >= 3) drills.push({ id: "polish", kind: "line", title: "Polish your weakest line", why: "The first notes of " + (lines[cand.li].text ? "“" + lines[cand.li].text + "”" : "phrase " + (cand.li + 1)),
-          detail: "This line scored " + cand.s + "%, your lowest.", tip: "Sing it slowly first, then at the song's speed.", line: cand.li,
-          spec: { type: "pattern", fixed: ln, rounds: 2, steps: [700, 520], stages: ["Slow", "Song speed"], tol: 0.5 } });
+        const ln = notes
+          .filter(
+            (n) =>
+              n.pos >= lines[cand.li].start - 0.05 &&
+              n.pos < lines[cand.li].end,
+          )
+          .slice(0, 6)
+          .map((n) => n.midi);
+        if (ln.length >= 3)
+          drills.push({
+            id: "polish",
+            kind: "line",
+            title: "Polish your weakest line",
+            why:
+              "The first notes of " +
+              (lines[cand.li].text
+                ? "“" + lines[cand.li].text + "”"
+                : "phrase " + (cand.li + 1)),
+            detail: "This line scored " + cand.s + "%, your lowest.",
+            tip: "Sing it slowly first, then at the song's speed.",
+            line: cand.li,
+            spec: {
+              type: "pattern",
+              fixed: ln,
+              rounds: 2,
+              steps: [700, 520],
+              stages: ["Slow", "Song speed"],
+              tol: 0.5,
+            },
+          });
       }
     }
     const ds = drills.slice(0, 3);
     if (!ds.length) return null;
-    const checks = [...new Set(ds.map((d) => d.line).filter((x) => x != null))].slice(0, 3).map((li) => ({
-      li, start: lines[li].start, end: lines[li].end, text: lines[li].text, before: lineScore(li),
-      notes: notes.filter((n) => n.pos >= lines[li].start - 0.05 && n.pos < lines[li].end).slice(0, 12).map((n) => n.midi),
-    })).filter((c) => c.notes.length >= 2 && c.before != null);
-    return { at: Date.now(), source, drills: ds, done: {}, checks, after: null, fresh: true };
+    const checks = [...new Set(ds.map((d) => d.line).filter((x) => x != null))]
+      .slice(0, 3)
+      .map((li) => ({
+        li,
+        start: lines[li].start,
+        end: lines[li].end,
+        text: lines[li].text,
+        before: lineScore(li),
+        notes: notes
+          .filter(
+            (n) => n.pos >= lines[li].start - 0.05 && n.pos < lines[li].end,
+          )
+          .slice(0, 12)
+          .map((n) => n.midi),
+      }))
+      .filter((c) => c.notes.length >= 2 && c.before != null);
+    return {
+      at: Date.now(),
+      source,
+      drills: ds,
+      done: {},
+      checks,
+      after: null,
+      fresh: true,
+    };
   }
 
   function PlanCard({ plan, onStart, onHide, onClear }) {
-    const n = plan.drills.length, dn = plan.drills.filter((d) => plan.done[d.id] != null).length;
+    const n = plan.drills.length,
+      dn = plan.drills.filter((d) => plan.done[d.id] != null).length;
     const nextK = plan.drills.findIndex((d) => plan.done[d.id] == null);
-    const when = new Date(plan.at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const when = new Date(plan.at).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
     const avg = (xs) => Math.round(xs.reduce((a, b) => a + b, 0) / xs.length);
-    const before = plan.checks.length ? avg(plan.checks.map((c) => c.before)) : null;
-    const after = plan.after && plan.after.scores.length ? avg(plan.after.scores) : null;
+    const before = plan.checks.length
+      ? avg(plan.checks.map((c) => c.before))
+      : null;
+    const after =
+      plan.after && plan.after.scores.length ? avg(plan.after.scores) : null;
     const icon = { slide: "↗", jump: "⤴", hold: "━", end: "↘", line: "♪" };
-    return html`<section class="flex flex-col gap-2" style=${{ padding: 14, borderRadius: 20, background: "radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 60%), var(--surface)", border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)" }}>
-      <div class="flex items-baseline justify-between gap-2"><span class="display font-bold" style=${{ fontSize: 20 }}>Your plan</span><span class="text-xs muted">${dn} of ${n} done</span></div>
-      <span class="text-xs muted">From your ${plan.source === "repeat" ? "Repeat after me scores" : "take"} on ${when}</span>
+    return html`<section
+      class="flex flex-col gap-2"
+      style=${{
+        padding: 14,
+        borderRadius: 20,
+        background:
+          "radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 60%), var(--surface)",
+        border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+      }}
+    >
+      <div class="flex items-baseline justify-between gap-2">
+        <span class="display font-bold" style=${{ fontSize: 20 }}
+          >Your plan</span
+        ><span class="text-xs muted">${dn} of ${n} done</span>
+      </div>
+      <span class="text-xs muted"
+        >From your
+        ${plan.source === "repeat" ? "Repeat after me scores" : "take"} on
+        ${when}</span
+      >
       ${plan.drills.map((d, k) => {
-        const done = plan.done[d.id] != null, now = k === nextK;
-        return html`<button key=${d.id} class="flex items-center gap-3" onClick=${() => onStart(k)} style=${{ textAlign: "left", padding: 12, borderRadius: 14, font: "inherit", color: "var(--fg)", cursor: "pointer", background: now ? "var(--surface-2)" : "transparent", border: "1px solid " + (now ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "var(--line)") }}>
-          <span style=${{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, display: "grid", placeItems: "center", fontSize: 17, fontWeight: 700, background: done ? "var(--good)" : "color-mix(in srgb, var(--accent) 15%, transparent)", color: done ? "var(--bg)" : "var(--accent)" }}>${done ? "✓" : icon[d.kind] || "♪"}</span>
-          <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><b class="text-sm">${k + 1}. ${d.title}</b><span class="text-xs muted">${d.why}</span></span>
-          <span class="text-xs font-semibold" style=${{ color: now ? "var(--accent)" : "var(--muted)", whiteSpace: "nowrap" }}>${done ? plan.done[d.id] + "%" : now ? "Start" : ""}</span>
+        const done = plan.done[d.id] != null,
+          now = k === nextK;
+        return html`<button
+          key=${d.id}
+          class="flex items-center gap-3"
+          onClick=${() => onStart(k)}
+          style=${{
+            textAlign: "left",
+            padding: 12,
+            borderRadius: 14,
+            font: "inherit",
+            color: "var(--fg)",
+            cursor: "pointer",
+            background: now ? "var(--surface-2)" : "transparent",
+            border:
+              "1px solid " +
+              (now
+                ? "color-mix(in srgb, var(--accent) 40%, transparent)"
+                : "var(--line)"),
+          }}
+        >
+          <span
+            style=${{
+              width: 36,
+              height: 36,
+              borderRadius: 11,
+              flexShrink: 0,
+              display: "grid",
+              placeItems: "center",
+              fontSize: 17,
+              fontWeight: 700,
+              background: done
+                ? "var(--good)"
+                : "color-mix(in srgb, var(--accent) 15%, transparent)",
+              color: done ? "var(--bg)" : "var(--accent)",
+            }}
+            >${done ? "✓" : icon[d.kind] || "♪"}</span
+          >
+          <span class="flex flex-col min-w-0" style=${{ flex: 1 }}
+            ><b class="text-sm">${k + 1}. ${d.title}</b
+            ><span class="text-xs muted">${d.why}</span></span
+          >
+          <span
+            class="text-xs font-semibold"
+            style=${{
+              color: now ? "var(--accent)" : "var(--muted)",
+              whiteSpace: "nowrap",
+            }}
+            >${done ? plan.done[d.id] + "%" : now ? "Start" : ""}</span
+          >
         </button>`;
       })}
-      ${after != null && before != null && html`<div class="text-sm" style=${{ padding: "8px 2px" }}>Re-check: <span class="mono muted">${before}%</span> → <b class="mono" style=${{ color: after >= before ? "var(--good)" : "var(--warn)" }}>${after}%</b> on these lines</div>`}
-      <div class="flex flex-wrap items-center justify-between gap-2" style=${{ paddingTop: 2 }}>
-        <span class="text-xs muted">${plan.checks.length ? (dn < n ? "Then a quick re-check of these lines" : "") : ""}</span>
+      ${after != null &&
+      before != null &&
+      html`<div class="text-sm" style=${{ padding: "8px 2px" }}>
+        Re-check: <span class="mono muted">${before}%</span> →
+        <b
+          class="mono"
+          style=${{ color: after >= before ? "var(--good)" : "var(--warn)" }}
+          >${after}%</b
+        >
+        on these lines
+      </div>`}
+      <div
+        class="flex flex-wrap items-center justify-between gap-2"
+        style=${{ paddingTop: 2 }}
+      >
+        <span class="text-xs muted"
+          >${plan.checks.length
+            ? dn < n
+              ? "Then a quick re-check of these lines"
+              : ""
+            : ""}</span
+        >
         <span class="flex gap-3">
-          <button class="link-btn text-xs" style=${{ color: "var(--muted)" }} onClick=${onHide}>Hide</button>
-          <button class="link-btn text-xs" style=${{ color: "var(--muted)" }} onClick=${onClear}>Clear plan</button>
+          <button
+            class="link-btn text-xs"
+            style=${{ color: "var(--muted)" }}
+            onClick=${onHide}
+          >
+            Hide
+          </button>
+          <button
+            class="link-btn text-xs"
+            style=${{ color: "var(--muted)" }}
+            onClick=${onClear}
+          >
+            Clear plan
+          </button>
         </span>
       </div>
-      ${dn === n && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 44 }} onClick=${() => onStart(plan.checks.length ? "check" : 0)}>${plan.checks.length ? (after != null ? "Re-check again" : "Re-check these lines") : "Go again"}</button>`}
-      ${dn < n && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 44 }} onClick=${() => onStart(nextK)}>${dn ? "Continue plan" : "Start plan"}</button>`}
+      ${dn === n &&
+      html`<button
+        class="btn btn-primary"
+        style=${{ justifyContent: "center", minHeight: 44 }}
+        onClick=${() => onStart(plan.checks.length ? "check" : 0)}
+      >
+        ${plan.checks.length
+          ? after != null
+            ? "Re-check again"
+            : "Re-check these lines"
+          : "Go again"}
+      </button>`}
+      ${dn < n &&
+      html`<button
+        class="btn btn-primary"
+        style=${{ justifyContent: "center", minHeight: 44 }}
+        onClick=${() => onStart(nextK)}
+      >
+        ${dn ? "Continue plan" : "Start plan"}
+      </button>`}
     </section>`;
   }
 
-  function PlanFlow({ plan, songTitle, buffer, start, onClose, onUpdate, onKaraoke }) {
-    const first = start === "check" ? { v: "check", k: 0 } : { v: "drill", k: start };
+  function PlanFlow({
+    plan,
+    songTitle,
+    buffer,
+    start,
+    onClose,
+    onUpdate,
+    onKaraoke,
+  }) {
+    const first =
+      start === "check" ? { v: "check", k: 0 } : { v: "drill", k: start };
     const [step, setStep] = useState(first);
     const [runKey, setRunKey] = useState(0);
     const [scores, setScores] = useState([]);
     const mic = useLessonMic(step.v === "drill" || step.v === "check");
     const range = useMemo(lessonRange, []);
-    useEffect(() => { try { window.scrollTo(0, 0); } catch (e) {} }, [step.v, step.k]);
-    const D = plan.drills, C = plan.checks;
+    useEffect(() => {
+      try {
+        window.scrollTo(0, 0);
+      } catch (e) {}
+    }, [step.v, step.k]);
+    const D = plan.drills,
+      C = plan.checks;
     const total = D.length + (C.length ? 1 : 0);
-    const nextUndone = (from) => { for (let i = 1; i <= D.length; i++) { const k = (from + i) % D.length; if (plan.done[D[k].id] == null) return k; } return -1; };
-    const head = (p, label) => html`<${FlowHead} p=${p} label=${label} onClose=${onClose} />`;
+    const nextUndone = (from) => {
+      for (let i = 1; i <= D.length; i++) {
+        const k = (from + i) % D.length;
+        if (plan.done[D[k].id] == null) return k;
+      }
+      return -1;
+    };
+    const head = (p, label) =>
+      html`<${FlowHead} p=${p} label=${label} onClose=${onClose} />`;
     const again = () => setRunKey((n) => n + 1);
 
     if (step.v === "drill") {
       const d = D[step.k];
       return html`<div class="flex flex-col gap-4">
-        ${head(((step.k + 0.5) / total) * 100, "Drill " + (step.k + 1) + "/" + D.length)}
-        <span class="label" style=${{ color: "var(--accent)" }}>From your ${plan.source === "repeat" ? "practice" : "take"}${songTitle ? " · " + songTitle : ""}</span>
-        <h2 class="display font-bold" style=${{ fontSize: 26, lineHeight: 1.15, margin: 0 }}>${d.title}</h2>
-        <p class="text-sm muted" style=${{ margin: 0 }}>${d.detail} ${d.why}.</p>
-        ${d.spec.stages && html`<div class="flex gap-2">${d.spec.stages.map((s, i) => html`<span key=${s} class="flex flex-col items-center gap-1" style=${{ flex: 1 }}><span style=${{ width: "100%", height: 6, borderRadius: 3, background: "var(--line)" }}></span><span class="text-xs muted">${s}</span></span>`)}</div>`}
-        <${Exercise} key=${runKey + "-d" + step.k} spec=${d.spec} range=${range} mic=${mic} onDone=${(res) => {
-          const next = { ...plan, done: { ...plan.done, [d.id]: Math.max(plan.done[d.id] || 0, res.score) } };
-          onUpdate(next);
-          setStep({ v: "drillDone", k: step.k, res });
-        }} />
-        <div class="flex items-start gap-2 text-sm" style=${{ padding: "10px 12px", borderRadius: 12, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)" }}><span aria-hidden="true">🎯</span><span>${d.tip}</span></div>
+        ${head(
+          ((step.k + 0.5) / total) * 100,
+          "Drill " + (step.k + 1) + "/" + D.length,
+        )}
+        <span class="label" style=${{ color: "var(--accent)" }}
+          >From your
+          ${plan.source === "repeat" ? "practice" : "take"}${songTitle
+            ? " · " + songTitle
+            : ""}</span
+        >
+        <h2
+          class="display font-bold"
+          style=${{ fontSize: 26, lineHeight: 1.15, margin: 0 }}
+        >
+          ${d.title}
+        </h2>
+        <p class="text-sm muted" style=${{ margin: 0 }}>
+          ${d.detail} ${d.why}.
+        </p>
+        ${d.spec.stages &&
+        html`<div class="flex gap-2">
+          ${d.spec.stages.map(
+            (s, i) =>
+              html`<span
+                key=${s}
+                class="flex flex-col items-center gap-1"
+                style=${{ flex: 1 }}
+                ><span
+                  style=${{
+                    width: "100%",
+                    height: 6,
+                    borderRadius: 3,
+                    background: "var(--line)",
+                  }}
+                ></span
+                ><span class="text-xs muted">${s}</span></span
+              >`,
+          )}
+        </div>`}
+        <${Exercise}
+          key=${runKey + "-d" + step.k}
+          spec=${d.spec}
+          range=${range}
+          mic=${mic}
+          onDone=${(res) => {
+            const next = {
+              ...plan,
+              done: {
+                ...plan.done,
+                [d.id]: Math.max(plan.done[d.id] || 0, res.score),
+              },
+            };
+            onUpdate(next);
+            setStep({ v: "drillDone", k: step.k, res });
+          }}
+        />
+        <div
+          class="flex items-start gap-2 text-sm"
+          style=${{
+            padding: "10px 12px",
+            borderRadius: 12,
+            background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+            border:
+              "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
+          }}
+        >
+          <span aria-hidden="true">🎯</span><span>${d.tip}</span>
+        </div>
       </div>`;
     }
     if (step.v === "drillDone") {
-      const d = D[step.k], res = step.res, nk = nextUndone(step.k);
+      const d = D[step.k],
+        res = step.res,
+        nk = nextUndone(step.k);
       return html`<div class="flex flex-col gap-4">
-        ${head(((step.k + 1) / total) * 100, "Drill " + (step.k + 1) + "/" + D.length)}
-        <div class="flex flex-col items-center gap-1 text-center" style=${{ paddingTop: 10 }}>
-          <span class="display font-bold" style=${{ fontSize: 24 }}>${d.title}</span>
-          <span class="display font-bold" style=${{ fontSize: 56, lineHeight: 1, color: res.score >= 70 ? "var(--good)" : "var(--accent)" }}>${res.score}%</span>
-          <span class="text-sm muted">${res.score >= 85 ? "Nailed it." : res.score >= 70 ? "Good. That's getting solid." : "Keep at it. One more go often helps."}</span>
+        ${head(
+          ((step.k + 1) / total) * 100,
+          "Drill " + (step.k + 1) + "/" + D.length,
+        )}
+        <div
+          class="flex flex-col items-center gap-1 text-center"
+          style=${{ paddingTop: 10 }}
+        >
+          <span class="display font-bold" style=${{ fontSize: 24 }}
+            >${d.title}</span
+          >
+          <span
+            class="display font-bold"
+            style=${{
+              fontSize: 56,
+              lineHeight: 1,
+              color: res.score >= 70 ? "var(--good)" : "var(--accent)",
+            }}
+            >${res.score}%</span
+          >
+          <span class="text-sm muted"
+            >${res.score >= 85
+              ? "Nailed it."
+              : res.score >= 70
+                ? "Good. That's getting solid."
+                : "Keep at it. One more go often helps."}</span
+          >
         </div>
-        ${res.tip && html`<div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" }}><span aria-hidden="true">🎯</span><span><b>Tip:</b> ${res.tip}</span></div>`}
+        ${res.tip &&
+        html`<div
+          class="flex items-start gap-2 text-sm"
+          style=${{
+            padding: "12px 14px",
+            borderRadius: 14,
+            background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+            border:
+              "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+          }}
+        >
+          <span aria-hidden="true">🎯</span><span><b>Tip:</b> ${res.tip}</span>
+        </div>`}
         <div class="grid grid-cols-2 gap-2">
-          <button class="btn" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => { again(); setStep({ v: "drill", k: step.k }); }}>Try again</button>
+          <button
+            class="btn"
+            style=${{ justifyContent: "center", minHeight: 48 }}
+            onClick=${() => {
+              again();
+              setStep({ v: "drill", k: step.k });
+            }}
+          >
+            Try again
+          </button>
           ${nk >= 0
-            ? html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => { again(); setStep({ v: "drill", k: nk }); }}>Next drill →</button>`
+            ? html`<button
+                class="btn btn-primary"
+                style=${{ justifyContent: "center", minHeight: 48 }}
+                onClick=${() => {
+                  again();
+                  setStep({ v: "drill", k: nk });
+                }}
+              >
+                Next drill →
+              </button>`
             : C.length
-              ? html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => { again(); setScores([]); setStep({ v: "check", k: 0 }); }}>Re-check →</button>`
-              : html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${onClose}>Done</button>`}
+              ? html`<button
+                  class="btn btn-primary"
+                  style=${{ justifyContent: "center", minHeight: 48 }}
+                  onClick=${() => {
+                    again();
+                    setScores([]);
+                    setStep({ v: "check", k: 0 });
+                  }}
+                >
+                  Re-check →
+                </button>`
+              : html`<button
+                  class="btn btn-primary"
+                  style=${{ justifyContent: "center", minHeight: 48 }}
+                  onClick=${onClose}
+                >
+                  Done
+                </button>`}
         </div>
       </div>`;
     }
     if (step.v === "check") {
       const c = C[step.k];
-      const spec = { type: "pattern", fixed: c.notes, rounds: 1, tol: 0.5, source: buffer ? { buffer, start: Math.max(0, c.start - 0.1), end: c.end + 0.1 } : null, steps: [600] };
+      const spec = {
+        type: "pattern",
+        fixed: c.notes,
+        rounds: 1,
+        tol: 0.5,
+        source: buffer
+          ? { buffer, start: Math.max(0, c.start - 0.1), end: c.end + 0.1 }
+          : null,
+        steps: [600],
+      };
       return html`<div class="flex flex-col gap-4">
-        ${head(((D.length + (step.k + 0.5) / C.length) / total) * 100, "Re-check " + (step.k + 1) + "/" + C.length)}
+        ${head(
+          ((D.length + (step.k + 0.5) / C.length) / total) * 100,
+          "Re-check " + (step.k + 1) + "/" + C.length,
+        )}
         <span class="label" style=${{ color: "var(--accent)" }}>Re-check</span>
-        <h2 class="display font-bold" style=${{ fontSize: 24, lineHeight: 1.2, margin: 0 }}>${c.text ? "“" + c.text + "”" : "Phrase at " + fmt(c.start)}</h2>
-        <p class="text-sm muted" style=${{ margin: 0 }}>${buffer ? "Listen to the original line, then sing it back." : "Listen to the notes, then sing them back."} Before your plan you got ${c.before}%.</p>
-        <${Exercise} key=${runKey + "-c" + step.k} spec=${spec} range=${range} mic=${mic} onDone=${(res) => {
-          const sc = [...scores]; sc[step.k] = res.score; setScores(sc);
-          if (step.k + 1 < C.length) { again(); setStep({ v: "check", k: step.k + 1 }); }
-          else { onUpdate({ ...plan, after: { at: Date.now(), scores: sc } }); setStep({ v: "compare" }); }
-        }} />
+        <h2
+          class="display font-bold"
+          style=${{ fontSize: 24, lineHeight: 1.2, margin: 0 }}
+        >
+          ${c.text ? "“" + c.text + "”" : "Phrase at " + fmt(c.start)}
+        </h2>
+        <p class="text-sm muted" style=${{ margin: 0 }}>
+          ${buffer
+            ? "Listen to the original line, then sing it back."
+            : "Listen to the notes, then sing them back."}
+          Before your plan you got ${c.before}%.
+        </p>
+        <${Exercise}
+          key=${runKey + "-c" + step.k}
+          spec=${spec}
+          range=${range}
+          mic=${mic}
+          onDone=${(res) => {
+            const sc = [...scores];
+            sc[step.k] = res.score;
+            setScores(sc);
+            if (step.k + 1 < C.length) {
+              again();
+              setStep({ v: "check", k: step.k + 1 });
+            } else {
+              onUpdate({ ...plan, after: { at: Date.now(), scores: sc } });
+              setStep({ v: "compare" });
+            }
+          }}
+        />
       </div>`;
     }
     // compare before and after
     const sc = scores;
     const better = C.filter((c, i) => sc[i] > c.before).length;
-    const worst = C.map((c, i) => ({ c, s: sc[i] })).sort((a, b) => a.s - b.s)[0];
+    const worst = C.map((c, i) => ({ c, s: sc[i] })).sort(
+      (a, b) => a.s - b.s,
+    )[0];
     const worstDrill = worst ? D.findIndex((d) => d.line === worst.c.li) : -1;
     return html`<div class="flex flex-col gap-4">
       ${head(100, "Re-check")}
-      <div class="flex flex-col items-center gap-1 text-center" style=${{ paddingTop: 8 }}>
-        <span style=${{ fontSize: 40 }} aria-hidden="true">${better ? "📈" : "💪"}</span>
-        <span class="display font-bold" style=${{ fontSize: 28 }}>${better === C.length ? "You improved!" : better ? "Getting better!" : "Keep going"}</span>
-        <span class="text-sm muted">Before your plan and after it, line by line.</span>
+      <div
+        class="flex flex-col items-center gap-1 text-center"
+        style=${{ paddingTop: 8 }}
+      >
+        <span style=${{ fontSize: 40 }} aria-hidden="true"
+          >${better ? "📈" : "💪"}</span
+        >
+        <span class="display font-bold" style=${{ fontSize: 28 }}
+          >${better === C.length
+            ? "You improved!"
+            : better
+              ? "Getting better!"
+              : "Keep going"}</span
+        >
+        <span class="text-sm muted"
+          >Before your plan and after it, line by line.</span
+        >
       </div>
       <section class="panel p-4 flex flex-col gap-3">
         <span class="label">Before → after</span>
-        ${C.map((c, i) => html`<div key=${i} class="flex flex-col gap-1">
-          <span class="flex justify-between gap-2 text-sm"><span style=${{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>${c.text ? "“" + c.text + "”" : "Phrase at " + fmt(c.start)}</span><span class="mono text-xs" style=${{ whiteSpace: "nowrap" }}><span class="muted">${c.before}%</span> → <b style=${{ color: sc[i] >= c.before ? "var(--good)" : "var(--warn)" }}>${sc[i]}%</b></span></span>
-          <span style=${{ position: "relative", display: "block", height: 8, borderRadius: 999, background: "var(--line)", overflow: "hidden" }}>
-            <span style=${{ position: "absolute", left: 0, top: 0, bottom: 0, width: Math.max(c.before, sc[i]) + "%", background: sc[i] >= c.before ? "var(--good)" : "var(--warn)" }}></span>
-            <span style=${{ position: "absolute", left: 0, top: 0, bottom: 0, width: Math.min(c.before, sc[i]) + "%", background: "var(--muted)" }}></span>
-          </span>
-        </div>`)}
+        ${C.map(
+          (c, i) =>
+            html`<div key=${i} class="flex flex-col gap-1">
+              <span class="flex justify-between gap-2 text-sm"
+                ><span
+                  style=${{
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  >${c.text
+                    ? "“" + c.text + "”"
+                    : "Phrase at " + fmt(c.start)}</span
+                ><span class="mono text-xs" style=${{ whiteSpace: "nowrap" }}
+                  ><span class="muted">${c.before}%</span> →
+                  <b
+                    style=${{
+                      color: sc[i] >= c.before ? "var(--good)" : "var(--warn)",
+                    }}
+                    >${sc[i]}%</b
+                  ></span
+                ></span
+              >
+              <span
+                style=${{
+                  position: "relative",
+                  display: "block",
+                  height: 8,
+                  borderRadius: 999,
+                  background: "var(--line)",
+                  overflow: "hidden",
+                }}
+              >
+                <span
+                  style=${{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: Math.max(c.before, sc[i]) + "%",
+                    background:
+                      sc[i] >= c.before ? "var(--good)" : "var(--warn)",
+                  }}
+                ></span>
+                <span
+                  style=${{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: Math.min(c.before, sc[i]) + "%",
+                    background: "var(--muted)",
+                  }}
+                ></span>
+              </span>
+            </div>`,
+        )}
       </section>
-      ${worst && worst.s < 80 && html`<div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--good) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--good) 28%, transparent)" }}><span aria-hidden="true">💡</span><span>${worst.c.text ? "“" + worst.c.text + "”" : "That phrase"} still needs a little work.${worstDrill >= 0 ? " Run drill " + (worstDrill + 1) + " once more tomorrow." : ""}</span></div>`}
+      ${worst &&
+      worst.s < 80 &&
+      html`<div
+        class="flex items-start gap-2 text-sm"
+        style=${{
+          padding: "12px 14px",
+          borderRadius: 14,
+          background: "color-mix(in srgb, var(--good) 8%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--good) 28%, transparent)",
+        }}
+      >
+        <span aria-hidden="true">💡</span
+        ><span
+          >${worst.c.text ? "“" + worst.c.text + "”" : "That phrase"} still
+          needs a little
+          work.${worstDrill >= 0
+            ? " Run drill " + (worstDrill + 1) + " once more tomorrow."
+            : ""}</span
+        >
+      </div>`}
       <div class="grid grid-cols-2 gap-2">
-        <button class="btn" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => { again(); setStep({ v: "drill", k: Math.max(0, worstDrill) }); }}>Redo a drill</button>
-        <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${onKaraoke}>Sing it in Karaoke</button>
+        <button
+          class="btn"
+          style=${{ justifyContent: "center", minHeight: 48 }}
+          onClick=${() => {
+            again();
+            setStep({ v: "drill", k: Math.max(0, worstDrill) });
+          }}
+        >
+          Redo a drill
+        </button>
+        <button
+          class="btn btn-primary"
+          style=${{ justifyContent: "center", minHeight: 48 }}
+          onClick=${onKaraoke}
+        >
+          Sing it in Karaoke
+        </button>
       </div>
     </div>`;
   }
 
   /* ---------- Lessons ---------- */
   const LESSON_KEY = "pitchstaff.lessons.v1";
-  const loadLessons = () => { const v = loadJSON(LESSON_KEY, {}); return { done: {}, streak: { last: "", count: 0 }, warm: null, ...(v && typeof v === "object" ? v : {}) }; };
-  const dayKey = (d = new Date()) => d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+  const loadLessons = () => {
+    const v = loadJSON(LESSON_KEY, {});
+    return {
+      done: {},
+      streak: { last: "", count: 0 },
+      warm: null,
+      ...(v && typeof v === "object" ? v : {}),
+    };
+  };
+  const dayKey = (d = new Date()) =>
+    d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
   function bumpStreak(st) {
     const today = dayKey();
     if (st.streak && st.streak.last === today) return st;
-    const y = new Date(); y.setDate(y.getDate() - 1);
-    const count = st.streak && st.streak.last === dayKey(y) ? st.streak.count + 1 : 1;
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const count =
+      st.streak && st.streak.last === dayKey(y) ? st.streak.count + 1 : 1;
     return { ...st, streak: { last: today, count } };
   }
   const streakNow = (st) => {
     if (!st.streak || !st.streak.last) return 0;
-    const y = new Date(); y.setDate(y.getDate() - 1);
-    return st.streak.last === dayKey() || st.streak.last === dayKey(y) ? st.streak.count : 0;
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    return st.streak.last === dayKey() || st.streak.last === dayKey(y)
+      ? st.streak.count
+      : 0;
   };
   // the notes lessons use: your comfortable range if you've tested it, otherwise a middle range most voices reach (any octave counts)
   function lessonRange() {
     const r = loadRanges()[0];
-    if (r) { const [a, b] = comfyOf(r); return { lo: a, hi: Math.max(a + 4, b), center: Math.round((a + b) / 2), saved: true, full: r }; }
-    return { lo: 53, hi: 62, center: 57, saved: false, full: { lo: 50, hi: 66 } };
+    if (r) {
+      const [a, b] = comfyOf(r);
+      return {
+        lo: a,
+        hi: Math.max(a + 4, b),
+        center: Math.round((a + b) / 2),
+        saved: true,
+        full: r,
+      };
+    }
+    return {
+      lo: 53,
+      hi: 62,
+      center: 57,
+      saved: false,
+      full: { lo: 50, hi: 66 },
+    };
   }
 
   const COURSES = [
-    { id: "found", title: "Foundations", sub: "Breathing, posture, warm-ups", about: "The basics every singer builds on: how to stand, breathe and warm up so singing feels easy.", lessons: [
-      { id: "f1", title: "Stand like a singer", meta: "Posture check · 2 min", type: "check",
-        learn: "Good posture gives your breath room to work. You don't need to stand stiff, just tall and loose.",
-        steps: ["Feet hip-width apart, knees soft, not locked.", "Shoulders down and relaxed, not raised.", "Chin level, as if a string pulls the top of your head up.", "Jaw loose, tongue resting behind your bottom teeth."],
-        tip: "Check your posture in a mirror the first few times." },
-      { id: "f2", title: "Belly breathing", meta: "Guided breathing · 2 min", type: "breath", rounds: 4, inhale: 4, exhale: 6,
-        learn: "Singers breathe low, so the belly and sides expand instead of the shoulders. Low breaths give you steady air for long notes.",
-        steps: ["Put one hand on your belly.", "Breathe in through your nose for 4 counts and feel your hand move out.", "Breathe out slowly on a soft “sss” for 6 counts."],
-        tip: "If you feel dizzy, stop and breathe normally for a bit." },
-      { id: "f3", title: "Long, even hiss", meta: "Breath control · 3 min", type: "hiss", target: 15, tries: 3,
-        learn: "A long, even hiss trains you to let air out slowly. That control is what keeps long notes steady.",
-        steps: ["Take a low belly breath.", "Hiss “sss” quietly and evenly, like a slow tyre leak.", "Keep going until you run out, without squeezing at the end."],
-        tip: "Hold the phone about an arm's length away so the hiss isn't too loud for the mic." },
-      { id: "f4", title: "Gentle hum", meta: "Wake up your voice · 3 min", type: "hold", hold: 3, tol: 50, tries: 3, notes: "center", verb: "Hum",
-        learn: "Humming is the gentlest way to wake your voice up. Lips closed, teeth apart, and feel a little buzz around your lips and nose.",
-        steps: ["Listen to the piano note.", "Hum it softly on “mmm”.", "Keep the hum easy and steady until the ring fills."],
-        tip: "Quiet is fine. You never need to push for these." },
-      { id: "f5", title: "Lip trills", meta: "Air and sound together · 4 min", type: "pattern", pattern: [0, 2, 4, 2, 0], rounds: 3, rise: 1, tol: 0.6, verb: "Trill",
-        learn: "Blow air through loose lips so they buzz like “brrr”, and add your voice. Singers use lip trills every day because they balance air and sound.",
-        steps: ["Listen to the five-note pattern.", "Trill it back on “brrr”, following the notes up and down.", "Each round starts one note higher."],
-        tip: "If your lips won't buzz, press a finger lightly into each cheek. Humming the pattern works too." },
-      { id: "f6", title: "Sirens", meta: "Stretch your voice · 3 min", type: "siren", tries: 3,
-        learn: "Slide smoothly from low to high like a siren, on “oo” or a lip trill. It stretches your voice gently and smooths the jump between your low and high notes.",
-        steps: ["Start on a low, comfy note.", "Glide up slowly and smoothly, as high as feels easy.", "Let it get light and soft at the top. Don't push."],
-        tip: "Stop if anything scratches or hurts." },
-    ] },
-    { id: "pitch", title: "Pitch", sub: "Match notes, jumps, scales", about: "Sing the note you mean to sing. Learn to match a note, hold it in tune, and move between notes cleanly.", lessons: [
-      { id: "p1", title: "Match a note", meta: "Hear it, sing it, hold it · 4 min", type: "hold", hold: 1, tol: 35, tries: 5, notes: "random",
-        learn: "Everything in singing starts here: hearing a note and singing the same one back.",
-        steps: ["Listen to the piano note.", "Sing it on “ah”.", "Hold it until the ring fills."],
-        tip: "Any octave counts, so sing wherever it feels natural." },
-      { id: "p2", title: "Slide into the note", meta: "Find the pitch from below · 4 min", type: "hold", hold: 1, tol: 30, tries: 5, notes: "random", verb: "Slide up to",
-        learn: "If you can't find a note straight away, start a little below it and glide up until it locks in. Your ear learns what “in tune” feels like.",
-        steps: ["Listen to the piano note.", "Start lower on “ah” and slide up slowly.", "Stop when the ring turns green, and hold."],
-        tip: "Keep it gentle. If your throat feels tight, take a breath and try lower." },
-      { id: "p3", title: "Hold it in tune", meta: "Stay steady for 4 seconds · 4 min", type: "hold", hold: 4, tol: 25, tries: 3, notes: "center", verb: "Hold",
-        learn: "Finding the note is half the job. Now keep it there, with steady air and the same vowel the whole time.",
-        steps: ["Listen to the note.", "Sing it on “ah” and keep your breath flowing.", "Hold it steady for 4 seconds."],
-        tip: "If it wobbles, take a fuller breath first and sing a little softer." },
-      { id: "p4", title: "Steps: do re mi", meta: "One note at a time · 5 min", type: "pattern", pattern: [0, 2, 4, 2, 0], rounds: 3, rise: 2, tol: 0.5,
-        learn: "Melodies mostly move in small steps. Here you'll move up and down one note at a time: do, re, mi, re, do.",
-        steps: ["Listen to the pattern.", "Sing it back on “la” or do-re-mi.", "Give each note its own moment."],
-        tip: "Sing each note a little longer than feels natural so Tono can catch it." },
-      { id: "p5", title: "Small jumps", meta: "Thirds and fourths · 5 min", type: "pattern", pattern: [0, 4, 0, 5, 0], rounds: 3, rise: 2, tol: 0.5,
-        learn: "Now skip a note or two. Hear the jump in your head before you sing it.",
-        steps: ["Listen to the pattern.", "Imagine the next note before you sing it.", "Sing it back cleanly, without sliding."],
-        tip: "If a jump keeps missing, slide into it slowly a few times, then try it clean." },
-      { id: "p6", title: "Big jumps", meta: "Fifths and octaves · 5 min", type: "pattern", pattern: [0, 7, 0, 12, 0], rounds: 2, rise: 2, tol: 0.5, bigFallback: [0, 7, 0, 5, 0],
-        learn: "Big leaps take confidence. Keep the low note relaxed and let the high note float rather than reaching for it.",
-        steps: ["Listen to the pattern.", "Breathe before the big jump.", "Let the top note be lighter than the bottom one."],
-        tip: "The octave is the same note, higher. Think of it as the same note, just lighter." },
-      { id: "p7", title: "Your first scale", meta: "Five notes up and down · 5 min", type: "pattern", pattern: [0, 2, 4, 5, 7, 5, 4, 2, 0], rounds: 2, rise: 2, tol: 0.5,
-        learn: "Do re mi fa sol fa mi re do. Scales train your ear and voice to move evenly through a range of notes.",
-        steps: ["Listen to the scale.", "Sing it back on “la” or do-re-mi.", "Keep every note the same loudness."],
-        tip: "Take a breath before you start so you don't run out at the top." },
-      { id: "p8", title: "Checkpoint", meta: "Sing a short melody · 3 min", type: "pattern", pattern: [0, 2, 4, 0, 4, 5, 7], rounds: 2, rise: 2, tol: 0.5,
-        learn: "Put it together: steps, small jumps and a held top note in one short tune.",
-        steps: ["Listen to the melody.", "Sing it back on “la”.", "Use everything you've practised."],
-        tip: "Pass this one and you're ready for real songs in Practice." },
-    ] },
+    {
+      id: "found",
+      title: "Foundations",
+      sub: "Breathing, posture, warm-ups",
+      about:
+        "The basics every singer builds on: how to stand, breathe and warm up so singing feels easy.",
+      lessons: [
+        {
+          id: "f1",
+          title: "Stand like a singer",
+          meta: "Posture check · 2 min",
+          type: "check",
+          learn:
+            "Good posture gives your breath room to work. You don't need to stand stiff, just tall and loose.",
+          steps: [
+            "Feet hip-width apart, knees soft, not locked.",
+            "Shoulders down and relaxed, not raised.",
+            "Chin level, as if a string pulls the top of your head up.",
+            "Jaw loose, tongue resting behind your bottom teeth.",
+          ],
+          tip: "Check your posture in a mirror the first few times.",
+        },
+        {
+          id: "f2",
+          title: "Belly breathing",
+          meta: "Guided breathing · 2 min",
+          type: "breath",
+          rounds: 4,
+          inhale: 4,
+          exhale: 6,
+          learn:
+            "Singers breathe low, so the belly and sides expand instead of the shoulders. Low breaths give you steady air for long notes.",
+          steps: [
+            "Put one hand on your belly.",
+            "Breathe in through your nose for 4 counts and feel your hand move out.",
+            "Breathe out slowly on a soft “sss” for 6 counts.",
+          ],
+          tip: "If you feel dizzy, stop and breathe normally for a bit.",
+        },
+        {
+          id: "f3",
+          title: "Long, even hiss",
+          meta: "Breath control · 3 min",
+          type: "hiss",
+          target: 15,
+          tries: 3,
+          learn:
+            "A long, even hiss trains you to let air out slowly. That control is what keeps long notes steady.",
+          steps: [
+            "Take a low belly breath.",
+            "Hiss “sss” quietly and evenly, like a slow tyre leak.",
+            "Keep going until you run out, without squeezing at the end.",
+          ],
+          tip: "Hold the phone about an arm's length away so the hiss isn't too loud for the mic.",
+        },
+        {
+          id: "f4",
+          title: "Gentle hum",
+          meta: "Wake up your voice · 3 min",
+          type: "hold",
+          hold: 3,
+          tol: 50,
+          tries: 3,
+          notes: "center",
+          verb: "Hum",
+          learn:
+            "Humming is the gentlest way to wake your voice up. Lips closed, teeth apart, and feel a little buzz around your lips and nose.",
+          steps: [
+            "Listen to the piano note.",
+            "Hum it softly on “mmm”.",
+            "Keep the hum easy and steady until the ring fills.",
+          ],
+          tip: "Quiet is fine. You never need to push for these.",
+        },
+        {
+          id: "f5",
+          title: "Lip trills",
+          meta: "Air and sound together · 4 min",
+          type: "pattern",
+          pattern: [0, 2, 4, 2, 0],
+          rounds: 3,
+          rise: 1,
+          tol: 0.6,
+          verb: "Trill",
+          learn:
+            "Blow air through loose lips so they buzz like “brrr”, and add your voice. Singers use lip trills every day because they balance air and sound.",
+          steps: [
+            "Listen to the five-note pattern.",
+            "Trill it back on “brrr”, following the notes up and down.",
+            "Each round starts one note higher.",
+          ],
+          tip: "If your lips won't buzz, press a finger lightly into each cheek. Humming the pattern works too.",
+        },
+        {
+          id: "f6",
+          title: "Sirens",
+          meta: "Stretch your voice · 3 min",
+          type: "siren",
+          tries: 3,
+          learn:
+            "Slide smoothly from low to high like a siren, on “oo” or a lip trill. It stretches your voice gently and smooths the jump between your low and high notes.",
+          steps: [
+            "Start on a low, comfy note.",
+            "Glide up slowly and smoothly, as high as feels easy.",
+            "Let it get light and soft at the top. Don't push.",
+          ],
+          tip: "Stop if anything scratches or hurts.",
+        },
+      ],
+    },
+    {
+      id: "pitch",
+      title: "Pitch",
+      sub: "Match notes, jumps, scales",
+      about:
+        "Sing the note you mean to sing. Learn to match a note, hold it in tune, and move between notes cleanly.",
+      lessons: [
+        {
+          id: "p1",
+          title: "Match a note",
+          meta: "Hear it, sing it, hold it · 4 min",
+          type: "hold",
+          hold: 1,
+          tol: 35,
+          tries: 5,
+          notes: "random",
+          learn:
+            "Everything in singing starts here: hearing a note and singing the same one back.",
+          steps: [
+            "Listen to the piano note.",
+            "Sing it on “ah”.",
+            "Hold it until the ring fills.",
+          ],
+          tip: "Any octave counts, so sing wherever it feels natural.",
+        },
+        {
+          id: "p2",
+          title: "Slide into the note",
+          meta: "Find the pitch from below · 4 min",
+          type: "hold",
+          hold: 1,
+          tol: 30,
+          tries: 5,
+          notes: "random",
+          verb: "Slide up to",
+          learn:
+            "If you can't find a note straight away, start a little below it and glide up until it locks in. Your ear learns what “in tune” feels like.",
+          steps: [
+            "Listen to the piano note.",
+            "Start lower on “ah” and slide up slowly.",
+            "Stop when the ring turns green, and hold.",
+          ],
+          tip: "Keep it gentle. If your throat feels tight, take a breath and try lower.",
+        },
+        {
+          id: "p3",
+          title: "Hold it in tune",
+          meta: "Stay steady for 4 seconds · 4 min",
+          type: "hold",
+          hold: 4,
+          tol: 25,
+          tries: 3,
+          notes: "center",
+          verb: "Hold",
+          learn:
+            "Finding the note is half the job. Now keep it there, with steady air and the same vowel the whole time.",
+          steps: [
+            "Listen to the note.",
+            "Sing it on “ah” and keep your breath flowing.",
+            "Hold it steady for 4 seconds.",
+          ],
+          tip: "If it wobbles, take a fuller breath first and sing a little softer.",
+        },
+        {
+          id: "p4",
+          title: "Steps: do re mi",
+          meta: "One note at a time · 5 min",
+          type: "pattern",
+          pattern: [0, 2, 4, 2, 0],
+          rounds: 3,
+          rise: 2,
+          tol: 0.5,
+          learn:
+            "Melodies mostly move in small steps. Here you'll move up and down one note at a time: do, re, mi, re, do.",
+          steps: [
+            "Listen to the pattern.",
+            "Sing it back on “la” or do-re-mi.",
+            "Give each note its own moment.",
+          ],
+          tip: "Sing each note a little longer than feels natural so Tono can catch it.",
+        },
+        {
+          id: "p5",
+          title: "Small jumps",
+          meta: "Thirds and fourths · 5 min",
+          type: "pattern",
+          pattern: [0, 4, 0, 5, 0],
+          rounds: 3,
+          rise: 2,
+          tol: 0.5,
+          learn:
+            "Now skip a note or two. Hear the jump in your head before you sing it.",
+          steps: [
+            "Listen to the pattern.",
+            "Imagine the next note before you sing it.",
+            "Sing it back cleanly, without sliding.",
+          ],
+          tip: "If a jump keeps missing, slide into it slowly a few times, then try it clean.",
+        },
+        {
+          id: "p6",
+          title: "Big jumps",
+          meta: "Fifths and octaves · 5 min",
+          type: "pattern",
+          pattern: [0, 7, 0, 12, 0],
+          rounds: 2,
+          rise: 2,
+          tol: 0.5,
+          bigFallback: [0, 7, 0, 5, 0],
+          learn:
+            "Big leaps take confidence. Keep the low note relaxed and let the high note float rather than reaching for it.",
+          steps: [
+            "Listen to the pattern.",
+            "Breathe before the big jump.",
+            "Let the top note be lighter than the bottom one.",
+          ],
+          tip: "The octave is the same note, higher. Think of it as the same note, just lighter.",
+        },
+        {
+          id: "p7",
+          title: "Your first scale",
+          meta: "Five notes up and down · 5 min",
+          type: "pattern",
+          pattern: [0, 2, 4, 5, 7, 5, 4, 2, 0],
+          rounds: 2,
+          rise: 2,
+          tol: 0.5,
+          learn:
+            "Do re mi fa sol fa mi re do. Scales train your ear and voice to move evenly through a range of notes.",
+          steps: [
+            "Listen to the scale.",
+            "Sing it back on “la” or do-re-mi.",
+            "Keep every note the same loudness.",
+          ],
+          tip: "Take a breath before you start so you don't run out at the top.",
+        },
+        {
+          id: "p8",
+          title: "Checkpoint",
+          meta: "Sing a short melody · 3 min",
+          type: "pattern",
+          pattern: [0, 2, 4, 0, 4, 5, 7],
+          rounds: 2,
+          rise: 2,
+          tol: 0.5,
+          learn:
+            "Put it together: steps, small jumps and a held top note in one short tune.",
+          steps: [
+            "Listen to the melody.",
+            "Sing it back on “la”.",
+            "Use everything you've practised.",
+          ],
+          tip: "Pass this one and you're ready for real songs in Practice.",
+        },
+      ],
+    },
   ];
   const SOON = ["Control", "Range", "Agility", "Ear training"];
   const WARMUP = [
-    { title: "Breath hold", short: "Hiss on one breath", type: "hiss", target: 15, tries: 1, how: "Take a low breath, then hiss “sss” quietly and evenly for as long as you comfortably can." },
-    { title: "Gentle hum", short: "Hum on a comfy note", type: "hold", hold: 3, tol: 50, tries: 2, notes: "center", verb: "Hum", how: "Lips closed, teeth apart. Hum the piano note softly until the ring fills." },
-    { title: "Lip trills", short: "5-note pattern, rising", type: "pattern", pattern: [0, 2, 4, 2, 0], rounds: 3, rise: 1, tol: 0.6, verb: "Trill", how: "Buzz your lips (“brrr”) and follow the piano. Each round starts a note higher." },
-    { title: "Sirens", short: "Slide low to high on “oo”", type: "siren", tries: 1, how: "Glide from a low comfy note up as high as feels easy, then let it go." },
-    { title: "First scale", short: "Do re mi fa sol, in your range", type: "pattern", pattern: [0, 2, 4, 5, 7, 5, 4, 2, 0], rounds: 1, rise: 0, tol: 0.5, how: "Sing the scale back on “la”, every note the same loudness." },
+    {
+      title: "Breath hold",
+      short: "Hiss on one breath",
+      type: "hiss",
+      target: 15,
+      tries: 1,
+      how: "Take a low breath, then hiss “sss” quietly and evenly for as long as you comfortably can.",
+    },
+    {
+      title: "Gentle hum",
+      short: "Hum on a comfy note",
+      type: "hold",
+      hold: 3,
+      tol: 50,
+      tries: 2,
+      notes: "center",
+      verb: "Hum",
+      how: "Lips closed, teeth apart. Hum the piano note softly until the ring fills.",
+    },
+    {
+      title: "Lip trills",
+      short: "5-note pattern, rising",
+      type: "pattern",
+      pattern: [0, 2, 4, 2, 0],
+      rounds: 3,
+      rise: 1,
+      tol: 0.6,
+      verb: "Trill",
+      how: "Buzz your lips (“brrr”) and follow the piano. Each round starts a note higher.",
+    },
+    {
+      title: "Sirens",
+      short: "Slide low to high on “oo”",
+      type: "siren",
+      tries: 1,
+      how: "Glide from a low comfy note up as high as feels easy, then let it go.",
+    },
+    {
+      title: "First scale",
+      short: "Do re mi fa sol, in your range",
+      type: "pattern",
+      pattern: [0, 2, 4, 5, 7, 5, 4, 2, 0],
+      rounds: 1,
+      rise: 0,
+      tol: 0.5,
+      how: "Sing the scale back on “la”, every note the same loudness.",
+    },
   ];
 
   function useLessonMic(active) {
-    const st = useRef({ ctx: null, stream: null, src: null, an: null, raf: 0, feed: null });
+    const st = useRef({
+      ctx: null,
+      stream: null,
+      src: null,
+      an: null,
+      raf: 0,
+      feed: null,
+    });
     const [on, setOn] = useState(false);
     const [err, setErr] = useState("");
     const ctx = () => {
       const s = st.current;
-      if (!s.ctx) { const C = window.AudioContext || window.webkitAudioContext; s.ctx = new C(); }
+      if (!s.ctx) {
+        const C = window.AudioContext || window.webkitAudioContext;
+        s.ctx = new C();
+      }
       if (s.ctx.state === "suspended") s.ctx.resume().catch(() => {});
       return s.ctx;
     };
@@ -5324,7 +14215,13 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const s = st.current;
       cancelAnimationFrame(s.raf);
       if (s.stream) s.stream.getTracks().forEach((t) => t.stop());
-      [s.src, s.an].forEach((n) => { if (n) { try { n.disconnect(); } catch (e) {} } });
+      [s.src, s.an].forEach((n) => {
+        if (n) {
+          try {
+            n.disconnect();
+          } catch (e) {}
+        }
+      });
       s.stream = s.src = s.an = null;
       setOn(false);
     }, []);
@@ -5335,41 +14232,104 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       try {
         const c = ctx();
         const stream = await getMicStream();
-        const src = c.createMediaStreamSource(stream), an = c.createAnalyser();
-        an.fftSize = 2048; src.connect(an);
+        const src = c.createMediaStreamSource(stream),
+          an = c.createAnalyser();
+        an.fftSize = 2048;
+        src.connect(an);
         Object.assign(s, { stream, src, an });
         const buf = new Float32Array(an.fftSize);
         const tick = () => {
           if (!s.an) return;
           s.an.getFloatTimeDomainData(buf);
           const d = detectPitch(buf, c.sampleRate, micGate());
-          if (s.feed) s.feed(d.freq > 0 ? 69 + 12 * Math.log2(d.freq / SETTINGS.a4) : null, d.rms || 0, performance.now());
+          if (s.feed)
+            s.feed(
+              d.freq > 0 ? 69 + 12 * Math.log2(d.freq / SETTINGS.a4) : null,
+              d.rms || 0,
+              performance.now(),
+            );
           s.raf = requestAnimationFrame(tick);
         };
-        tick(); setOn(true); return true;
+        tick();
+        setOn(true);
+        return true;
       } catch (e) {
         stop();
-        setErr("The microphone isn't available here. Allow mic access, or open Tono from your GitHub Pages site.");
+        setErr(
+          "The microphone isn't available here. Allow mic access, or open Tono from your GitHub Pages site.",
+        );
         return false;
       }
     };
-    useEffect(() => { if (!active) stop(); }, [active, stop]);
-    useEffect(() => () => { stop(); if (st.current.ctx) st.current.ctx.close().catch(() => {}); }, []);
-    return { on, err, start, stop, ctx, setFeed: (fn) => { st.current.feed = fn; } };
+    useEffect(() => {
+      if (!active) stop();
+    }, [active, stop]);
+    useEffect(
+      () => () => {
+        stop();
+        if (st.current.ctx) st.current.ctx.close().catch(() => {});
+      },
+      [],
+    );
+    return {
+      on,
+      err,
+      start,
+      stop,
+      ctx,
+      setFeed: (fn) => {
+        st.current.feed = fn;
+      },
+    };
   }
 
   // shared bits for exercises
   const useTimers = () => {
     const ids = useRef([]);
     useEffect(() => () => ids.current.forEach(clearTimeout), []);
-    return { later: (fn, ms) => { const id = setTimeout(fn, ms); ids.current.push(id); return id; }, clear: () => { ids.current.forEach(clearTimeout); ids.current = []; } };
+    return {
+      later: (fn, ms) => {
+        const id = setTimeout(fn, ms);
+        ids.current.push(id);
+        return id;
+      },
+      clear: () => {
+        ids.current.forEach(clearTimeout);
+        ids.current = [];
+      },
+    };
   };
   const nm = (m) => pretty(midiInfo(Math.round(m)).label);
- <Ring/>
-  const TryDots = ({ n, results, cur }) => html`<span class="flex gap-1" role="img" aria-label=${"Try " + Math.min(n, cur + 1) + " of " + n}>
-    ${Array.from({ length: n }, (_, k) => html`<span key=${k} style=${{ width: 10, height: 10, borderRadius: "50%", background: k < results.length ? (results[k] ? "var(--good)" : "var(--bad)") : k === cur ? "var(--accent)" : "var(--line)" }}></span>`)}
-  </span>`;
-  const MicNote = ({ mic }) => mic.err ? html`<div class="notice" role="alert">${mic.err}</div>` : null;
+  <Ring />;
+  const TryDots = ({ n, results, cur }) =>
+    html`<span
+      class="flex gap-1"
+      role="img"
+      aria-label=${"Try " + Math.min(n, cur + 1) + " of " + n}
+    >
+      ${Array.from(
+        { length: n },
+        (_, k) =>
+          html`<span
+            key=${k}
+            style=${{
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background:
+                k < results.length
+                  ? results[k]
+                    ? "var(--good)"
+                    : "var(--bad)"
+                  : k === cur
+                    ? "var(--accent)"
+                    : "var(--line)",
+            }}
+          ></span>`,
+      )}
+    </span>`;
+  const MicNote = ({ mic }) =>
+    mic.err ? html`<div class="notice" role="alert">${mic.err}</div>` : null;
 
   // ---- hold a note (match, slide, hum, sustain) ----
   function HoldEx({ spec, range, mic, onDone }) {
@@ -5379,51 +14339,135 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [cur, setCur] = useState(null);
     const [prog, setProg] = useState(0);
     const [res, setRes] = useState([]);
-    const r = useRef({ trail: [] }), phaseRef = useRef("ready"), resRef = useRef([]);
+    const r = useRef({ trail: [] }),
+      phaseRef = useRef("ready"),
+      resRef = useRef([]);
     const T = useTimers();
     const QUIET = 2100;
-    const go = (p) => { phaseRef.current = p; setPhase(p); };
+    const go = (p) => {
+      phaseRef.current = p;
+      setPhase(p);
+    };
     const pick = (i) => {
-      if (spec.targets && spec.targets.length) return spec.targets[i % spec.targets.length];
-      if (spec.notes === "center") return Math.max(range.lo, Math.min(range.hi, range.center + [0, 2, -2, 1, -1][i % 5]));
+      if (spec.targets && spec.targets.length)
+        return spec.targets[i % spec.targets.length];
+      if (spec.notes === "center")
+        return Math.max(
+          range.lo,
+          Math.min(range.hi, range.center + [0, 2, -2, 1, -1][i % 5]),
+        );
       let m;
-      do { m = range.lo + Math.floor(Math.random() * (range.hi - range.lo + 1)); } while (m === r.current.last && range.hi > range.lo);
+      do {
+        m = range.lo + Math.floor(Math.random() * (range.hi - range.lo + 1));
+      } while (m === r.current.last && range.hi > range.lo);
       return m;
     };
     const begin = async (i) => {
       if (!(await mic.start())) return;
       const t = pick(i);
-      r.current = { last: t, target: t, quietUntil: performance.now() + QUIET, singAt: performance.now() + QUIET, holdStart: 0, lastIn: 0, lastOn: 0, cents: [], all: [], over: 0, prevSide: 0, best: 0, lock: null, doneTry: false, trail: [] };
-      setTarget(t); setK(i); setProg(0); setCur(null); go("listen");
+      r.current = {
+        last: t,
+        target: t,
+        quietUntil: performance.now() + QUIET,
+        singAt: performance.now() + QUIET,
+        holdStart: 0,
+        lastIn: 0,
+        lastOn: 0,
+        cents: [],
+        all: [],
+        over: 0,
+        prevSide: 0,
+        best: 0,
+        lock: null,
+        doneTry: false,
+        trail: [],
+      };
+      setTarget(t);
+      setK(i);
+      setProg(0);
+      setCur(null);
+      go("listen");
       playPiano(mic.ctx(), t, 2);
-      T.later(() => { if (phaseRef.current === "listen") go("sing"); }, QUIET);
+      T.later(() => {
+        if (phaseRef.current === "listen") go("sing");
+      }, QUIET);
     };
     const replay = () => {
       const s = r.current;
-      if (s.target == null || phaseRef.current === "hit" || phaseRef.current === "miss") return;
-      s.quietUntil = performance.now() + QUIET; s.singAt = s.quietUntil; s.holdStart = 0; setProg(0); go("listen");
+      if (
+        s.target == null ||
+        phaseRef.current === "hit" ||
+        phaseRef.current === "miss"
+      )
+        return;
+      s.quietUntil = performance.now() + QUIET;
+      s.singAt = s.quietUntil;
+      s.holdStart = 0;
+      setProg(0);
+      go("listen");
       playPiano(mic.ctx(), s.target, 2);
-      T.later(() => { if (phaseRef.current === "listen") go("sing"); }, QUIET);
+      T.later(() => {
+        if (phaseRef.current === "listen") go("sing");
+      }, QUIET);
     };
     const finish = (list) => {
-      const n = list.length, hits = list.filter((x) => x.ok);
-      const score = Math.round(list.reduce((a, x) => a + (x.ok ? 100 : Math.round(x.best * 70)), 0) / n);
+      const n = list.length,
+        hits = list.filter((x) => x.ok);
+      const score = Math.round(
+        list.reduce((a, x) => a + (x.ok ? 100 : Math.round(x.best * 70)), 0) /
+          n,
+      );
       const locks = hits.map((x) => x.lock).filter((x) => x != null);
-      const lock = locks.length ? locks.reduce((a, b) => a + b, 0) / locks.length : null;
+      const lock = locks.length
+        ? locks.reduce((a, b) => a + b, 0) / locks.length
+        : null;
       const sds = hits.map((x) => x.sd).filter((x) => x != null);
-      const sd = sds.length ? sds.reduce((a, b) => a + b, 0) / sds.length : null;
+      const sd = sds.length
+        ? sds.reduce((a, b) => a + b, 0) / sds.length
+        : null;
       const leans = list.map((x) => x.lean).filter((x) => x != null);
       const lean = leans.length ? median(leans) : 0;
       const over = list.reduce((a, x) => a + x.over, 0);
-      const stats = [{ label: "Found the note", value: hits.length + " of " + n, pct: (100 * hits.length) / n }];
-      if (lock != null) stats.push({ label: "Time to lock in", value: lock.toFixed(1) + " s avg", pct: Math.max(10, Math.min(100, 110 - lock * 25)) });
-      if (sd != null) stats.push({ label: "Steady once there", value: sd < 8 ? "Very steady" : sd < 14 ? "Good" : "A bit wobbly", pct: Math.max(15, Math.min(100, 110 - sd * 4)) });
+      const stats = [
+        {
+          label: "Found the note",
+          value: hits.length + " of " + n,
+          pct: (100 * hits.length) / n,
+        },
+      ];
+      if (lock != null)
+        stats.push({
+          label: "Time to lock in",
+          value: lock.toFixed(1) + " s avg",
+          pct: Math.max(10, Math.min(100, 110 - lock * 25)),
+        });
+      if (sd != null)
+        stats.push({
+          label: "Steady once there",
+          value: sd < 8 ? "Very steady" : sd < 14 ? "Good" : "A bit wobbly",
+          pct: Math.max(15, Math.min(100, 110 - sd * 4)),
+        });
       let tip;
-      if (hits.length < n / 2 && Math.abs(lean) >= 25) tip = "You tended to sit a little " + (lean < 0 ? "low (flat). Aim slightly higher and keep your breath flowing." : "high (sharp). Relax your throat and aim slightly lower.");
-      else if (over >= 3) tip = "You slid past the note a few times and came back. Slow down right before you get there.";
-      else if (lock != null && lock > 3) tip = "Take a breath and hear the note in your head before you start singing. It gets faster with practice.";
-      else if (sd != null && sd >= 14) tip = "The note wobbled a bit once you found it. Take a fuller breath and keep the same vowel the whole time.";
-      else tip = score >= 85 ? "Clean and steady. Nice work!" : "Good effort. Try it again to make it feel automatic.";
+      if (hits.length < n / 2 && Math.abs(lean) >= 25)
+        tip =
+          "You tended to sit a little " +
+          (lean < 0
+            ? "low (flat). Aim slightly higher and keep your breath flowing."
+            : "high (sharp). Relax your throat and aim slightly lower.");
+      else if (over >= 3)
+        tip =
+          "You slid past the note a few times and came back. Slow down right before you get there.";
+      else if (lock != null && lock > 3)
+        tip =
+          "Take a breath and hear the note in your head before you start singing. It gets faster with practice.";
+      else if (sd != null && sd >= 14)
+        tip =
+          "The note wobbled a bit once you found it. Take a fuller breath and keep the same vowel the whole time.";
+      else
+        tip =
+          score >= 85
+            ? "Clean and steady. Nice work!"
+            : "Good effort. Try it again to make it feel automatic.";
       onDone({ score, pass: score >= 70, stats, tip });
     };
     const endTry = (ok) => {
@@ -5432,83 +14476,242 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       s.doneTry = true;
       const cs = s.cents.slice(-Math.round(spec.hold * 50));
       const mean = cs.length ? cs.reduce((a, b) => a + b, 0) / cs.length : 0;
-      const sd = cs.length > 8 ? Math.sqrt(cs.reduce((a, b) => a + (b - mean) * (b - mean), 0) / cs.length) : null;
-      const item = { ok, lock: s.lock, sd, lean: s.all.length ? median(s.all.slice(-90)) : null, over: s.over, best: ok ? 1 : s.best };
+      const sd =
+        cs.length > 8
+          ? Math.sqrt(
+              cs.reduce((a, b) => a + (b - mean) * (b - mean), 0) / cs.length,
+            )
+          : null;
+      const item = {
+        ok,
+        lock: s.lock,
+        sd,
+        lean: s.all.length ? median(s.all.slice(-90)) : null,
+        over: s.over,
+        best: ok ? 1 : s.best,
+      };
       go(ok ? "hit" : "miss");
       if (ok) playChime(mic.ctx());
       const next = [...resRef.current, item];
-      resRef.current = next; setRes(next);
-      T.later(() => { if (next.length >= spec.tries) finish(next); else begin(next.length); }, ok ? 1100 : 1500);
+      resRef.current = next;
+      setRes(next);
+      T.later(
+        () => {
+          if (next.length >= spec.tries) finish(next);
+          else begin(next.length);
+        },
+        ok ? 1100 : 1500,
+      );
     };
     mic.setFeed((m, rms, now) => {
       const s = r.current;
       if (phaseRef.current !== "sing" || now < s.quietUntil) return;
-      if (now - s.singAt > (spec.hold + 9) * 1000) { endTry(false); return; }
+      if (now - s.singAt > (spec.hold + 9) * 1000) {
+        endTry(false);
+        return;
+      }
       if (m == null) {
-        if (s.holdStart && now - s.lastOn > 220) { s.holdStart = 0; setProg(0); }
+        if (s.holdStart && now - s.lastOn > 220) {
+          s.holdStart = 0;
+          setProg(0);
+        }
         if (now - s.lastOn > 220) setCur(null);
         return;
       }
-      let d = m - s.target; d -= 12 * Math.round(d / 12);
+      let d = m - s.target;
+      d -= 12 * Math.round(d / 12);
       const c = Math.round(d * 100);
-      s.lastOn = now; s.all.push(c);
-      s.trail.push({ t: now, c }); while (s.trail.length && now - s.trail[0].t > 3000) s.trail.shift();
+      s.lastOn = now;
+      s.all.push(c);
+      s.trail.push({ t: now, c });
+      while (s.trail.length && now - s.trail[0].t > 3000) s.trail.shift();
       setCur({ m, c });
       const side = c < -spec.tol ? -1 : c > spec.tol ? 1 : 0;
       if (side && s.prevSide && side !== s.prevSide) s.over++;
       if (side) s.prevSide = side;
       if (!side) {
-        if (!s.holdStart) { s.holdStart = now; if (s.lock == null) s.lock = (now - s.singAt) / 1000; }
-        s.lastIn = now; s.cents.push(c);
+        if (!s.holdStart) {
+          s.holdStart = now;
+          if (s.lock == null) s.lock = (now - s.singAt) / 1000;
+        }
+        s.lastIn = now;
+        s.cents.push(c);
         const p = Math.min(1, (now - s.holdStart) / (spec.hold * 1000));
-        setProg(p); s.best = Math.max(s.best, p);
+        setProg(p);
+        s.best = Math.max(s.best, p);
         if (p >= 1) endTry(true);
-      } else if (s.holdStart && now - s.lastIn > 180) { s.holdStart = 0; setProg(0); }
+      } else if (s.holdStart && now - s.lastIn > 180) {
+        s.holdStart = 0;
+        setProg(0);
+      }
     });
 
     const tol = spec.tol;
     const inZone = cur && Math.abs(cur.c) <= tol;
-    let hint, tone = "muted";
+    let hint,
+      tone = "muted";
     if (phase === "ready") hint = "Tap Start, listen, then sing.";
     else if (phase === "listen") hint = "Listen…";
-    else if (phase === "hit") { hint = "Got it!"; tone = "good"; }
-    else if (phase === "miss") { hint = "Let's try the next one."; tone = "warn"; }
-    else if (!cur) hint = "Your turn. " + (spec.verb || "Sing") + " the note.";
-    else if (inZone) { hint = spec.hold > 1.5 ? "Locked in, hold it!" : "That's it, hold…"; tone = "good"; }
-    else if (cur.c < 0) { hint = cur.c < -100 ? "Go up ↑" : "A little higher ↑"; tone = "warn"; }
-    else { hint = cur.c > 100 ? "Go down ↓" : "A little lower ↓"; tone = "warn"; }
+    else if (phase === "hit") {
+      hint = "Got it!";
+      tone = "good";
+    } else if (phase === "miss") {
+      hint = "Let's try the next one.";
+      tone = "warn";
+    } else if (!cur)
+      hint = "Your turn. " + (spec.verb || "Sing") + " the note.";
+    else if (inZone) {
+      hint = spec.hold > 1.5 ? "Locked in, hold it!" : "That's it, hold…";
+      tone = "good";
+    } else if (cur.c < 0) {
+      hint = cur.c < -100 ? "Go up ↑" : "A little higher ↑";
+      tone = "warn";
+    } else {
+      hint = cur.c > 100 ? "Go down ↓" : "A little lower ↓";
+      tone = "warn";
+    }
     // trail chart: the last 3 seconds of your voice against the target band
-    const W = 320, H = 150, mid = H / 2, sc = (c) => mid - Math.max(-300, Math.min(300, c)) * (mid - 10) / 300;
-    const now = performance.now(), tr = r.current.trail || [];
-    const pts = tr.map((p) => (W - 12 - ((now - p.t) / 3000) * (W - 24)).toFixed(1) + "," + sc(p.c).toFixed(1)).join(" ");
+    const W = 320,
+      H = 150,
+      mid = H / 2,
+      sc = (c) => mid - (Math.max(-300, Math.min(300, c)) * (mid - 10)) / 300;
+    const now = performance.now(),
+      tr = r.current.trail || [];
+    const pts = tr
+      .map(
+        (p) =>
+          (W - 12 - ((now - p.t) / 3000) * (W - 24)).toFixed(1) +
+          "," +
+          sc(p.c).toFixed(1),
+      )
+      .join(" ");
     const band = (tol * (mid - 10)) / 300;
     return html`<div class="flex flex-col gap-3">
       <section class="tuner-card" style=${{ alignItems: "stretch", gap: 12 }}>
         <div class="flex items-center justify-between gap-2">
-          <span class="display font-bold" style=${{ fontSize: 20 }}>${spec.verb || "Sing"} ${target != null ? nm(target) : "the note"}</span>
-          <${TryDots} n=${spec.tries} results=${res.map((x) => x.ok)} cur=${k} />
+          <span class="display font-bold" style=${{ fontSize: 20 }}
+            >${spec.verb || "Sing"}
+            ${target != null ? nm(target) : "the note"}</span
+          >
+          <${TryDots}
+            n=${spec.tries}
+            results=${res.map((x) => x.ok)}
+            cur=${k}
+          />
         </div>
-        <svg viewBox=${"0 0 " + W + " " + H} style=${{ width: "100%", height: "auto", display: "block" }} role="img" aria-label=${cur ? "You are " + Math.abs(cur.c) + " cents " + (cur.c < 0 ? "below" : "above") + " the target" : "Waiting for your voice"}>
-          <rect x="0" y=${(mid - band).toFixed(1)} width=${W} height=${(2 * band).toFixed(1)} rx="6" fill="color-mix(in srgb, var(--good) 14%, transparent)"></rect>
-          <line x1="0" y1=${mid} x2=${W} y2=${mid} stroke="var(--good)" strokeWidth="2" strokeDasharray="6 6"></line>
-          <text x="6" y=${(mid - band - 6).toFixed(1)} fill="var(--good)" fontSize="12" fontFamily="JetBrains Mono, monospace">${target != null ? nm(target) + " target" : "target"}</text>
-          ${pts && html`<polyline points=${pts} fill="none" stroke="var(--you)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"></polyline>`}
-          ${cur && phase === "sing" && html`<circle cx=${W - 12} cy=${sc(cur.c).toFixed(1)} r="6" fill="var(--fg)"></circle>`}
+        <svg
+          viewBox=${"0 0 " + W + " " + H}
+          style=${{ width: "100%", height: "auto", display: "block" }}
+          role="img"
+          aria-label=${cur
+            ? "You are " +
+              Math.abs(cur.c) +
+              " cents " +
+              (cur.c < 0 ? "below" : "above") +
+              " the target"
+            : "Waiting for your voice"}
+        >
+          <rect
+            x="0"
+            y=${(mid - band).toFixed(1)}
+            width=${W}
+            height=${(2 * band).toFixed(1)}
+            rx="6"
+            fill="color-mix(in srgb, var(--good) 14%, transparent)"
+          ></rect>
+          <line
+            x1="0"
+            y1=${mid}
+            x2=${W}
+            y2=${mid}
+            stroke="var(--good)"
+            strokeWidth="2"
+            strokeDasharray="6 6"
+          ></line>
+          <text
+            x="6"
+            y=${(mid - band - 6).toFixed(1)}
+            fill="var(--good)"
+            fontSize="12"
+            fontFamily="JetBrains Mono, monospace"
+          >
+            ${target != null ? nm(target) + " target" : "target"}
+          </text>
+          ${pts &&
+          html`<polyline
+            points=${pts}
+            fill="none"
+            stroke="var(--you)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          ></polyline>`}
+          ${cur &&
+          phase === "sing" &&
+          html`<circle
+            cx=${W - 12}
+            cy=${sc(cur.c).toFixed(1)}
+            r="6"
+            fill="var(--fg)"
+          ></circle>`}
         </svg>
         <div class="flex items-center justify-center gap-5">
-          <${Ring} p=${phase === "hit" ? 1 : prog} label="Hold" value=${(spec.hold * (phase === "hit" ? 1 : prog)).toFixed(1) + "s"} tone=${phase === "hit" || inZone ? "good" : "warn"} />
+          <${Ring}
+            p=${phase === "hit" ? 1 : prog}
+            label="Hold"
+            value=${(spec.hold * (phase === "hit" ? 1 : prog)).toFixed(1) + "s"}
+            tone=${phase === "hit" || inZone ? "good" : "warn"}
+          />
           <span class="flex flex-col gap-1 min-w-0">
-            ${phase === "sing" && cur && html`<span class="text-xs muted">You're on</span><span class="display font-bold" style=${{ fontSize: 24, color: "var(--you)" }}>${nm(cur.m)}</span>`}
-            <span class="display font-bold" style=${{ fontSize: 19, lineHeight: 1.2, color: "var(--" + tone + ")" }} aria-live="polite">${hint}</span>
+            ${phase === "sing" &&
+            cur &&
+            html`<span class="text-xs muted">You're on</span
+              ><span
+                class="display font-bold"
+                style=${{ fontSize: 24, color: "var(--you)" }}
+                >${nm(cur.m)}</span
+              >`}
+            <span
+              class="display font-bold"
+              style=${{
+                fontSize: 19,
+                lineHeight: 1.2,
+                color: "var(--" + tone + ")",
+              }}
+              aria-live="polite"
+              >${hint}</span
+            >
           </span>
         </div>
       </section>
       <${MicNote} mic=${mic} />
       ${phase === "ready"
-        ? html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${() => begin(0)}><span class="flex items-center gap-2"><${Icon} name="mic" size=${18} />Start</span></button>`
+        ? html`<button
+            class="btn btn-primary"
+            style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+            onClick=${() => begin(0)}
+          >
+            <span class="flex items-center gap-2"
+              ><${Icon} name="mic" size=${18} />Start</span
+            >
+          </button>`
         : html`<div class="grid grid-cols-2 gap-2">
-            <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${replay} disabled=${phase === "hit" || phase === "miss"}>▶ Hear note</button>
-            <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => endTry(false)} disabled=${phase !== "sing"}>Skip this one</button>
+            <button
+              class="btn"
+              style=${{ justifyContent: "center", minHeight: 46 }}
+              onClick=${replay}
+              disabled=${phase === "hit" || phase === "miss"}
+            >
+              ▶ Hear note
+            </button>
+            <button
+              class="btn"
+              style=${{ justifyContent: "center", minHeight: 46 }}
+              onClick=${() => endTry(false)}
+              disabled=${phase !== "sing"}
+            >
+              Skip this one
+            </button>
           </div>`}
     </div>`;
   }
@@ -5518,60 +14721,170 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [phase, setPhase] = useState("ready");
     const [secs, setSecs] = useState(0);
     const [list, setList] = useState([]);
-    const r = useRef({}), phaseRef = useRef("ready"), listRef = useRef([]);
-    const go = (p) => { phaseRef.current = p; setPhase(p); };
+    const r = useRef({}),
+      phaseRef = useRef("ready"),
+      listRef = useRef([]);
+    const go = (p) => {
+      phaseRef.current = p;
+      setPhase(p);
+    };
     const finish = (l) => {
-      const best = Math.max(...l), avg = l.reduce((a, b) => a + b, 0) / l.length;
+      const best = Math.max(...l),
+        avg = l.reduce((a, b) => a + b, 0) / l.length;
       const score = Math.min(100, Math.round((best / spec.target) * 100));
-      const stats = [{ label: "Longest hiss", value: best.toFixed(1) + " s", pct: Math.min(100, (best / spec.target) * 100) }];
-      if (l.length > 1) stats.push({ label: "Average", value: avg.toFixed(1) + " s", pct: Math.min(100, (avg / spec.target) * 100) });
-      const tip = best < spec.target * 0.5 ? "Breathe low into your belly before you start, then let the air out slowly, like a tiny leak." : best < spec.target ? "Good control. Next time try a quieter hiss. Less air per second means a longer hiss." : "Great breath control. This is what keeps long notes steady.";
-      onDone({ score, pass: best >= spec.target * 0.66, stats, tip, detail: best.toFixed(1) + " s" });
+      const stats = [
+        {
+          label: "Longest hiss",
+          value: best.toFixed(1) + " s",
+          pct: Math.min(100, (best / spec.target) * 100),
+        },
+      ];
+      if (l.length > 1)
+        stats.push({
+          label: "Average",
+          value: avg.toFixed(1) + " s",
+          pct: Math.min(100, (avg / spec.target) * 100),
+        });
+      const tip =
+        best < spec.target * 0.5
+          ? "Breathe low into your belly before you start, then let the air out slowly, like a tiny leak."
+          : best < spec.target
+            ? "Good control. Next time try a quieter hiss. Less air per second means a longer hiss."
+            : "Great breath control. This is what keeps long notes steady.";
+      onDone({
+        score,
+        pass: best >= spec.target * 0.66,
+        stats,
+        tip,
+        detail: best.toFixed(1) + " s",
+      });
     };
     const start = async () => {
       if (!(await mic.start())) return;
-      r.current = { base: [], until: performance.now() + 700, thr: 0, t0: 0, lastOn: 0, shown: 0 };
-      setSecs(0); go("calib");
+      r.current = {
+        base: [],
+        until: performance.now() + 700,
+        thr: 0,
+        t0: 0,
+        lastOn: 0,
+        shown: 0,
+      };
+      setSecs(0);
+      go("calib");
     };
     mic.setFeed((m, rms, now) => {
-      const s = r.current, p = phaseRef.current;
+      const s = r.current,
+        p = phaseRef.current;
       if (p === "calib") {
         s.base.push(rms);
-        if (now > s.until) { s.thr = Math.max(median(s.base) * 3, 0.004); go("go"); }
+        if (now > s.until) {
+          s.thr = Math.max(median(s.base) * 3, 0.004);
+          go("go");
+        }
       } else if (p === "go") {
-        if (rms > s.thr) { s.t0 = now; s.lastOn = now; go("blow"); }
+        if (rms > s.thr) {
+          s.t0 = now;
+          s.lastOn = now;
+          go("blow");
+        }
       } else if (p === "blow") {
         if (rms > s.thr) {
           s.lastOn = now;
           const t = (now - s.t0) / 1000;
-          if (t - s.shown >= 0.1) { s.shown = t; setSecs(t); }
+          if (t - s.shown >= 0.1) {
+            s.shown = t;
+            setSecs(t);
+          }
         } else if (now - s.lastOn > 450) {
           const dur = (s.lastOn - s.t0) / 1000;
-          if (dur < 1.5) { s.shown = 0; setSecs(0); go("go"); return; }
+          if (dur < 1.5) {
+            s.shown = 0;
+            setSecs(0);
+            go("go");
+            return;
+          }
           setSecs(dur);
           const l = [...listRef.current, dur];
-          listRef.current = l; setList(l);
-          if (l.length >= spec.tries) { go("done"); setTimeout(() => finish(l), 900); } else go("rest");
+          listRef.current = l;
+          setList(l);
+          if (l.length >= spec.tries) {
+            go("done");
+            setTimeout(() => finish(l), 900);
+          } else go("rest");
         }
       }
     });
     const best = list.length ? Math.max(...list) : 0;
-    const msg = { ready: "Tap Start, take a low breath, then hiss.", calib: "Stay quiet for a moment…", go: "Go! Hiss “sss” now.", blow: "Keep it even…", rest: "Nice. Breathe, then go again.", done: "Done!" }[phase];
+    const msg = {
+      ready: "Tap Start, take a low breath, then hiss.",
+      calib: "Stay quiet for a moment…",
+      go: "Go! Hiss “sss” now.",
+      blow: "Keep it even…",
+      rest: "Nice. Breathe, then go again.",
+      done: "Done!",
+    }[phase];
     return html`<div class="flex flex-col gap-3">
       <section class="tuner-card" style=${{ gap: 14 }}>
-        <div class="flex items-center justify-between gap-2" style=${{ alignSelf: "stretch" }}>
-          <span class="display font-bold" style=${{ fontSize: 20 }}>Long, even hiss</span>
-          ${spec.tries > 1 && html`<span class="text-xs muted">Try ${Math.min(spec.tries, list.length + 1)} of ${spec.tries}</span>`}
+        <div
+          class="flex items-center justify-between gap-2"
+          style=${{ alignSelf: "stretch" }}
+        >
+          <span class="display font-bold" style=${{ fontSize: 20 }}
+            >Long, even hiss</span
+          >
+          ${spec.tries > 1 &&
+          html`<span class="text-xs muted"
+            >Try ${Math.min(spec.tries, list.length + 1)} of ${spec.tries}</span
+          >`}
         </div>
-        <${Ring} p=${secs / spec.target} label=${"Goal " + spec.target + "s"} value=${secs.toFixed(1) + "s"} tone=${secs >= spec.target ? "good" : "accent"} size=${150} />
-        <span class="display font-bold" style=${{ fontSize: 19 }} aria-live="polite">${msg}</span>
-        ${list.length > 0 && html`<span class="text-sm muted">Best so far: <b style=${{ color: "var(--fg)" }}>${best.toFixed(1)} s</b></span>`}
+        <${Ring}
+          p=${secs / spec.target}
+          label=${"Goal " + spec.target + "s"}
+          value=${secs.toFixed(1) + "s"}
+          tone=${secs >= spec.target ? "good" : "accent"}
+          size=${150}
+        />
+        <span
+          class="display font-bold"
+          style=${{ fontSize: 19 }}
+          aria-live="polite"
+          >${msg}</span
+        >
+        ${list.length > 0 &&
+        html`<span class="text-sm muted"
+          >Best so far:
+          <b style=${{ color: "var(--fg)" }}>${best.toFixed(1)} s</b></span
+        >`}
       </section>
       <${MicNote} mic=${mic} />
-      ${phase === "ready" && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${start}>Start</button>`}
-      ${phase === "rest" && html`<div class="grid grid-cols-2 gap-2">
-        <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => finish(listRef.current)}>Finish</button>
-        <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => { r.current.shown = 0; setSecs(0); go("go"); }}>Go again</button>
+      ${phase === "ready" &&
+      html`<button
+        class="btn btn-primary"
+        style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+        onClick=${start}
+      >
+        Start
+      </button>`}
+      ${phase === "rest" &&
+      html`<div class="grid grid-cols-2 gap-2">
+        <button
+          class="btn"
+          style=${{ justifyContent: "center", minHeight: 46 }}
+          onClick=${() => finish(listRef.current)}
+        >
+          Finish
+        </button>
+        <button
+          class="btn btn-primary"
+          style=${{ justifyContent: "center", minHeight: 46 }}
+          onClick=${() => {
+            r.current.shown = 0;
+            setSecs(0);
+            go("go");
+          }}
+        >
+          Go again
+        </button>
       </div>`}
     </div>`;
   }
@@ -5581,71 +14894,197 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [phase, setPhase] = useState("ready");
     const [live, setLive] = useState(null);
     const [list, setList] = useState([]);
-    const r = useRef({}), phaseRef = useRef("ready"), listRef = useRef([]);
-    const go = (p) => { phaseRef.current = p; setPhase(p); };
+    const r = useRef({}),
+      phaseRef = useRef("ready"),
+      listRef = useRef([]);
+    const go = (p) => {
+      phaseRef.current = p;
+      setPhase(p);
+    };
     const target = Math.max(7, Math.min(14, range.full.hi - range.full.lo - 2));
     const finish = (l) => {
       const b = l.reduce((a, x) => (x.hi - x.lo > a.hi - a.lo ? x : a), l[0]);
       const span = b.hi - b.lo;
       const score = Math.min(100, Math.round((span / target) * 100));
-      const stats = [{ label: "Widest slide", value: nm(b.lo) + " → " + nm(b.hi), pct: Math.min(100, (span / target) * 100) }, { label: "Notes covered", value: Math.round(span) + " notes", pct: Math.min(100, (span / target) * 100) }];
-      const tip = span < target * 0.6 ? "Start lower and keep the air flowing as you go up. Let it get light and soft at the top instead of pushing." : span < target ? "Smooth slide! Over time you'll gently stretch a little further." : "Lovely wide siren. Keep it easy and it'll keep growing.";
+      const stats = [
+        {
+          label: "Widest slide",
+          value: nm(b.lo) + " → " + nm(b.hi),
+          pct: Math.min(100, (span / target) * 100),
+        },
+        {
+          label: "Notes covered",
+          value: Math.round(span) + " notes",
+          pct: Math.min(100, (span / target) * 100),
+        },
+      ];
+      const tip =
+        span < target * 0.6
+          ? "Start lower and keep the air flowing as you go up. Let it get light and soft at the top instead of pushing."
+          : span < target
+            ? "Smooth slide! Over time you'll gently stretch a little further."
+            : "Lovely wide siren. Keep it easy and it'll keep growing.";
       onDone({ score, pass: span >= target * 0.6, stats, tip });
     };
-    const start = async () => { if (!(await mic.start())) return; r.current = { buf: [], lo: null, hi: null, lastOn: 0 }; setLive(null); go("go"); };
+    const start = async () => {
+      if (!(await mic.start())) return;
+      r.current = { buf: [], lo: null, hi: null, lastOn: 0 };
+      setLive(null);
+      go("go");
+    };
     mic.setFeed((m, rms, now) => {
-      const s = r.current, p = phaseRef.current;
+      const s = r.current,
+        p = phaseRef.current;
       if (p !== "go" && p !== "slide") return;
       if (m != null) {
-        s.buf.push(m); if (s.buf.length > 5) s.buf.shift();
+        s.buf.push(m);
+        if (s.buf.length > 5) s.buf.shift();
         if (s.buf.length < 3) return;
         const v = median(s.buf);
-        if (p === "go") { s.lo = s.hi = v; go("slide"); }
-        s.lo = Math.min(s.lo, v); s.hi = Math.max(s.hi, v); s.lastOn = now;
+        if (p === "go") {
+          s.lo = s.hi = v;
+          go("slide");
+        }
+        s.lo = Math.min(s.lo, v);
+        s.hi = Math.max(s.hi, v);
+        s.lastOn = now;
         setLive({ v, lo: s.lo, hi: s.hi });
       } else if (p === "slide" && now - s.lastOn > 600) {
         s.buf = [];
-        if (s.hi - s.lo < 2) { go("go"); setLive(null); return; }
+        if (s.hi - s.lo < 2) {
+          go("go");
+          setLive(null);
+          return;
+        }
         const l = [...listRef.current, { lo: s.lo, hi: s.hi }];
-        listRef.current = l; setList(l);
-        if (l.length >= spec.tries) { go("done"); setTimeout(() => finish(l), 700); } else go("rest");
+        listRef.current = l;
+        setList(l);
+        if (l.length >= spec.tries) {
+          go("done");
+          setTimeout(() => finish(l), 700);
+        } else go("rest");
       }
     });
-    const lo = range.full.lo - 5, hi = range.full.hi + 5, H = 220;
-    const y = (v) => H - 10 - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * (H - 20);
-    const msg = { ready: "Tap Start, then slide from low to high.", go: "Start low and glide up…", slide: "Keep going, nice and smooth…", rest: "Good one! Breathe, then go again.", done: "Done!" }[phase];
+    const lo = range.full.lo - 5,
+      hi = range.full.hi + 5,
+      H = 220;
+    const y = (v) =>
+      H - 10 - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * (H - 20);
+    const msg = {
+      ready: "Tap Start, then slide from low to high.",
+      go: "Start low and glide up…",
+      slide: "Keep going, nice and smooth…",
+      rest: "Good one! Breathe, then go again.",
+      done: "Done!",
+    }[phase];
     const best = list.length ? Math.max(...list.map((x) => x.hi - x.lo)) : 0;
     return html`<div class="flex flex-col gap-3">
       <section class="tuner-card" style=${{ alignItems: "stretch", gap: 12 }}>
         <div class="flex items-center justify-between gap-2">
-          <span class="display font-bold" style=${{ fontSize: 20 }}>Siren slide</span>
-          ${spec.tries > 1 && html`<span class="text-xs muted">Try ${Math.min(spec.tries, list.length + 1)} of ${spec.tries}</span>`}
+          <span class="display font-bold" style=${{ fontSize: 20 }}
+            >Siren slide</span
+          >
+          ${spec.tries > 1 &&
+          html`<span class="text-xs muted"
+            >Try ${Math.min(spec.tries, list.length + 1)} of ${spec.tries}</span
+          >`}
         </div>
         <div class="flex items-center gap-4">
-          <svg width="90" height=${H} viewBox=${"0 0 90 " + H} role="img" aria-label=${live ? "Sliding from " + nm(live.lo) + " to " + nm(live.hi) : "Waiting for your voice"} style=${{ flexShrink: 0 }}>
-            <rect x="30" y="10" width="30" height=${H - 20} rx="15" fill="var(--surface-2)" stroke="var(--line)"></rect>
-            ${live && html`<rect x="30" y=${y(live.hi).toFixed(1)} width="30" height=${Math.max(6, y(live.lo) - y(live.hi)).toFixed(1)} rx="15" fill="color-mix(in srgb, var(--accent) 60%, transparent)"></rect>`}
-            ${live && html`<circle cx="45" cy=${y(live.v).toFixed(1)} r="9" fill="var(--you)"></circle>`}
+          <svg
+            width="90"
+            height=${H}
+            viewBox=${"0 0 90 " + H}
+            role="img"
+            aria-label=${live
+              ? "Sliding from " + nm(live.lo) + " to " + nm(live.hi)
+              : "Waiting for your voice"}
+            style=${{ flexShrink: 0 }}
+          >
+            <rect
+              x="30"
+              y="10"
+              width="30"
+              height=${H - 20}
+              rx="15"
+              fill="var(--surface-2)"
+              stroke="var(--line)"
+            ></rect>
+            ${live &&
+            html`<rect
+              x="30"
+              y=${y(live.hi).toFixed(1)}
+              width="30"
+              height=${Math.max(6, y(live.lo) - y(live.hi)).toFixed(1)}
+              rx="15"
+              fill="color-mix(in srgb, var(--accent) 60%, transparent)"
+            ></rect>`}
+            ${live &&
+            html`<circle
+              cx="45"
+              cy=${y(live.v).toFixed(1)}
+              r="9"
+              fill="var(--you)"
+            ></circle>`}
           </svg>
           <div class="flex flex-col gap-2 min-w-0">
-            <span class="display font-bold" style=${{ fontSize: 19, lineHeight: 1.25 }} aria-live="polite">${msg}</span>
-            ${live && html`<span class="text-sm muted">${nm(live.lo)} → <b style=${{ color: "var(--fg)" }}>${nm(live.hi)}</b> · ${Math.round(live.hi - live.lo)} notes</span>`}
-            ${list.length > 0 && html`<span class="text-sm muted">Widest so far: ${Math.round(best)} notes (goal ${target})</span>`}
+            <span
+              class="display font-bold"
+              style=${{ fontSize: 19, lineHeight: 1.25 }}
+              aria-live="polite"
+              >${msg}</span
+            >
+            ${live &&
+            html`<span class="text-sm muted"
+              >${nm(live.lo)} →
+              <b style=${{ color: "var(--fg)" }}>${nm(live.hi)}</b> ·
+              ${Math.round(live.hi - live.lo)} notes</span
+            >`}
+            ${list.length > 0 &&
+            html`<span class="text-sm muted"
+              >Widest so far: ${Math.round(best)} notes (goal ${target})</span
+            >`}
           </div>
         </div>
       </section>
       <${MicNote} mic=${mic} />
-      ${phase === "ready" && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${start}>Start</button>`}
-      ${phase === "rest" && html`<div class="grid grid-cols-2 gap-2">
-        <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => finish(listRef.current)}>Finish</button>
-        <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => { r.current = { buf: [], lo: null, hi: null, lastOn: 0 }; setLive(null); go("go"); }}>Go again</button>
+      ${phase === "ready" &&
+      html`<button
+        class="btn btn-primary"
+        style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+        onClick=${start}
+      >
+        Start
+      </button>`}
+      ${phase === "rest" &&
+      html`<div class="grid grid-cols-2 gap-2">
+        <button
+          class="btn"
+          style=${{ justifyContent: "center", minHeight: 46 }}
+          onClick=${() => finish(listRef.current)}
+        >
+          Finish
+        </button>
+        <button
+          class="btn btn-primary"
+          style=${{ justifyContent: "center", minHeight: 46 }}
+          onClick=${() => {
+            r.current = { buf: [], lo: null, hi: null, lastOn: 0 };
+            setLive(null);
+            go("go");
+          }}
+        >
+          Go again
+        </button>
       </div>`}
     </div>`;
   }
 
   // ---- sing back a pattern (steps, jumps, scales, trills) ----
   function patternFor(spec, range) {
-    if (spec.fixed) { const mn = Math.min(...spec.fixed); return spec.fixed.map((m) => m - mn); }
+    if (spec.fixed) {
+      const mn = Math.min(...spec.fixed);
+      return spec.fixed.map((m) => m - mn);
+    }
     let pat = spec.pattern;
     const span = range.full.hi - range.full.lo;
     if (spec.bigFallback && Math.max(...pat) > span - 1) pat = spec.bigFallback;
@@ -5655,19 +15094,30 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     // best order-keeping match (any octave for the whole try)
     let best = { hits: -1, marks: [], shift: 0 };
     [-12, 0, 12].forEach((shift) => {
-      const n = targets.length, m = sung.length;
+      const n = targets.length,
+        m = sung.length;
       const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-      for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
-        const ok = Math.abs(sung[j - 1] - (targets[i - 1] + shift)) <= tol;
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1], ok ? dp[i - 1][j - 1] + 1 : 0);
-      }
+      for (let i = 1; i <= n; i++)
+        for (let j = 1; j <= m; j++) {
+          const ok = Math.abs(sung[j - 1] - (targets[i - 1] + shift)) <= tol;
+          dp[i][j] = Math.max(
+            dp[i - 1][j],
+            dp[i][j - 1],
+            ok ? dp[i - 1][j - 1] + 1 : 0,
+          );
+        }
       if (dp[n][m] > best.hits) {
         const marks = new Array(n).fill(false);
-        let i = n, j = m;
+        let i = n,
+          j = m;
         while (i > 0 && j > 0) {
           const ok = Math.abs(sung[j - 1] - (targets[i - 1] + shift)) <= tol;
-          if (ok && dp[i][j] === dp[i - 1][j - 1] + 1) { marks[i - 1] = true; i--; j--; }
-          else if (dp[i - 1][j] >= dp[i][j - 1]) i--; else j--;
+          if (ok && dp[i][j] === dp[i - 1][j - 1] + 1) {
+            marks[i - 1] = true;
+            i--;
+            j--;
+          } else if (dp[i - 1][j] >= dp[i][j - 1]) i--;
+          else j--;
         }
         best = { hits: dp[n][m], marks, shift };
       }
@@ -5679,9 +15129,13 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const top = Math.max(...pat);
     const baseFor = (i) => {
       if (spec.fixed) return Math.min(...spec.fixed);
-      const startLo = Math.max(range.full.lo, Math.min(range.lo, range.center - Math.round(top / 2)));
+      const startLo = Math.max(
+        range.full.lo,
+        Math.min(range.lo, range.center - Math.round(top / 2)),
+      );
       let b = startLo + i * (spec.rise || 0);
-      if (b + top > range.full.hi + 1) b = Math.max(range.full.lo, range.full.hi + 1 - top);
+      if (b + top > range.full.hi + 1)
+        b = Math.max(range.full.lo, range.full.hi + 1 - top);
       return b;
     };
     const [round, setRound] = useState(0);
@@ -5690,62 +15144,116 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [judged, setJudged] = useState(null);
     const [playIdx, setPlayIdx] = useState(-1);
     const [rounds, setRounds] = useState([]);
-    const r = useRef({}), phaseRef = useRef("ready"), roundsRef = useRef([]);
+    const r = useRef({}),
+      phaseRef = useRef("ready"),
+      roundsRef = useRef([]);
     const T = useTimers();
-    const go = (p) => { phaseRef.current = p; setPhase(p); };
-    const stepFor = (i) => (spec.steps ? spec.steps[Math.min(i, spec.steps.length - 1)] : spec.verb === "Trill" ? 520 : 600);
+    const go = (p) => {
+      phaseRef.current = p;
+      setPhase(p);
+    };
+    const stepFor = (i) =>
+      spec.steps
+        ? spec.steps[Math.min(i, spec.steps.length - 1)]
+        : spec.verb === "Trill"
+          ? 520
+          : 600;
     const targets = pat.map((x) => baseFor(round) + x);
     const play = async (i) => {
       if (!(await mic.start())) return;
       T.clear();
       const tg = pat.map((x) => baseFor(i) + x);
       const prevSrc = r.current.src0;
-      r.current = { tg, buf: [], curN: null, curStart: 0, curVals: [], notes: [], lastOn: 0, singAt: 0, quietUntil: Infinity, src0: prevSrc };
-      setRound(i); setHeard([]); setJudged(null); go("play");
+      r.current = {
+        tg,
+        buf: [],
+        curN: null,
+        curStart: 0,
+        curVals: [],
+        notes: [],
+        lastOn: 0,
+        singAt: 0,
+        quietUntil: Infinity,
+        src0: prevSrc,
+      };
+      setRound(i);
+      setHeard([]);
+      setJudged(null);
+      go("play");
       const STEP = stepFor(i);
       let end;
-      if (r.current.src0) { try { r.current.src0.stop(); } catch (e) {} }
+      if (r.current.src0) {
+        try {
+          r.current.src0.stop();
+        } catch (e) {}
+      }
       if (spec.source && spec.source.buffer) {
         // play the real line from the original vocal
-        const c = mic.ctx(), src = c.createBufferSource();
-        src.buffer = spec.source.buffer; src.connect(c.destination);
+        const c = mic.ctx(),
+          src = c.createBufferSource();
+        src.buffer = spec.source.buffer;
+        src.connect(c.destination);
         const len = Math.max(0.5, spec.source.end - spec.source.start);
         src.start(c.currentTime + 0.05, spec.source.start, len);
         r.current.src0 = src;
         end = len * 1000 + 600;
       } else {
         const ring = Math.min(1.6, STEP / 1000 + 0.9);
-        tg.forEach((m, j) => T.later(() => { playPiano(mic.ctx(), m, ring); setPlayIdx(j); }, j * STEP));
+        tg.forEach((m, j) =>
+          T.later(() => {
+            playPiano(mic.ctx(), m, ring);
+            setPlayIdx(j);
+          }, j * STEP),
+        );
         end = (tg.length - 1) * STEP + ring * 1000 + 150;
       }
-      T.later(() => { setPlayIdx(-1); r.current.quietUntil = performance.now(); r.current.singAt = performance.now(); go("sing"); }, end);
+      T.later(() => {
+        setPlayIdx(-1);
+        r.current.quietUntil = performance.now();
+        r.current.singAt = performance.now();
+        go("sing");
+      }, end);
     };
     const closeNote = (s, now) => {
       if (s.curN != null && now - s.curStart >= 150 && s.curVals.length) {
         const v = s.curVals.reduce((a, b) => a + b, 0) / s.curVals.length;
         const last = s.notes[s.notes.length - 1];
-        if (last && Math.abs(last.v - v) < 0.5 && s.curStart - last.end < 120) { last.end = now; }
-        else s.notes.push({ v, end: now });
+        if (last && Math.abs(last.v - v) < 0.5 && s.curStart - last.end < 120) {
+          last.end = now;
+        } else s.notes.push({ v, end: now });
         setHeard(s.notes.map((x) => x.v));
       }
-      s.curN = null; s.curVals = [];
+      s.curN = null;
+      s.curVals = [];
     };
     const judge = () => {
       const s = r.current;
       closeNote(s, performance.now());
       const sung = s.notes.map((x) => x.v);
       const mt = matchSeq(s.tg, sung, spec.tol);
-      const item = { hits: mt.hits, n: s.tg.length, marks: mt.marks, sung, tg: s.tg, shift: mt.shift };
-      setJudged(item); go("judged");
+      const item = {
+        hits: mt.hits,
+        n: s.tg.length,
+        marks: mt.marks,
+        sung,
+        tg: s.tg,
+        shift: mt.shift,
+      };
+      setJudged(item);
+      go("judged");
       const next = [...roundsRef.current, item];
-      roundsRef.current = next; setRounds(next);
+      roundsRef.current = next;
+      setRounds(next);
       if (mt.hits === s.tg.length) playChime(mic.ctx());
     };
     mic.setFeed((m, rms, now) => {
       const s = r.current;
       if (phaseRef.current !== "sing" || now < s.quietUntil) return;
       const limit = s.tg.length * 0.9 + 3.5;
-      if ((now - s.singAt) / 1000 > limit) { judge(); return; }
+      if ((now - s.singAt) / 1000 > limit) {
+        judge();
+        return;
+      }
       if (m == null) {
         s.buf = [];
         if (s.curN != null && now - s.lastOn > 100) closeNote(s, now);
@@ -5754,64 +15262,238 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         return;
       }
       s.lastOn = now;
-      s.buf.push(m); if (s.buf.length > 5) s.buf.shift();
-      const v = median(s.buf), n = Math.round(v);
+      s.buf.push(m);
+      if (s.buf.length > 5) s.buf.shift();
+      const v = median(s.buf),
+        n = Math.round(v);
       if (s.curN === n) s.curVals.push(v);
-      else { closeNote(s, now); s.curN = n; s.curStart = now; s.curVals = [v]; }
+      else {
+        closeNote(s, now);
+        s.curN = n;
+        s.curStart = now;
+        s.curVals = [v];
+      }
     });
     const finish = () => {
-      const l = roundsRef.current, tot = l.reduce((a, x) => a + x.n, 0), hits = l.reduce((a, x) => a + x.hits, 0);
+      const l = roundsRef.current,
+        tot = l.reduce((a, x) => a + x.n, 0),
+        hits = l.reduce((a, x) => a + x.hits, 0);
       const score = Math.round((100 * hits) / Math.max(1, tot));
       const bestR = Math.max(...l.map((x) => Math.round((100 * x.hits) / x.n)));
-      const stats = [{ label: "Notes right", value: hits + " of " + tot, pct: (100 * hits) / Math.max(1, tot) }, { label: "Best round", value: bestR + "%", pct: bestR }];
+      const stats = [
+        {
+          label: "Notes right",
+          value: hits + " of " + tot,
+          pct: (100 * hits) / Math.max(1, tot),
+        },
+        { label: "Best round", value: bestR + "%", pct: bestR },
+      ];
       // which way did the missed notes go?
-      let flat = 0, sharp = 0, unheard = 0, highMiss = 0, missed = 0;
-      l.forEach((x) => x.tg.forEach((t, i) => {
-        if (x.marks[i]) return;
-        missed++;
-        if (pat[i] >= top - 1 && top >= 4) highMiss++;
-        if (!x.sung.length) { unheard++; return; }
-        const d = x.sung.map((v) => v - (t + x.shift)).reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a));
-        if (Math.abs(d) > 3) unheard++; else if (d < 0) flat++; else sharp++;
-      }));
+      let flat = 0,
+        sharp = 0,
+        unheard = 0,
+        highMiss = 0,
+        missed = 0;
+      l.forEach((x) =>
+        x.tg.forEach((t, i) => {
+          if (x.marks[i]) return;
+          missed++;
+          if (pat[i] >= top - 1 && top >= 4) highMiss++;
+          if (!x.sung.length) {
+            unheard++;
+            return;
+          }
+          const d = x.sung
+            .map((v) => v - (t + x.shift))
+            .reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a));
+          if (Math.abs(d) > 3) unheard++;
+          else if (d < 0) flat++;
+          else sharp++;
+        }),
+      );
       let tip;
       if (!missed) tip = "Every note clean. Brilliant!";
-      else if (unheard > missed / 2) tip = "Some notes were too short for Tono to catch. Give each note its own moment and sing a little longer on each.";
-      else if (highMiss > missed / 2) tip = "The top notes were the trickiest. Sing them lighter and softer instead of reaching for them.";
-      else if (flat > sharp * 1.5) tip = "On the notes you missed you were a bit low. Aim slightly higher and keep your breath going through the pattern.";
-      else if (sharp > flat * 1.5) tip = "On the notes you missed you were a bit high. Relax and aim slightly lower.";
-      else tip = "Close! Listen once more and picture each note before you sing it.";
+      else if (unheard > missed / 2)
+        tip =
+          "Some notes were too short for Tono to catch. Give each note its own moment and sing a little longer on each.";
+      else if (highMiss > missed / 2)
+        tip =
+          "The top notes were the trickiest. Sing them lighter and softer instead of reaching for them.";
+      else if (flat > sharp * 1.5)
+        tip =
+          "On the notes you missed you were a bit low. Aim slightly higher and keep your breath going through the pattern.";
+      else if (sharp > flat * 1.5)
+        tip =
+          "On the notes you missed you were a bit high. Relax and aim slightly lower.";
+      else
+        tip =
+          "Close! Listen once more and picture each note before you sing it.";
       onDone({ score, pass: score >= 70, stats, tip });
     };
     const lastRound = round + 1 >= spec.rounds;
-    useEffect(() => () => { if (r.current.src0) { try { r.current.src0.stop(); } catch (e) {} } }, []);
-    const hint = { ready: spec.source ? "Tap Start to hear the line." : "Tap Start to hear the pattern.", play: "Listen…", sing: "Your turn. " + (spec.verb === "Trill" ? "Trill" : "Sing") + " it back.", judged: judged ? (judged.hits === judged.n ? "Perfect round!" : judged.hits + " of " + judged.n + " notes right") : "" }[phase];
+    useEffect(
+      () => () => {
+        if (r.current.src0) {
+          try {
+            r.current.src0.stop();
+          } catch (e) {}
+        }
+      },
+      [],
+    );
+    const hint = {
+      ready: spec.source
+        ? "Tap Start to hear the line."
+        : "Tap Start to hear the pattern.",
+      play: "Listen…",
+      sing:
+        "Your turn. " +
+        (spec.verb === "Trill" ? "Trill" : "Sing") +
+        " it back.",
+      judged: judged
+        ? judged.hits === judged.n
+          ? "Perfect round!"
+          : judged.hits + " of " + judged.n + " notes right"
+        : "",
+    }[phase];
     return html`<div class="flex flex-col gap-3">
       <section class="tuner-card" style=${{ alignItems: "stretch", gap: 14 }}>
         <div class="flex items-center justify-between gap-2">
-          <span class="display font-bold" style=${{ fontSize: 20 }}>${spec.verb === "Trill" ? "Trill it back" : "Sing it back"}</span>
-          <span class="text-xs muted">${spec.stages ? spec.stages[Math.min(round, spec.stages.length - 1)] + " · " : ""}${spec.rounds > 1 ? "Round " + (round + 1) + " of " + spec.rounds : ""}</span>
+          <span class="display font-bold" style=${{ fontSize: 20 }}
+            >${spec.verb === "Trill" ? "Trill it back" : "Sing it back"}</span
+          >
+          <span class="text-xs muted"
+            >${spec.stages
+              ? spec.stages[Math.min(round, spec.stages.length - 1)] + " · "
+              : ""}${spec.rounds > 1
+              ? "Round " + (round + 1) + " of " + spec.rounds
+              : ""}</span
+          >
         </div>
-        <div class="flex flex-wrap justify-center gap-2" role="list" aria-label="Pattern notes">
+        <div
+          class="flex flex-wrap justify-center gap-2"
+          role="list"
+          aria-label="Pattern notes"
+        >
           ${targets.map((t, i) => {
-            const st = judged ? (judged.marks[i] ? "ok" : "bad") : playIdx === i ? "now" : "";
-            return html`<span key=${i} role="listitem" class="mono" style=${{ minWidth: 44, padding: "10px 8px", textAlign: "center", borderRadius: 12, fontSize: 14, fontWeight: 600, border: "1px solid " + (st === "ok" ? "var(--good)" : st === "bad" ? "var(--bad)" : st === "now" ? "var(--accent)" : "var(--line)"), background: st === "ok" ? "color-mix(in srgb, var(--good) 14%, transparent)" : st === "bad" ? "color-mix(in srgb, var(--bad) 12%, transparent)" : st === "now" ? "color-mix(in srgb, var(--accent) 22%, transparent)" : "var(--surface-2)", transform: "translateY(" + -pat[i] * 1.5 + "px)" }}>${nm(t)}${st === "ok" ? " ✓" : st === "bad" ? " ✗" : ""}</span>`;
+            const st = judged
+              ? judged.marks[i]
+                ? "ok"
+                : "bad"
+              : playIdx === i
+                ? "now"
+                : "";
+            return html`<span
+              key=${i}
+              role="listitem"
+              class="mono"
+              style=${{
+                minWidth: 44,
+                padding: "10px 8px",
+                textAlign: "center",
+                borderRadius: 12,
+                fontSize: 14,
+                fontWeight: 600,
+                border:
+                  "1px solid " +
+                  (st === "ok"
+                    ? "var(--good)"
+                    : st === "bad"
+                      ? "var(--bad)"
+                      : st === "now"
+                        ? "var(--accent)"
+                        : "var(--line)"),
+                background:
+                  st === "ok"
+                    ? "color-mix(in srgb, var(--good) 14%, transparent)"
+                    : st === "bad"
+                      ? "color-mix(in srgb, var(--bad) 12%, transparent)"
+                      : st === "now"
+                        ? "color-mix(in srgb, var(--accent) 22%, transparent)"
+                        : "var(--surface-2)",
+                transform: "translateY(" + -pat[i] * 1.5 + "px)",
+              }}
+              >${nm(t)}${st === "ok" ? " ✓" : st === "bad" ? " ✗" : ""}</span
+            >`;
           })}
         </div>
-        <div class="flex items-center justify-between gap-3" style=${{ minHeight: 28 }}>
-          <span class="display font-bold" style=${{ fontSize: 19, color: phase === "judged" ? (judged && judged.hits === judged.n ? "var(--good)" : "var(--warn)") : "var(--fg)" }} aria-live="polite">${hint}</span>
-          ${phase === "sing" && html`<span class="text-sm muted mono">${heard.length ? heard.slice(-4).map((v) => nm(v)).join(" ") : "…"}</span>`}
+        <div
+          class="flex items-center justify-between gap-3"
+          style=${{ minHeight: 28 }}
+        >
+          <span
+            class="display font-bold"
+            style=${{
+              fontSize: 19,
+              color:
+                phase === "judged"
+                  ? judged && judged.hits === judged.n
+                    ? "var(--good)"
+                    : "var(--warn)"
+                  : "var(--fg)",
+            }}
+            aria-live="polite"
+            >${hint}</span
+          >
+          ${phase === "sing" &&
+          html`<span class="text-sm muted mono"
+            >${heard.length
+              ? heard
+                  .slice(-4)
+                  .map((v) => nm(v))
+                  .join(" ")
+              : "…"}</span
+          >`}
         </div>
       </section>
       <${MicNote} mic=${mic} />
-      ${phase === "ready" && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${() => play(0)}>Start</button>`}
-      ${(phase === "sing" || phase === "play") && html`<div class="grid grid-cols-2 gap-2">
-        <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => play(round)} disabled=${phase === "play"}>▶ Hear again</button>
-        <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${judge} disabled=${phase !== "sing"}>I'm done</button>
+      ${phase === "ready" &&
+      html`<button
+        class="btn btn-primary"
+        style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+        onClick=${() => play(0)}
+      >
+        Start
+      </button>`}
+      ${(phase === "sing" || phase === "play") &&
+      html`<div class="grid grid-cols-2 gap-2">
+        <button
+          class="btn"
+          style=${{ justifyContent: "center", minHeight: 46 }}
+          onClick=${() => play(round)}
+          disabled=${phase === "play"}
+        >
+          ▶ Hear again
+        </button>
+        <button
+          class="btn"
+          style=${{ justifyContent: "center", minHeight: 46 }}
+          onClick=${judge}
+          disabled=${phase !== "sing"}
+        >
+          I'm done
+        </button>
       </div>`}
-      ${phase === "judged" && html`<div class="grid grid-cols-2 gap-2">
-        <button class="btn" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => { roundsRef.current = roundsRef.current.slice(0, -1); setRounds(roundsRef.current); play(round); }}>↻ Redo round</button>
-        <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 46 }} onClick=${() => (lastRound ? finish() : play(round + 1))}>${lastRound ? "See result" : "Next round →"}</button>
+      ${phase === "judged" &&
+      html`<div class="grid grid-cols-2 gap-2">
+        <button
+          class="btn"
+          style=${{ justifyContent: "center", minHeight: 46 }}
+          onClick=${() => {
+            roundsRef.current = roundsRef.current.slice(0, -1);
+            setRounds(roundsRef.current);
+            play(round);
+          }}
+        >
+          ↻ Redo round
+        </button>
+        <button
+          class="btn btn-primary"
+          style=${{ justifyContent: "center", minHeight: 46 }}
+          onClick=${() => (lastRound ? finish() : play(round + 1))}
+        >
+          ${lastRound ? "See result" : "Next round →"}
+        </button>
       </div>`}
     </div>`;
   }
@@ -5822,13 +15504,64 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const all = on.every(Boolean);
     return html`<div class="flex flex-col gap-3">
       <section class="tuner-card" style=${{ alignItems: "stretch", gap: 10 }}>
-        <span class="display font-bold" style=${{ fontSize: 20 }}>Check each one</span>
-        ${spec.steps.map((t, i) => html`<button key=${i} class="flex items-center gap-3" style=${{ textAlign: "left", padding: "10px 12px", borderRadius: 12, border: "1px solid " + (on[i] ? "var(--good)" : "var(--line)"), background: on[i] ? "color-mix(in srgb, var(--good) 10%, transparent)" : "var(--surface-2)", color: "var(--fg)", font: "inherit", cursor: "pointer" }} role="checkbox" aria-checked=${on[i] ? "true" : "false"} onClick=${() => setOn(on.map((v, j) => (j === i ? !v : v)))}>
-          <span style=${{ width: 24, height: 24, borderRadius: 7, flexShrink: 0, display: "grid", placeItems: "center", background: on[i] ? "var(--good)" : "transparent", border: on[i] ? "0" : "2px solid var(--line)", color: "var(--bg)", fontWeight: 700 }}>${on[i] ? "✓" : ""}</span>
-          <span class="text-sm">${t}</span>
-        </button>`)}
+        <span class="display font-bold" style=${{ fontSize: 20 }}
+          >Check each one</span
+        >
+        ${spec.steps.map(
+          (t, i) =>
+            html`<button
+              key=${i}
+              class="flex items-center gap-3"
+              style=${{
+                textAlign: "left",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid " + (on[i] ? "var(--good)" : "var(--line)"),
+                background: on[i]
+                  ? "color-mix(in srgb, var(--good) 10%, transparent)"
+                  : "var(--surface-2)",
+                color: "var(--fg)",
+                font: "inherit",
+                cursor: "pointer",
+              }}
+              role="checkbox"
+              aria-checked=${on[i] ? "true" : "false"}
+              onClick=${() => setOn(on.map((v, j) => (j === i ? !v : v)))}
+            >
+              <span
+                style=${{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 7,
+                  flexShrink: 0,
+                  display: "grid",
+                  placeItems: "center",
+                  background: on[i] ? "var(--good)" : "transparent",
+                  border: on[i] ? "0" : "2px solid var(--line)",
+                  color: "var(--bg)",
+                  fontWeight: 700,
+                }}
+                >${on[i] ? "✓" : ""}</span
+              >
+              <span class="text-sm">${t}</span>
+            </button>`,
+        )}
       </section>
-      <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} disabled=${!all} onClick=${() => onDone({ score: 100, pass: true, stats: [], tip: spec.tip, simple: true })}>${all ? "Done" : "Tick all four to finish"}</button>
+      <button
+        class="btn btn-primary"
+        style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+        disabled=${!all}
+        onClick=${() =>
+          onDone({
+            score: 100,
+            pass: true,
+            stats: [],
+            tip: spec.tip,
+            simple: true,
+          })}
+      >
+        ${all ? "Done" : "Tick all four to finish"}
+      </button>
     </div>`;
   }
 
@@ -5838,7 +15571,8 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const T = useTimers();
     const run = (round, phase) => {
       const len = phase === "in" ? spec.inhale : spec.exhale;
-      for (let s = 0; s < len; s++) T.later(() => setState({ phase, round, left: len - s }), s * 1000);
+      for (let s = 0; s < len; s++)
+        T.later(() => setState({ phase, round, left: len - s }), s * 1000);
       T.later(() => {
         if (phase === "in") run(round, "out");
         else if (round + 1 < spec.rounds) run(round + 1, "in");
@@ -5848,16 +15582,78 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const big = state.phase === "in";
     return html`<div class="flex flex-col gap-3">
       <section class="tuner-card" style=${{ gap: 16, minHeight: 320 }}>
-        <span class="text-xs muted">${state.phase === "ready" ? spec.rounds + " slow breaths" : state.phase === "done" ? "All done" : "Breath " + (state.round + 1) + " of " + spec.rounds}</span>
-        <span style=${{ width: 180, height: 180, display: "grid", placeItems: "center" }}>
-          <span style=${{ width: 180, height: 180, borderRadius: "50%", display: "grid", placeItems: "center", background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 45%, transparent), color-mix(in srgb, var(--accent) 10%, transparent))", transform: "scale(" + (big ? 1 : state.phase === "out" ? 0.55 : 0.7) + ")", transition: "transform " + (big ? spec.inhale : spec.exhale) + "s ease-in-out" }}>
-            <span class="display font-bold" style=${{ fontSize: 40 }}>${state.left || ""}</span>
+        <span class="text-xs muted"
+          >${state.phase === "ready"
+            ? spec.rounds + " slow breaths"
+            : state.phase === "done"
+              ? "All done"
+              : "Breath " + (state.round + 1) + " of " + spec.rounds}</span
+        >
+        <span
+          style=${{
+            width: 180,
+            height: 180,
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          <span
+            style=${{
+              width: 180,
+              height: 180,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              background:
+                "radial-gradient(circle, color-mix(in srgb, var(--accent) 45%, transparent), color-mix(in srgb, var(--accent) 10%, transparent))",
+              transform:
+                "scale(" + (big ? 1 : state.phase === "out" ? 0.55 : 0.7) + ")",
+              transition:
+                "transform " +
+                (big ? spec.inhale : spec.exhale) +
+                "s ease-in-out",
+            }}
+          >
+            <span class="display font-bold" style=${{ fontSize: 40 }}
+              >${state.left || ""}</span
+            >
           </span>
         </span>
-        <span class="display font-bold" style=${{ fontSize: 22 }} aria-live="polite">${{ ready: "Hand on your belly", in: "Breathe in…", out: "Out on “sss”…", done: "Nice and low!" }[state.phase]}</span>
+        <span
+          class="display font-bold"
+          style=${{ fontSize: 22 }}
+          aria-live="polite"
+          >${{
+            ready: "Hand on your belly",
+            in: "Breathe in…",
+            out: "Out on “sss”…",
+            done: "Nice and low!",
+          }[state.phase]}</span
+        >
       </section>
-      ${state.phase === "ready" && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${() => run(0, "in")}>Start</button>`}
-      ${state.phase === "done" && html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${() => onDone({ score: 100, pass: true, stats: [], tip: spec.tip, simple: true })}>Done</button>`}
+      ${state.phase === "ready" &&
+      html`<button
+        class="btn btn-primary"
+        style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+        onClick=${() => run(0, "in")}
+      >
+        Start
+      </button>`}
+      ${state.phase === "done" &&
+      html`<button
+        class="btn btn-primary"
+        style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+        onClick=${() =>
+          onDone({
+            score: 100,
+            pass: true,
+            stats: [],
+            tip: spec.tip,
+            simple: true,
+          })}
+      >
+        Done
+      </button>`}
     </div>`;
   }
 
@@ -5872,101 +15668,330 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     return null;
   }
 
-  const Bar = ({ p, tone = "accent", h = 6 }) => html`<span style=${{ display: "block", height: h, borderRadius: 999, background: "var(--line)", overflow: "hidden" }}><span style=${{ display: "block", width: Math.max(0, Math.min(100, p)) + "%", height: "100%", background: "var(--" + tone + ")", transition: "width .3s" }}></span></span>`;
-  const FlowHead = ({ p, label, onClose, title }) => html`<div class="flex items-center gap-3">
-    <button class="icon-btn" onClick=${onClose} aria-label="Leave lesson"><${Icon} name="x" size=${18} /></button>
-    ${title ? html`<span class="display font-bold" style=${{ flex: 1, fontSize: 18 }}>${title}</span>` : html`<span style=${{ flex: 1 }}><${Bar} p=${p} /></span>`}
-    <span class="mono text-xs muted">${label}</span>
-  </div>`;
+  const Bar = ({ p, tone = "accent", h = 6 }) =>
+    html`<span
+      style=${{
+        display: "block",
+        height: h,
+        borderRadius: 999,
+        background: "var(--line)",
+        overflow: "hidden",
+      }}
+      ><span
+        style=${{
+          display: "block",
+          width: Math.max(0, Math.min(100, p)) + "%",
+          height: "100%",
+          background: "var(--" + tone + ")",
+          transition: "width .3s",
+        }}
+      ></span
+    ></span>`;
+  const FlowHead = ({ p, label, onClose, title }) =>
+    html`<div class="flex items-center gap-3">
+      <button class="icon-btn" onClick=${onClose} aria-label="Leave lesson">
+        <${Icon} name="x" size=${18} />
+      </button>
+      ${title
+        ? html`<span
+            class="display font-bold"
+            style=${{ flex: 1, fontSize: 18 }}
+            >${title}</span
+          >`
+        : html`<span style=${{ flex: 1 }}><${Bar} p=${p} /></span>`}
+      <span class="mono text-xs muted">${label}</span>
+    </div>`;
 
   function Lessons({ active, onGo, onFocus }) {
     const [st, setSt] = useState(loadLessons);
     const [view, setView] = useState({ v: "home" });
     const [runKey, setRunKey] = useState(0);
     const flow = view.v === "lesson" || view.v === "warm";
-    const mic = useLessonMic(active && flow && (view.v === "warm" || view.step === "do"));
+    const mic = useLessonMic(
+      active && flow && (view.v === "warm" || view.step === "do"),
+    );
     const range = useMemo(lessonRange, [active, view.v]);
-    useEffect(() => { onFocus && onFocus(active && flow); }, [active, flow]);
+    useEffect(() => {
+      onFocus && onFocus(active && flow);
+    }, [active, flow]);
     useEffect(() => () => onFocus && onFocus(false), []);
-    useEffect(() => { try { window.scrollTo(0, 0); } catch (e) {} }, [view.v, view.step, view.k]);
-    const save = (next) => { setSt(next); saveJSON(LESSON_KEY, next); };
+    useEffect(() => {
+      try {
+        window.scrollTo(0, 0);
+      } catch (e) {}
+    }, [view.v, view.step, view.k]);
+    const save = (next) => {
+      setSt(next);
+      saveJSON(LESSON_KEY, next);
+    };
     const course = view.c != null ? COURSES.find((c) => c.id === view.c) : null;
     const unlocked = (c, i) => i === 0 || st.done[c.lessons[i - 1].id] != null;
-    const doneCount = (c) => c.lessons.filter((l) => st.done[l.id] != null).length;
+    const doneCount = (c) =>
+      c.lessons.filter((l) => st.done[l.id] != null).length;
     const today = dayKey();
     const warmStep = st.warm && st.warm.date === today ? st.warm.step : 0;
     const streak = streakNow(st);
-    const findRange = () => { saveJSON(MATCH_KEY + ".mode", "range"); onGo && onGo("live"); };
+    const findRange = () => {
+      saveJSON(MATCH_KEY + ".mode", "range");
+      onGo && onGo("live");
+    };
 
     // ---- lesson flow ----
     if (view.v === "lesson" && course) {
-      const li = view.l, L = course.lessons[li];
+      const li = view.l,
+        L = course.lessons[li];
       const close = () => setView({ v: "course", c: course.id });
-      const steps = ["learn", "do", "result"], si = steps.indexOf(view.step);
-      const head = html`<${FlowHead} p=${((si + 1) / 3) * 100} label=${si + 1 + "/3"} onClose=${close} />`;
+      const steps = ["learn", "do", "result"],
+        si = steps.indexOf(view.step);
+      const head = html`<${FlowHead}
+        p=${((si + 1) / 3) * 100}
+        label=${si + 1 + "/3"}
+        onClose=${close}
+      />`;
       if (view.step === "learn") {
         const preview = () => {
           const ctx = mic.ctx();
           if (L.type === "hold") playPiano(ctx, range.center, 2);
-          if (L.type === "pattern") { const p = patternFor(L, range), b = Math.max(range.full.lo, Math.min(range.lo, range.center - Math.round(Math.max(...p) / 2))); p.forEach((x, j) => setTimeout(() => playPiano(ctx, b + x, 1.5), j * 600)); }
+          if (L.type === "pattern") {
+            const p = patternFor(L, range),
+              b = Math.max(
+                range.full.lo,
+                Math.min(
+                  range.lo,
+                  range.center - Math.round(Math.max(...p) / 2),
+                ),
+              );
+            p.forEach((x, j) =>
+              setTimeout(() => playPiano(ctx, b + x, 1.5), j * 600),
+            );
+          }
         };
         return html`<div class="flex flex-col gap-4">
           ${head}
-          <span class="label" style=${{ color: "var(--accent)" }}>${course.title} · Lesson ${li + 1}</span>
-          <h2 class="display font-bold" style=${{ fontSize: 28, lineHeight: 1.15, margin: 0 }}>${L.title}</h2>
-          <p style=${{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>${L.learn}</p>
+          <span class="label" style=${{ color: "var(--accent)" }}
+            >${course.title} · Lesson ${li + 1}</span
+          >
+          <h2
+            class="display font-bold"
+            style=${{ fontSize: 28, lineHeight: 1.15, margin: 0 }}
+          >
+            ${L.title}
+          </h2>
+          <p style=${{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>
+            ${L.learn}
+          </p>
           <section class="panel p-4 flex flex-col gap-2">
             <span class="label">How to do it</span>
-            <ol class="text-sm flex flex-col gap-1" style=${{ margin: 0, paddingLeft: 20 }}>${L.steps.map((s, i) => html`<li key=${i}>${s}</li>`)}</ol>
+            <ol
+              class="text-sm flex flex-col gap-1"
+              style=${{ margin: 0, paddingLeft: 20 }}
+            >
+              ${L.steps.map((s, i) => html`<li key=${i}>${s}</li>`)}
+            </ol>
           </section>
-          ${(L.type === "hold" || L.type === "pattern") && html`<button class="panel p-3 flex items-center gap-3" style=${{ textAlign: "left", color: "var(--fg)", font: "inherit", cursor: "pointer" }} onClick=${preview}>
-            <span class="round-btn primary" style=${{ width: 44, height: 44 }}><${Icon} name="play" size=${18} /></span>
-            <span class="flex flex-col"><b class="text-sm">Hear the exercise</b><span class="text-xs muted">${L.type === "hold" ? "The kind of note you'll sing" : "The pattern you'll sing back"}</span></span>
+          ${(L.type === "hold" || L.type === "pattern") &&
+          html`<button
+            class="panel p-3 flex items-center gap-3"
+            style=${{
+              textAlign: "left",
+              color: "var(--fg)",
+              font: "inherit",
+              cursor: "pointer",
+            }}
+            onClick=${preview}
+          >
+            <span class="round-btn primary" style=${{ width: 44, height: 44 }}
+              ><${Icon} name="play" size=${18}
+            /></span>
+            <span class="flex flex-col"
+              ><b class="text-sm">Hear the exercise</b
+              ><span class="text-xs muted"
+                >${L.type === "hold"
+                  ? "The kind of note you'll sing"
+                  : "The pattern you'll sing back"}</span
+              ></span
+            >
           </button>`}
-          <div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--good) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--good) 30%, transparent)" }}><span aria-hidden="true">💡</span><span>${L.tip}</span></div>
-          ${!range.saved && (L.type === "hold" || L.type === "pattern" || L.type === "siren") && html`<p class="text-xs muted" style=${{ margin: 0 }}>Notes are set to a middle range that suits most voices, and any octave counts. <button class="link-btn" onClick=${findRange}>Find my range</button> to fit them to you.</p>`}
-          <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${() => { setRunKey((n) => n + 1); setView({ ...view, step: "do" }); }}>I'm ready</button>
+          <div
+            class="flex items-start gap-2 text-sm"
+            style=${{
+              padding: "12px 14px",
+              borderRadius: 14,
+              background: "color-mix(in srgb, var(--good) 8%, transparent)",
+              border:
+                "1px solid color-mix(in srgb, var(--good) 30%, transparent)",
+            }}
+          >
+            <span aria-hidden="true">💡</span><span>${L.tip}</span>
+          </div>
+          ${!range.saved &&
+          (L.type === "hold" || L.type === "pattern" || L.type === "siren") &&
+          html`<p class="text-xs muted" style=${{ margin: 0 }}>
+            Notes are set to a middle range that suits most voices, and any
+            octave counts.
+            <button class="link-btn" onClick=${findRange}>Find my range</button>
+            to fit them to you.
+          </p>`}
+          <button
+            class="btn btn-primary"
+            style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+            onClick=${() => {
+              setRunKey((n) => n + 1);
+              setView({ ...view, step: "do" });
+            }}
+          >
+            I'm ready
+          </button>
         </div>`;
       }
-      if (view.step === "do") return html`<div class="flex flex-col gap-4">
-        ${head}
-        <${Exercise} key=${runKey} spec=${L} range=${range} mic=${mic} onDone=${(res) => {
-          let next = { ...st, done: { ...st.done } };
-          if (res.pass) next.done[L.id] = Math.max(next.done[L.id] || 0, res.score);
-          save(bumpStreak(next));
-          setView({ ...view, step: "result", res });
-        }} />
-      </div>`;
-      const res = view.res, nextL = li + 1 < course.lessons.length ? li + 1 : null;
+      if (view.step === "do")
+        return html`<div class="flex flex-col gap-4">
+          ${head}
+          <${Exercise}
+            key=${runKey}
+            spec=${L}
+            range=${range}
+            mic=${mic}
+            onDone=${(res) => {
+              let next = { ...st, done: { ...st.done } };
+              if (res.pass)
+                next.done[L.id] = Math.max(next.done[L.id] || 0, res.score);
+              save(bumpStreak(next));
+              setView({ ...view, step: "result", res });
+            }}
+          />
+        </div>`;
+      const res = view.res,
+        nextL = li + 1 < course.lessons.length ? li + 1 : null;
       return html`<div class="flex flex-col gap-4">
         ${head}
-        <div class="flex flex-col items-center gap-1 text-center" style=${{ paddingTop: 10 }}>
-          <span style=${{ width: 64, height: 64, borderRadius: "50%", display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--" + (res.pass ? "good" : "warn") + ") 15%, transparent)", color: "var(--" + (res.pass ? "good" : "warn") + ")", fontSize: 30, fontWeight: 700 }}>${res.pass ? "✓" : "↻"}</span>
-          <span class="display font-bold" style=${{ fontSize: 28 }}>${res.simple ? "Lesson done" : res.pass ? "Lesson passed" : "Almost there"}</span>
-          ${!res.simple && html`<span class="display font-bold" style=${{ fontSize: 56, lineHeight: 1, color: "var(--accent)" }}>${res.score}%</span>
-          <span class="text-sm muted">${res.pass ? "Pass mark 70%" : "Get 70% to pass and unlock the next lesson"}</span>`}
+        <div
+          class="flex flex-col items-center gap-1 text-center"
+          style=${{ paddingTop: 10 }}
+        >
+          <span
+            style=${{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              background:
+                "color-mix(in srgb, var(--" +
+                (res.pass ? "good" : "warn") +
+                ") 15%, transparent)",
+              color: "var(--" + (res.pass ? "good" : "warn") + ")",
+              fontSize: 30,
+              fontWeight: 700,
+            }}
+            >${res.pass ? "✓" : "↻"}</span
+          >
+          <span class="display font-bold" style=${{ fontSize: 28 }}
+            >${res.simple
+              ? "Lesson done"
+              : res.pass
+                ? "Lesson passed"
+                : "Almost there"}</span
+          >
+          ${!res.simple &&
+          html`<span
+              class="display font-bold"
+              style=${{ fontSize: 56, lineHeight: 1, color: "var(--accent)" }}
+              >${res.score}%</span
+            >
+            <span class="text-sm muted"
+              >${res.pass
+                ? "Pass mark 70%"
+                : "Get 70% to pass and unlock the next lesson"}</span
+            >`}
         </div>
-        ${res.stats.length > 0 && html`<section class="panel p-4 flex flex-col gap-3">
+        ${res.stats.length > 0 &&
+        html`<section class="panel p-4 flex flex-col gap-3">
           <span class="label">What Tono heard</span>
-          ${res.stats.map((s) => html`<div key=${s.label} class="flex flex-col gap-1">
-            <span class="flex justify-between text-sm"><span>${s.label}</span><span class="mono text-xs" style=${{ color: s.pct >= 70 ? "var(--good)" : "var(--warn)" }}>${s.value}</span></span>
-            <${Bar} p=${s.pct} tone=${s.pct >= 70 ? "good" : "warn"} h=${5} />
-          </div>`)}
+          ${res.stats.map(
+            (s) =>
+              html`<div key=${s.label} class="flex flex-col gap-1">
+                <span class="flex justify-between text-sm"
+                  ><span>${s.label}</span
+                  ><span
+                    class="mono text-xs"
+                    style=${{
+                      color: s.pct >= 70 ? "var(--good)" : "var(--warn)",
+                    }}
+                    >${s.value}</span
+                  ></span
+                >
+                <${Bar}
+                  p=${s.pct}
+                  tone=${s.pct >= 70 ? "good" : "warn"}
+                  h=${5}
+                />
+              </div>`,
+          )}
         </section>`}
-        ${res.tip && html`<div class="flex items-start gap-2 text-sm" style=${{ padding: "12px 14px", borderRadius: 14, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" }}><span aria-hidden="true">🎯</span><span><b>Tip:</b> ${res.tip}</span></div>`}
+        ${res.tip &&
+        html`<div
+          class="flex items-start gap-2 text-sm"
+          style=${{
+            padding: "12px 14px",
+            borderRadius: 14,
+            background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+            border:
+              "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+          }}
+        >
+          <span aria-hidden="true">🎯</span><span><b>Tip:</b> ${res.tip}</span>
+        </div>`}
         <div class="grid grid-cols-2 gap-2">
-          <button class="btn" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => { setRunKey((n) => n + 1); setView({ ...view, step: "do", res: null }); }}>Try again</button>
+          <button
+            class="btn"
+            style=${{ justifyContent: "center", minHeight: 48 }}
+            onClick=${() => {
+              setRunKey((n) => n + 1);
+              setView({ ...view, step: "do", res: null });
+            }}
+          >
+            Try again
+          </button>
           ${res.pass && nextL != null
-            ? html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${() => setView({ v: "lesson", c: course.id, l: nextL, step: "learn" })}>Next lesson →</button>`
-            : html`<button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48 }} onClick=${close}>${res.pass ? "Back to course" : "Back"}</button>`}
+            ? html`<button
+                class="btn btn-primary"
+                style=${{ justifyContent: "center", minHeight: 48 }}
+                onClick=${() =>
+                  setView({
+                    v: "lesson",
+                    c: course.id,
+                    l: nextL,
+                    step: "learn",
+                  })}
+              >
+                Next lesson →
+              </button>`
+            : html`<button
+                class="btn btn-primary"
+                style=${{ justifyContent: "center", minHeight: 48 }}
+                onClick=${close}
+              >
+                ${res.pass ? "Back to course" : "Back"}
+              </button>`}
         </div>
-        ${res.pass && nextL == null && course.id === "pitch" && html`<button class="btn btn-ghost" style=${{ alignSelf: "center" }} onClick=${() => onGo && onGo("learn")}>Try a real song in Practice →</button>`}
+        ${res.pass &&
+        nextL == null &&
+        course.id === "pitch" &&
+        html`<button
+          class="btn btn-ghost"
+          style=${{ alignSelf: "center" }}
+          onClick=${() => onGo && onGo("learn")}
+        >
+          Try a real song in Practice →
+        </button>`}
       </div>`;
     }
 
     // ---- daily warm-up ----
     if (view.v === "warm") {
-      const k = view.k, W = WARMUP[k];
+      const k = view.k,
+        W = WARMUP[k];
       const close = () => setView({ v: "home" });
       const advance = () => {
         const nk = k + 1;
@@ -5974,30 +15999,114 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         if (nk >= WARMUP.length) next = bumpStreak(next);
         save(next);
         setRunKey((n) => n + 1);
-        setView(nk >= WARMUP.length ? { v: "warm", k: WARMUP.length, finished: true } : { v: "warm", k: nk });
+        setView(
+          nk >= WARMUP.length
+            ? { v: "warm", k: WARMUP.length, finished: true }
+            : { v: "warm", k: nk },
+        );
       };
-      if (view.finished || k >= WARMUP.length) return html`<div class="flex flex-col items-center gap-4 text-center" style=${{ paddingTop: 30 }}>
-        <span style=${{ fontSize: 54 }} aria-hidden="true">🎉</span>
-        <span class="display font-bold" style=${{ fontSize: 28 }}>Warm-up done!</span>
-        <span class="muted">Your voice is ready. ${streakNow(st) > 1 ? "That's " + streakNow(st) + " days in a row." : "Come back tomorrow to start a streak."}</span>
-        <button class="btn btn-primary" style=${{ minHeight: 48, padding: "0 24px", fontSize: 16 }} onClick=${close}>Back to lessons</button>
-      </div>`;
+      if (view.finished || k >= WARMUP.length)
+        return html`<div
+          class="flex flex-col items-center gap-4 text-center"
+          style=${{ paddingTop: 30 }}
+        >
+          <span style=${{ fontSize: 54 }} aria-hidden="true">🎉</span>
+          <span class="display font-bold" style=${{ fontSize: 28 }}
+            >Warm-up done!</span
+          >
+          <span class="muted"
+            >Your voice is ready.
+            ${streakNow(st) > 1
+              ? "That's " + streakNow(st) + " days in a row."
+              : "Come back tomorrow to start a streak."}</span
+          >
+          <button
+            class="btn btn-primary"
+            style=${{ minHeight: 48, padding: "0 24px", fontSize: 16 }}
+            onClick=${close}
+          >
+            Back to lessons
+          </button>
+        </div>`;
       return html`<div class="flex flex-col gap-4">
-        <${FlowHead} title="Daily warm-up" label=${"Step " + (k + 1) + " of " + WARMUP.length} onClose=${close} />
-        <div class="flex gap-1">${WARMUP.map((w, i) => html`<span key=${i} style=${{ flex: 1, height: 6, borderRadius: 3, background: i < k ? "var(--good)" : i === k ? "var(--accent)" : "var(--line)" }}></span>`)}</div>
+        <${FlowHead}
+          title="Daily warm-up"
+          label=${"Step " + (k + 1) + " of " + WARMUP.length}
+          onClose=${close}
+        />
+        <div class="flex gap-1">
+          ${WARMUP.map(
+            (w, i) =>
+              html`<span
+                key=${i}
+                style=${{
+                  flex: 1,
+                  height: 6,
+                  borderRadius: 3,
+                  background:
+                    i < k
+                      ? "var(--good)"
+                      : i === k
+                        ? "var(--accent)"
+                        : "var(--line)",
+                }}
+              ></span>`,
+          )}
+        </div>
         <div class="flex flex-col gap-1">
-          <span class="display font-bold" style=${{ fontSize: 26 }}>${W.title}</span>
+          <span class="display font-bold" style=${{ fontSize: 26 }}
+            >${W.title}</span
+          >
           <span class="text-sm muted">${W.how}</span>
         </div>
         ${view.res
           ? html`<section class="tuner-card" style=${{ gap: 8 }}>
-              <span style=${{ fontSize: 34, color: "var(--good)" }} aria-hidden="true">✓</span>
-              <span class="display font-bold" style=${{ fontSize: 22 }}>${view.res.simple ? "Done" : view.res.score >= 70 ? "Nice!" : "Good effort"}</span>
-              ${!view.res.simple && html`<span class="text-sm muted">${view.res.stats[0] ? view.res.stats[0].label + ": " + view.res.stats[0].value : ""}</span>`}
-            </section>
-            <button class="btn btn-primary" style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }} onClick=${advance}>${k + 1 >= WARMUP.length ? "Finish" : "Next: " + WARMUP[k + 1].title + " →"}</button>`
-          : html`<${Exercise} key=${runKey + "-" + k} spec=${W} range=${range} mic=${mic} onDone=${(res) => setView({ ...view, res })} />
-            <button class="btn btn-ghost" style=${{ alignSelf: "center" }} onClick=${advance}>Skip this step</button>`}
+                <span
+                  style=${{ fontSize: 34, color: "var(--good)" }}
+                  aria-hidden="true"
+                  >✓</span
+                >
+                <span class="display font-bold" style=${{ fontSize: 22 }}
+                  >${view.res.simple
+                    ? "Done"
+                    : view.res.score >= 70
+                      ? "Nice!"
+                      : "Good effort"}</span
+                >
+                ${!view.res.simple &&
+                html`<span class="text-sm muted"
+                  >${view.res.stats[0]
+                    ? view.res.stats[0].label + ": " + view.res.stats[0].value
+                    : ""}</span
+                >`}
+              </section>
+              <button
+                class="btn btn-primary"
+                style=${{
+                  justifyContent: "center",
+                  minHeight: 48,
+                  fontSize: 16,
+                }}
+                onClick=${advance}
+              >
+                ${k + 1 >= WARMUP.length
+                  ? "Finish"
+                  : "Next: " + WARMUP[k + 1].title + " →"}
+              </button>`
+          : html`<${Exercise}
+                key=${runKey + "-" + k}
+                spec=${W}
+                range=${range}
+                mic=${mic}
+                onDone=${(res) => setView({ ...view, res })}
+              />
+              <button
+                class="btn btn-ghost"
+                style=${{ alignSelf: "center" }}
+                onClick=${advance}
+              >
+                Skip this step
+              </button>`}
       </div>`;
     }
 
@@ -6006,19 +16115,87 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const dc = doneCount(course);
       return html`<div class="flex flex-col gap-4">
         <div class="flex items-center gap-3">
-          <button class="icon-btn" onClick=${() => setView({ v: "home" })} aria-label="Back to lessons"><${Icon} name="back" size=${18} /></button>
+          <button
+            class="icon-btn"
+            onClick=${() => setView({ v: "home" })}
+            aria-label="Back to lessons"
+          >
+            <${Icon} name="back" size=${18} />
+          </button>
           <span class="label">Course ${COURSES.indexOf(course) + 1}</span>
         </div>
-        <h2 class="display font-bold" style=${{ fontSize: 30, margin: 0 }}>${course.title}</h2>
+        <h2 class="display font-bold" style=${{ fontSize: 30, margin: 0 }}>
+          ${course.title}
+        </h2>
         <p class="muted text-sm" style=${{ margin: 0 }}>${course.about}</p>
-        <div class="flex items-center gap-3"><span style=${{ flex: 1 }}><${Bar} p=${(100 * dc) / course.lessons.length} /></span><span class="mono text-xs muted">${dc} / ${course.lessons.length}</span></div>
+        <div class="flex items-center gap-3">
+          <span style=${{ flex: 1 }}
+            ><${Bar} p=${(100 * dc) / course.lessons.length} /></span
+          ><span class="mono text-xs muted"
+            >${dc} / ${course.lessons.length}</span
+          >
+        </div>
         <div class="flex flex-col gap-1">
           ${course.lessons.map((L, i) => {
-            const done = st.done[L.id] != null, open = unlocked(course, i), now = open && !done;
-            return html`<button key=${L.id} disabled=${!open} onClick=${() => setView({ v: "lesson", c: course.id, l: i, step: "learn" })} class="flex items-center gap-3" style=${{ textAlign: "left", padding: "10px 12px", borderRadius: 14, font: "inherit", color: "var(--fg)", cursor: open ? "pointer" : "default", background: now ? "var(--surface-2)" : "transparent", border: "1px solid " + (now ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "transparent"), opacity: open ? 1 : 0.55 }}>
-              <span style=${{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13, background: done ? "var(--good)" : now ? "var(--accent)" : "transparent", color: done || now ? "var(--bg)" : "var(--muted)", border: done || now ? "0" : "2px solid var(--line)" }}>${done ? "✓" : i + 1}</span>
-              <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><b class="text-sm">${L.title}</b><span class="text-xs muted">${L.meta}${done && st.done[L.id] < 100 ? " · best " + st.done[L.id] + "%" : ""}</span></span>
-              ${now && html`<span class="text-sm font-semibold" style=${{ color: "var(--accent)" }}>Start</span>`}
+            const done = st.done[L.id] != null,
+              open = unlocked(course, i),
+              now = open && !done;
+            return html`<button
+              key=${L.id}
+              disabled=${!open}
+              onClick=${() =>
+                setView({ v: "lesson", c: course.id, l: i, step: "learn" })}
+              class="flex items-center gap-3"
+              style=${{
+                textAlign: "left",
+                padding: "10px 12px",
+                borderRadius: 14,
+                font: "inherit",
+                color: "var(--fg)",
+                cursor: open ? "pointer" : "default",
+                background: now ? "var(--surface-2)" : "transparent",
+                border:
+                  "1px solid " +
+                  (now
+                    ? "color-mix(in srgb, var(--accent) 40%, transparent)"
+                    : "transparent"),
+                opacity: open ? 1 : 0.55,
+              }}
+            >
+              <span
+                style=${{
+                  width: 30,
+                  height: 30,
+                  borderRadius: "50%",
+                  flexShrink: 0,
+                  display: "grid",
+                  placeItems: "center",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  background: done
+                    ? "var(--good)"
+                    : now
+                      ? "var(--accent)"
+                      : "transparent",
+                  color: done || now ? "var(--bg)" : "var(--muted)",
+                  border: done || now ? "0" : "2px solid var(--line)",
+                }}
+                >${done ? "✓" : i + 1}</span
+              >
+              <span class="flex flex-col min-w-0" style=${{ flex: 1 }}
+                ><b class="text-sm">${L.title}</b
+                ><span class="text-xs muted"
+                  >${L.meta}${done && st.done[L.id] < 100
+                    ? " · best " + st.done[L.id] + "%"
+                    : ""}</span
+                ></span
+              >
+              ${now &&
+              html`<span
+                class="text-sm font-semibold"
+                style=${{ color: "var(--accent)" }}
+                >Start</span
+              >`}
               ${!open && html`<${Icon} name="lock" size=${16} />`}
             </button>`;
           })}
@@ -6027,37 +16204,182 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     }
 
     // ---- home ----
-    const curCourse = COURSES.find((c) => doneCount(c) < c.lessons.length) || COURSES[COURSES.length - 1];
+    const curCourse =
+      COURSES.find((c) => doneCount(c) < c.lessons.length) ||
+      COURSES[COURSES.length - 1];
     return html`<div class="flex flex-col gap-4">
-      ${streak > 0 && html`<div class="flex gap-2"><span class="chip"><span aria-hidden="true">🔥</span><b class="mono">${streak}</b><span class="muted text-xs">day streak</span></span></div>`}
-      <section class="flex flex-col gap-3" style=${{ padding: 16, borderRadius: 20, background: "radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), var(--surface)", border: "1px solid var(--line)" }}>
+      ${streak > 0 &&
+      html`<div class="flex gap-2">
+        <span class="chip"
+          ><span aria-hidden="true">🔥</span><b class="mono">${streak}</b
+          ><span class="muted text-xs">day streak</span></span
+        >
+      </div>`}
+      <section
+        class="flex flex-col gap-3"
+        style=${{
+          padding: 16,
+          borderRadius: 20,
+          background:
+            "radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), var(--surface)",
+          border: "1px solid var(--line)",
+        }}
+      >
         <span class="label" style=${{ color: "var(--accent)" }}>Today</span>
-        <span class="display font-bold" style=${{ fontSize: 24, lineHeight: 1.15 }}>Daily warm-up</span>
-        <span class="text-sm muted">5 min · 5 exercises${range.saved ? ", set to your range (" + nm(range.full.lo) + "–" + nm(range.full.hi) + ")" : ""}</span>
-        <div class="flex gap-1">${WARMUP.map((w, i) => html`<span key=${i} title=${w.title} style=${{ flex: 1, height: 6, borderRadius: 3, background: i < warmStep ? "var(--good)" : "var(--line)" }}></span>`)}</div>
-        <button class="btn btn-primary" style=${{ alignSelf: "flex-start", minHeight: 44, padding: "0 22px" }} onClick=${() => { setRunKey((n) => n + 1); setView({ v: "warm", k: warmStep >= WARMUP.length ? 0 : warmStep }); }}>${warmStep >= WARMUP.length ? "Done today ✓ · Go again" : warmStep > 0 ? "Continue warm-up" : "Start warm-up"}</button>
+        <span
+          class="display font-bold"
+          style=${{ fontSize: 24, lineHeight: 1.15 }}
+          >Daily warm-up</span
+        >
+        <span class="text-sm muted"
+          >5 min · 5
+          exercises${range.saved
+            ? ", set to your range (" +
+              nm(range.full.lo) +
+              "–" +
+              nm(range.full.hi) +
+              ")"
+            : ""}</span
+        >
+        <div class="flex gap-1">
+          ${WARMUP.map(
+            (w, i) =>
+              html`<span
+                key=${i}
+                title=${w.title}
+                style=${{
+                  flex: 1,
+                  height: 6,
+                  borderRadius: 3,
+                  background: i < warmStep ? "var(--good)" : "var(--line)",
+                }}
+              ></span>`,
+          )}
+        </div>
+        <button
+          class="btn btn-primary"
+          style=${{ alignSelf: "flex-start", minHeight: 44, padding: "0 22px" }}
+          onClick=${() => {
+            setRunKey((n) => n + 1);
+            setView({ v: "warm", k: warmStep >= WARMUP.length ? 0 : warmStep });
+          }}
+        >
+          ${warmStep >= WARMUP.length
+            ? "Done today ✓ · Go again"
+            : warmStep > 0
+              ? "Continue warm-up"
+              : "Start warm-up"}
+        </button>
       </section>
-      ${!range.saved && html`<div class="panel p-3 flex items-center gap-3" style=${{ borderStyle: "dashed" }}>
-        <span class="text-sm muted" style=${{ flex: 1 }}>Take the 1-minute range test so lessons fit your voice.</span>
-        <button class="link-btn text-sm" style=${{ whiteSpace: "nowrap" }} onClick=${findRange}>Find my range</button>
+      ${!range.saved &&
+      html`<div
+        class="panel p-3 flex items-center gap-3"
+        style=${{ borderStyle: "dashed" }}
+      >
+        <span class="text-sm muted" style=${{ flex: 1 }}
+          >Take the 1-minute range test so lessons fit your voice.</span
+        >
+        <button
+          class="link-btn text-sm"
+          style=${{ whiteSpace: "nowrap" }}
+          onClick=${findRange}
+        >
+          Find my range
+        </button>
       </div>`}
       <span class="label">Courses</span>
       <div class="flex flex-col gap-2">
         ${COURSES.map((c, ci) => {
-          const dc = doneCount(c), cur = c === curCourse && dc < c.lessons.length;
-          return html`<button key=${c.id} onClick=${() => setView({ v: "course", c: c.id })} class="flex flex-col gap-3" style=${{ textAlign: "left", padding: 14, borderRadius: 16, font: "inherit", color: "var(--fg)", cursor: "pointer", background: cur ? "linear-gradient(135deg, var(--surface-2), var(--surface))" : "var(--surface)", border: "1px solid " + (cur ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "var(--line)") }}>
+          const dc = doneCount(c),
+            cur = c === curCourse && dc < c.lessons.length;
+          return html`<button
+            key=${c.id}
+            onClick=${() => setView({ v: "course", c: c.id })}
+            class="flex flex-col gap-3"
+            style=${{
+              textAlign: "left",
+              padding: 14,
+              borderRadius: 16,
+              font: "inherit",
+              color: "var(--fg)",
+              cursor: "pointer",
+              background: cur
+                ? "linear-gradient(135deg, var(--surface-2), var(--surface))"
+                : "var(--surface)",
+              border:
+                "1px solid " +
+                (cur
+                  ? "color-mix(in srgb, var(--accent) 40%, transparent)"
+                  : "var(--line)"),
+            }}
+          >
             <span class="flex items-center gap-3">
-              <span class="display font-bold" style=${{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 15%, transparent)", color: "var(--accent)" }}>${ci + 1}</span>
-              <span class="flex flex-col min-w-0" style=${{ flex: 1 }}><b>${c.title}</b><span class="text-xs muted">${c.sub} · ${dc} of ${c.lessons.length}</span></span>
-              <span class="text-sm font-semibold" style=${{ color: cur ? "var(--accent)" : "var(--muted)" }}>${dc === c.lessons.length ? "Review" : dc > 0 ? "Continue" : "Start"}</span>
+              <span
+                class="display font-bold"
+                style=${{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  display: "grid",
+                  placeItems: "center",
+                  background:
+                    "color-mix(in srgb, var(--accent) 15%, transparent)",
+                  color: "var(--accent)",
+                }}
+                >${ci + 1}</span
+              >
+              <span class="flex flex-col min-w-0" style=${{ flex: 1 }}
+                ><b>${c.title}</b
+                ><span class="text-xs muted"
+                  >${c.sub} · ${dc} of ${c.lessons.length}</span
+                ></span
+              >
+              <span
+                class="text-sm font-semibold"
+                style=${{ color: cur ? "var(--accent)" : "var(--muted)" }}
+                >${dc === c.lessons.length
+                  ? "Review"
+                  : dc > 0
+                    ? "Continue"
+                    : "Start"}</span
+              >
             </span>
-            <${Bar} p=${(100 * dc) / c.lessons.length} tone=${dc === c.lessons.length ? "good" : "accent"} />
+            <${Bar}
+              p=${(100 * dc) / c.lessons.length}
+              tone=${dc === c.lessons.length ? "good" : "accent"}
+            />
           </button>`;
         })}
-        ${SOON.map((t, i) => html`<div key=${t} class="flex items-center gap-3" style=${{ padding: "12px 14px", borderRadius: 14, background: "var(--surface-2)", border: "1px solid var(--line)", opacity: 0.6 }}>
-          <span style=${{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", color: "var(--muted)" }}><${Icon} name="lock" size=${16} /></span>
-          <span class="flex flex-col"><b class="text-sm">${COURSES.length + i + 1} · ${t}</b><span class="text-xs muted">Coming soon</span></span>
-        </div>`)}
+        ${SOON.map(
+          (t, i) =>
+            html`<div
+              key=${t}
+              class="flex items-center gap-3"
+              style=${{
+                padding: "12px 14px",
+                borderRadius: 14,
+                background: "var(--surface-2)",
+                border: "1px solid var(--line)",
+                opacity: 0.6,
+              }}
+            >
+              <span
+                style=${{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  display: "grid",
+                  placeItems: "center",
+                  color: "var(--muted)",
+                }}
+                ><${Icon} name="lock" size=${16}
+              /></span>
+              <span class="flex flex-col"
+                ><b class="text-sm">${COURSES.length + i + 1} · ${t}</b
+                ><span class="text-xs muted">Coming soon</span></span
+              >
+            </div>`,
+        )}
       </div>
     </div>`;
   }
@@ -6075,7 +16397,14 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [pickStay, setPickStay] = useState(false);
     const [focus, setFocus] = useState(null);
 
-    const sendTake = useCallback((t) => { setHandoff(t); setTab("analyst"); setVisited((v) => ({ ...v, analyst: true })); try { window.scrollTo(0, 0); } catch (e) {} }, []);
+    const sendTake = useCallback((t) => {
+      setHandoff(t);
+      setTab("analyst");
+      setVisited((v) => ({ ...v, analyst: true }));
+      try {
+        window.scrollTo(0, 0);
+      } catch (e) {}
+    }, []);
     const [, bumpSettings] = useState(0);
     const [visited, setVisited] = useState({ lessons: true });
     // the acapella is shared by Practice, Karaoke and the Singing Analyst
@@ -6085,34 +16414,87 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const job = ++vocalJob.current;
       setVocal({ name: file.name, busy: true, progress: 0 });
       let buffer;
-      try { buffer = await decodeFile(file); }
-      catch (e) { if (vocalJob.current === job) setVocal({ name: file.name, error: "That file couldn't be read as audio. Try an MP3, M4A or WAV." }); return; }
-      const data = await trackPitch(buffer, (pr) => { if (vocalJob.current === job) setVocal((v) => (v ? { ...v, progress: pr } : v)); }, () => vocalJob.current !== job);
+      try {
+        buffer = await decodeFile(file);
+      } catch (e) {
+        if (vocalJob.current === job)
+          setVocal({
+            name: file.name,
+            error:
+              "That file couldn't be read as audio. Try an MP3, M4A or WAV.",
+          });
+        return;
+      }
+      const data = await trackPitch(
+        buffer,
+        (pr) => {
+          if (vocalJob.current === job)
+            setVocal((v) => (v ? { ...v, progress: pr } : v));
+        },
+        () => vocalJob.current !== job,
+      );
       if (!data || vocalJob.current !== job) return;
       data.notes = snapToKey(data.notes, data.grid);
-      if (!SETTINGS.ai) { setVocal({ name: file.name, buffer, data }); return; }
+      if (!SETTINGS.ai) {
+        setVocal({ name: file.name, buffer, data });
+        return;
+      }
       const cached = aiCacheGet(file.name, buffer.duration);
-      if (cached && cached.length) { setVocal({ name: file.name, buffer, data: { ...data, notes: cached, ai: true }, ai: "done" }); return; }
+      if (cached && cached.length) {
+        setVocal({
+          name: file.name,
+          buffer,
+          data: { ...data, notes: cached, ai: true },
+          ai: "done",
+        });
+        return;
+      }
       setVocal({ name: file.name, buffer, data, ai: 0 });
       try {
-        const notes = await aiNotes(buffer, data, (p) => { if (vocalJob.current === job) setVocal((v) => (v && v.name === file.name && typeof v.ai === "number" ? { ...v, ai: p } : v)); });
+        const notes = await aiNotes(buffer, data, (p) => {
+          if (vocalJob.current === job)
+            setVocal((v) =>
+              v && v.name === file.name && typeof v.ai === "number"
+                ? { ...v, ai: p }
+                : v,
+            );
+        });
         if (vocalJob.current !== job) return;
         if (notes.length >= data.notes.length) {
           aiCachePut(file.name, buffer.duration, notes);
-          setVocal((v) => (v && v.name === file.name ? { ...v, data: { ...v.data, notes, ai: true }, ai: "done" } : v));
-        } else setVocal((v) => (v && v.name === file.name ? { ...v, ai: "skip" } : v));
+          setVocal((v) =>
+            v && v.name === file.name
+              ? { ...v, data: { ...v.data, notes, ai: true }, ai: "done" }
+              : v,
+          );
+        } else
+          setVocal((v) =>
+            v && v.name === file.name ? { ...v, ai: "skip" } : v,
+          );
       } catch (e) {
-        if (vocalJob.current === job) setVocal((v) => (v && v.name === file.name ? { ...v, ai: "failed" } : v));
+        if (vocalJob.current === job)
+          setVocal((v) =>
+            v && v.name === file.name ? { ...v, ai: "failed" } : v,
+          );
       }
     }, []);
     const vocalName = vocal && vocal.data ? vocal.name : null;
     const [vocalLyrics, setVocalLyrics] = useState(null);
     useEffect(() => {
-      if (!vocalName) { setVocalLyrics(null); return; }
+      if (!vocalName) {
+        setVocalLyrics(null);
+        return;
+      }
       const saved = loadLyricsStore()[vocalName];
       setVocalLyrics(saved && Array.isArray(saved.lines) ? saved : null);
     }, [vocalName]);
-    const updateVocalLyrics = useCallback((next) => { setVocalLyrics(next); if (vocalName) saveLyricsFor(vocalName, next); }, [vocalName]);
+    const updateVocalLyrics = useCallback(
+      (next) => {
+        setVocalLyrics(next);
+        if (vocalName) saveLyricsFor(vocalName, next);
+      },
+      [vocalName],
+    );
     // an UltraStar chart brings exact notes for every syllable: use them instead of the detected ones
     const vocalEff = useMemo(() => {
       if (!vocal || !vocal.data || !vocalLyrics) return vocal;
@@ -6120,10 +16502,24 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         // timed lyrics: use each line's syllable count to find missing notes and drop blips
         const sp = lyricSpans(vocalLyrics, vocal.data.duration);
         if (!sp.length) return vocal;
-        return { ...vocal, data: { ...vocal.data, notes: guideBySyllables(vocal.data.notes, vocal.data, sp, looksTagalog(sp)), guided: true } };
+        return {
+          ...vocal,
+          data: {
+            ...vocal.data,
+            notes: guideBySyllables(
+              vocal.data.notes,
+              vocal.data,
+              sp,
+              looksTagalog(sp),
+            ),
+            guided: true,
+          },
+        };
       }
       const ns = usNotesFor(vocalLyrics, vocal.data);
-      return ns && ns.length ? { ...vocal, data: { ...vocal.data, notes: ns, chart: true } } : vocal;
+      return ns && ns.length
+        ? { ...vocal, data: { ...vocal.data, notes: ns, chart: true } }
+        : vocal;
     }, [vocal, vocalLyrics]);
     // the instrumental is shared by Karaoke and the Singing Analyst, with its timing saved per song
     const [music, setMusic] = useState(null);
@@ -6132,71 +16528,169 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const job = ++musicJob.current;
       setMusic({ name: file.name, busy: true });
       let buffer;
-      try { buffer = await decodeFile(file); }
-      catch (e) { if (musicJob.current === job) setMusic({ name: file.name, error: "That file couldn't be read as audio. Try an MP3, M4A or WAV." }); return; }
+      try {
+        buffer = await decodeFile(file);
+      } catch (e) {
+        if (musicJob.current === job)
+          setMusic({
+            name: file.name,
+            error:
+              "That file couldn't be read as audio. Try an MP3, M4A or WAV.",
+          });
+        return;
+      }
       const onset = onsetEnvelope(buffer);
       const chroma = await chromaOf(buffer, () => musicJob.current !== job);
       if (musicJob.current !== job) return;
       setMusic({ name: file.name, buffer, onset, chroma });
     }, []);
     const [msync, setMsync] = useState({ sync: 0, msg: "", keyWarn: 0 });
-    const saveMusicSync = useCallback((v, msg) => {
-      setMsync((x) => ({ ...x, sync: v, msg: msg || "" }));
-      if (vocalName && music && music.buffer) { const all = loadJSON(KARA_SYNC_KEY, {}); const old = all[vocalName]; all[vocalName] = { ...(old && old.inst === music.name ? old : {}), inst: music.name, sync: v }; saveJSON(KARA_SYNC_KEY, all); }
-    }, [vocalName, music]);
+    const saveMusicSync = useCallback(
+      (v, msg) => {
+        setMsync((x) => ({ ...x, sync: v, msg: msg || "" }));
+        if (vocalName && music && music.buffer) {
+          const all = loadJSON(KARA_SYNC_KEY, {});
+          const old = all[vocalName];
+          all[vocalName] = {
+            ...(old && old.inst === music.name ? old : {}),
+            inst: music.name,
+            sync: v,
+          };
+          saveJSON(KARA_SYNC_KEY, all);
+        }
+      },
+      [vocalName, music],
+    );
     const autoMusicSync = useCallback(() => {
       if (!vocal || !vocal.buffer || !music || !music.onset) return;
       const r = autoSync(onsetEnvelope(vocal.buffer), music.onset);
-      if (r.z >= 6) saveMusicSync(Math.round(r.off * 100) / 100, "Lined up automatically. Use Check timing to confirm by ear.");
-      else saveMusicSync(0, "Couldn't line them up automatically. Use Check timing and the nudge buttons.");
+      if (r.z >= 6)
+        saveMusicSync(
+          Math.round(r.off * 100) / 100,
+          "Lined up automatically. Use Check timing to confirm by ear.",
+        );
+      else
+        saveMusicSync(
+          0,
+          "Couldn't line them up automatically. Use Check timing and the nudge buttons.",
+        );
     }, [vocal, music, saveMusicSync]);
     useEffect(() => {
       if (!vocal || !vocal.data || !music || !music.buffer) return;
       const saved = loadJSON(KARA_SYNC_KEY, {})[vocal.name];
       // a song Tono split itself can't be in two keys, so skip the clash check there
       const sameSource = saved && saved.split && saved.inst === music.name;
-      setMsync((x) => ({ ...x, keyWarn: music.chroma && !sameSource ? keyGap(vocal.data.notes, music.chroma) : 0 }));
-      if (saved && saved.inst === music.name) setMsync((x) => ({ ...x, sync: saved.sync, msg: sameSource ? "Split from the same song, so already in time." : "Using the timing you saved for this song." }));
+      setMsync((x) => ({
+        ...x,
+        keyWarn:
+          music.chroma && !sameSource
+            ? keyGap(vocal.data.notes, music.chroma)
+            : 0,
+      }));
+      if (saved && saved.inst === music.name)
+        setMsync((x) => ({
+          ...x,
+          sync: saved.sync,
+          msg: sameSource
+            ? "Split from the same song, so already in time."
+            : "Using the timing you saved for this song.",
+        }));
       else autoMusicSync();
     }, [vocal, music]);
     const [sampleName, setSampleName] = useState(null);
-    const loadSample = useCallback(async ({ name, vocal: vf, inst: inf, lyricText, lyricName }) => {
-      if (lyricText) {
-        const lines = parseLrc(lyricText);
-        if (lines.filter((l) => l.text).length) saveLyricsFor(vf.name, { name: lyricName, lines, offset: (loadLyricsStore()[vf.name] || {}).offset || 0 });
-      }
-      setSampleName(name);
-      const jobs = [pickVocal(vf)];
-      if (inf) jobs.push(pickMusic(inf));
-      await Promise.all(jobs);
-    }, [pickVocal, pickMusic]);
+    const loadSample = useCallback(
+      async ({ name, vocal: vf, inst: inf, lyricText, lyricName }) => {
+        if (lyricText) {
+          const lines = parseLrc(lyricText);
+          if (lines.filter((l) => l.text).length)
+            saveLyricsFor(vf.name, {
+              name: lyricName,
+              lines,
+              offset: (loadLyricsStore()[vf.name] || {}).offset || 0,
+            });
+        }
+        setSampleName(name);
+        const jobs = [pickVocal(vf)];
+        if (inf) jobs.push(pickMusic(inf));
+        await Promise.all(jobs);
+      },
+      [pickVocal, pickMusic],
+    );
     const [canSplit, setCanSplit] = useState(false);
-    useEffect(() => { canSplitSongs().then(setCanSplit); }, []);
+    useEffect(() => {
+      canSplitSongs().then(setCanSplit);
+    }, []);
     const [split, setSplit] = useState(null);
     const splitJob = useRef(0);
-    const onSplit = useCallback(async (file) => {
-      const job = ++splitJob.current, base = file.name.replace(/\.[^.]+$/, "");
-      setSplit({ name: file.name, stage: "decode", p: 0 });
-      try {
-        const r = await splitSong(file, (st) => { if (splitJob.current === job) setSplit((x) => ({ ...x, ...st, t0: st.stage === "split" && !(x && x.stage === "split") ? Date.now() : x && x.t0 })); });
-        if (splitJob.current !== job) return;
-        const vf = wavFile(r.vocals, r.sr, base + ".wav"), mf = wavFile(r.inst, r.sr, base + " (music).wav");
-        // both halves come from the same file, so they are already in time
-        const all = loadJSON(KARA_SYNC_KEY, {}); all[vf.name] = { inst: mf.name, sync: 0, split: true }; saveJSON(KARA_SYNC_KEY, all);
-        setSplit({ name: file.name, done: true, base, files: { vocal: vf, music: mf } });
-        setSampleName(null); setPickStay(true);
-        await Promise.all([pickVocal(vf), pickMusic(mf)]);
-      } catch (e) {
-        if (splitJob.current !== job) return;
-        setSplit(e.message === "cancelled" ? null : { name: file.name, error: (e && e.name === "EncodingError" ? "That file couldn't be read as audio." : "Couldn't split this song: " + (e.message || e)) + " You can upload the vocal and music separately below." });
-      }
-    }, [pickVocal, pickMusic]);
-    const onCancelSplit = useCallback(() => { splitJob.current++; cancelSplit(); setSplit(null); }, []);
-    const musicProps = { inst: music, onPickInst: pickMusic, sync: msync.sync, syncMsg: msync.msg, keyWarn: msync.keyWarn, onSync: saveMusicSync, onAutoSync: autoMusicSync };
+    const onSplit = useCallback(
+      async (file) => {
+        const job = ++splitJob.current,
+          base = file.name.replace(/\.[^.]+$/, "");
+        setSplit({ name: file.name, stage: "decode", p: 0 });
+        try {
+          const r = await splitSong(file, (st) => {
+            if (splitJob.current === job)
+              setSplit((x) => ({
+                ...x,
+                ...st,
+                t0:
+                  st.stage === "split" && !(x && x.stage === "split")
+                    ? Date.now()
+                    : x && x.t0,
+              }));
+          });
+          if (splitJob.current !== job) return;
+          const vf = wavFile(r.vocals, r.sr, base + ".wav"),
+            mf = wavFile(r.inst, r.sr, base + " (music).wav");
+          // both halves come from the same file, so they are already in time
+          const all = loadJSON(KARA_SYNC_KEY, {});
+          all[vf.name] = { inst: mf.name, sync: 0, split: true };
+          saveJSON(KARA_SYNC_KEY, all);
+          setSplit({
+            name: file.name,
+            done: true,
+            base,
+            files: { vocal: vf, music: mf },
+          });
+          setSampleName(null);
+          setPickStay(true);
+          await Promise.all([pickVocal(vf), pickMusic(mf)]);
+        } catch (e) {
+          if (splitJob.current !== job) return;
+          setSplit(
+            e.message === "cancelled"
+              ? null
+              : {
+                  name: file.name,
+                  error:
+                    (e && e.name === "EncodingError"
+                      ? "That file couldn't be read as audio."
+                      : "Couldn't split this song: " + (e.message || e)) +
+                    " You can upload the vocal and music separately below.",
+                },
+          );
+        }
+      },
+      [pickVocal, pickMusic],
+    );
+    const onCancelSplit = useCallback(() => {
+      splitJob.current++;
+      cancelSplit();
+      setSplit(null);
+    }, []);
+    const musicProps = {
+      inst: music,
+      onPickInst: pickMusic,
+      sync: msync.sync,
+      syncMsg: msync.msg,
+      keyWarn: msync.keyWarn,
+      onSync: saveMusicSync,
+      onAutoSync: autoMusicSync,
+    };
     const [mode, setMode] = useState("idle"); // idle | mic | file
     const [error, setError] = useState("");
     const [recording, setRecording] = useState(false);
-    const [live, setLive] = useState(null);   // { midi, freq, cents }
+    const [live, setLive] = useState(null); // { midi, freq, cents }
     const [level, setLevel] = useState(0);
     const [trail, setTrail] = useState([]);
     const [history, setHistory] = useState(loadHistory);
@@ -6208,25 +16702,58 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const [song, setSong] = useState(null);
     const [playing, setPlaying] = useState(false);
     const [playPos, setPlayPos] = useState(0);
-    const songRef = useRef(null), playRef = useRef({ ctx: null, src: null, startAt: 0, offset: 0, raf: 0, idx: -2 });
-    const [theme, setTheme] = useState(() => { try { return localStorage.getItem(THEME_KEY) || ""; } catch (e) { return ""; } });
+    const songRef = useRef(null),
+      playRef = useRef({
+        ctx: null,
+        src: null,
+        startAt: 0,
+        offset: 0,
+        raf: 0,
+        idx: -2,
+      });
+    const [theme, setTheme] = useState(() => {
+      try {
+        return localStorage.getItem(THEME_KEY) || "";
+      } catch (e) {
+        return "";
+      }
+    });
 
-    const ctxRef = useRef(null), streamRef = useRef(null), srcRef = useRef(null), rafRef = useRef(0), cancelRef = useRef(false);
+    const ctxRef = useRef(null),
+      streamRef = useRef(null),
+      srcRef = useRef(null),
+      rafRef = useRef(0),
+      cancelRef = useRef(false);
     const recRef = useRef(recording);
     const fileInput = useRef(null);
-    useEffect(() => { recRef.current = recording; }, [recording]);
-    useEffect(() => { saveHistory(history); }, [history]);
+    useEffect(() => {
+      recRef.current = recording;
+    }, [recording]);
+    useEffect(() => {
+      saveHistory(history);
+    }, [history]);
     useEffect(() => {
       if (theme) document.documentElement.setAttribute("data-theme", theme);
       else document.documentElement.removeAttribute("data-theme");
-      try { theme ? localStorage.setItem(THEME_KEY, theme) : localStorage.removeItem(THEME_KEY); } catch (e) {}
+      try {
+        theme
+          ? localStorage.setItem(THEME_KEY, theme)
+          : localStorage.removeItem(THEME_KEY);
+      } catch (e) {}
     }, [theme]);
 
     const confirmNote = useCallback((midi, freq, cents) => {
       const id = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
       setTrail((t) => [...t.slice(-11), { id, midi }]);
       if (recRef.current) {
-        const entry = { id, t: Date.now(), note: midiInfo(midi).label, midi, freq: Math.round(freq * 10) / 10, cents };
+        const entry = {
+          id,
+          t: Date.now(),
+          note: midiInfo(midi).label,
+          midi,
+          freq: Math.round(freq * 10) / 10,
+          cents,
+        };
         setHistory((h) => [entry, ...h].slice(0, 500));
       }
     }, []);
@@ -6235,9 +16762,12 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const p = playRef.current;
       cancelAnimationFrame(p.raf);
       if (p.src) {
-        if (!reset && p.ctx) p.offset = Math.max(0, p.ctx.currentTime - p.startAt);
+        if (!reset && p.ctx)
+          p.offset = Math.max(0, p.ctx.currentTime - p.startAt);
         p.src.onended = null;
-        try { p.src.stop(); } catch (e) {}
+        try {
+          p.src.stop();
+        } catch (e) {}
         p.src = null;
       }
       if (reset) p.offset = 0;
@@ -6248,30 +16778,73 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const stopInput = useCallback(() => {
       cancelRef.current = true;
       cancelAnimationFrame(rafRef.current);
-      if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
-      if (srcRef.current) { try { srcRef.current.onended = null; srcRef.current.stop && srcRef.current.stop(); } catch (e) {} srcRef.current = null; }
-      if (ctxRef.current) { ctxRef.current.close().catch(() => {}); ctxRef.current = null; }
-      setMode("idle"); setLive(null); setLevel(0);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      if (srcRef.current) {
+        try {
+          srcRef.current.onended = null;
+          srcRef.current.stop && srcRef.current.stop();
+        } catch (e) {}
+        srcRef.current = null;
+      }
+      if (ctxRef.current) {
+        ctxRef.current.close().catch(() => {});
+        ctxRef.current = null;
+      }
+      setMode("idle");
+      setLive(null);
+      setLevel(0);
     }, []);
-    const stop = useCallback(() => { stopInput(); pausePlayback(false); }, [stopInput, pausePlayback]);
-    const goTab = useCallback((k) => { if (k !== "live") stop(); setTab(k); setVisited((v) => ({ ...v, [k]: true })); try { window.scrollTo(0, 0); } catch (e) {} }, [stop]);
-    const practiceRange = useCallback((a, b, repeat) => { setFocus({ a, b, repeat: !!repeat, id: Date.now() }); goTab("learn"); }, [goTab]);
+    const stop = useCallback(() => {
+      stopInput();
+      pausePlayback(false);
+    }, [stopInput, pausePlayback]);
+    const goTab = useCallback(
+      (k) => {
+        if (k !== "live") stop();
+        setTab(k);
+        setVisited((v) => ({ ...v, [k]: true }));
+        try {
+          window.scrollTo(0, 0);
+        } catch (e) {}
+      },
+      [stop],
+    );
+    const practiceRange = useCallback(
+      (a, b, repeat) => {
+        setFocus({ a, b, repeat: !!repeat, id: Date.now() });
+        goTab("learn");
+      },
+      [goTab],
+    );
     useEffect(() => stop, [stop]);
 
     // show the note sounding at song time ct, plus the notes before it
     const showAt = useCallback((ct) => {
-      const p = playRef.current, s = songRef.current;
+      const p = playRef.current,
+        s = songRef.current;
       if (!s) return;
       const notes = s.notes;
       let idx = -1;
-      for (let i = 0; i < notes.length; i++) { if (notes[i].pos <= ct) idx = i; else break; }
+      for (let i = 0; i < notes.length; i++) {
+        if (notes[i].pos <= ct) idx = i;
+        else break;
+      }
       const cur = idx >= 0 && ct < notes[idx].end ? notes[idx] : null;
       const key = idx * 2 + (cur ? 1 : 0);
       if (key === p.idx) return;
       p.idx = key;
       const upto = cur ? idx : idx + 1;
-      setTrail(notes.slice(Math.max(0, upto - 12), upto).map((n) => ({ id: "s" + n.pos, midi: n.midi })));
-      setLive(cur ? { midi: cur.midi, freq: cur.freq, cents: cur.cents } : null);
+      setTrail(
+        notes
+          .slice(Math.max(0, upto - 12), upto)
+          .map((n) => ({ id: "s" + n.pos, midi: n.midi })),
+      );
+      setLive(
+        cur ? { midi: cur.midi, freq: cur.freq, cents: cur.cents } : null,
+      );
     }, []);
 
     const playSong = useCallback(() => {
@@ -6279,7 +16852,10 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       if (!s) return;
       stopInput();
       const p = playRef.current;
-      if (!p.ctx) { const Ctx = window.AudioContext || window.webkitAudioContext; p.ctx = new Ctx(); }
+      if (!p.ctx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        p.ctx = new Ctx();
+      }
       const ctx = p.ctx;
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
       if (p.offset >= s.buffer.duration - 0.05) p.offset = 0;
@@ -6287,16 +16863,23 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       src.buffer = s.buffer;
       src.connect(ctx.destination);
       src.start(0, p.offset);
-      p.src = src; p.startAt = ctx.currentTime - p.offset; p.idx = -2;
+      p.src = src;
+      p.startAt = ctx.currentTime - p.offset;
+      p.idx = -2;
       src.onended = () => {
         if (p.src !== src) return;
-        p.src = null; p.offset = 0; cancelAnimationFrame(p.raf);
-        setPlaying(false); setPlayPos(s.buffer.duration); setLive(null);
+        p.src = null;
+        p.offset = 0;
+        cancelAnimationFrame(p.raf);
+        setPlaying(false);
+        setPlayPos(s.buffer.duration);
+        setLive(null);
       };
       setPlaying(true);
       const tick = () => {
         const ct = Math.min(s.buffer.duration, ctx.currentTime - p.startAt);
-        setPlayPos(ct); showAt(ct);
+        setPlayPos(ct);
+        showAt(ct);
         p.raf = requestAnimationFrame(tick);
       };
       tick();
@@ -6306,46 +16889,67 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
       const wasPlaying = playing;
       pausePlayback(false);
       playRef.current.offset = v;
-      setPlayPos(v); showAt(v);
+      setPlayPos(v);
+      showAt(v);
       if (wasPlaying) playSong();
     };
 
-    const runLoop = useCallback((ctx, analyser) => {
-      const buf = new Float32Array(analyser.fftSize);
-      let cand = { midi: null, since: 0 };
-      let confirmed = null;
-      let silentSince = 0;
-      const recent = [];
-      const tick = () => {
-        analyser.getFloatTimeDomainData(buf);
-        const r = detectPitch(buf, ctx.sampleRate, micGate());
-        const now = performance.now();
-        if (matchHook.current) matchHook.current(r.freq > 0 ? 69 + 12 * Math.log2(r.freq / SETTINGS.a4) : null, now);
-        setLevel(Math.min(1, r.rms * 6));
-        if (r.freq > 0) {
-          silentSince = 0;
-          recent.push(r.freq); if (recent.length > 5) recent.shift();
-          const med = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)];
-          const { midi, cents } = freqToMidi(med);
-          if (midi !== cand.midi) cand = { midi, since: now };
-          if (now - cand.since >= 150) {
-            setLive({ midi, freq: med, cents });
-            if (confirmed !== midi) { confirmed = midi; confirmNote(midi, med, cents); }
+    const runLoop = useCallback(
+      (ctx, analyser) => {
+        const buf = new Float32Array(analyser.fftSize);
+        let cand = { midi: null, since: 0 };
+        let confirmed = null;
+        let silentSince = 0;
+        const recent = [];
+        const tick = () => {
+          analyser.getFloatTimeDomainData(buf);
+          const r = detectPitch(buf, ctx.sampleRate, micGate());
+          const now = performance.now();
+          if (matchHook.current)
+            matchHook.current(
+              r.freq > 0 ? 69 + 12 * Math.log2(r.freq / SETTINGS.a4) : null,
+              now,
+            );
+          setLevel(Math.min(1, r.rms * 6));
+          if (r.freq > 0) {
+            silentSince = 0;
+            recent.push(r.freq);
+            if (recent.length > 5) recent.shift();
+            const med = [...recent].sort((a, b) => a - b)[
+              Math.floor(recent.length / 2)
+            ];
+            const { midi, cents } = freqToMidi(med);
+            if (midi !== cand.midi) cand = { midi, since: now };
+            if (now - cand.since >= 150) {
+              setLive({ midi, freq: med, cents });
+              if (confirmed !== midi) {
+                confirmed = midi;
+                confirmNote(midi, med, cents);
+              }
+            }
+          } else {
+            if (!silentSince) silentSince = now;
+            if (now - silentSince > 120) {
+              confirmed = null;
+              cand = { midi: null, since: 0 };
+              recent.length = 0;
+              setLive(null);
+            }
           }
-        } else {
-          if (!silentSince) silentSince = now;
-          if (now - silentSince > 120) { confirmed = null; cand = { midi: null, since: 0 }; recent.length = 0; setLive(null); }
-        }
-        rafRef.current = requestAnimationFrame(tick);
-      };
-      tick();
-    }, [confirmNote]);
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        tick();
+      },
+      [confirmNote],
+    );
 
     const startMic = useCallback(async () => {
       setError("");
       stop();
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setError("This browser can't reach a microphone here. Open the page file in Chrome, Edge or Safari, or analyze an audio file instead.");
+        setError(
+          "This browser can't reach a microphone here. Open the page file in Chrome, Edge or Safari, or analyze an audio file instead.",
+        );
         return;
       }
       try {
@@ -6355,114 +16959,209 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048;
         src.connect(analyser);
-        ctxRef.current = ctx; streamRef.current = stream;
+        ctxRef.current = ctx;
+        streamRef.current = stream;
         setMode("mic");
         runLoop(ctx, analyser);
       } catch (e) {
-        setError("The microphone is blocked on this page. Download the page file and open it in your browser to use the mic, or analyze an audio file below.");
+        setError(
+          "The microphone is blocked on this page. Download the page file and open it in your browser to use the mic, or analyze an audio file below.",
+        );
       }
     }, [stop, runLoop]);
 
-    const onFile = useCallback(async (e) => {
-      const file = e.target.files && e.target.files[0];
-      e.target.value = "";
-      if (!file) return;
-      setError(""); setFileResult(""); stop();
-      songRef.current = null; setSong(null); setPlayPos(0); playRef.current.offset = 0;
-      cancelRef.current = false;
-      setFileName(file.name); setMode("file"); setProgress(0);
-      let audio;
-      try {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        const ctx = new Ctx();
-        const ab = await file.arrayBuffer();
-        audio = await new Promise((res, rej) => {
-          const p = ctx.decodeAudioData(ab, res, rej);
-          if (p && p.then) p.then(res, rej);
-        });
-        if (ctx.close) ctx.close().catch(() => {});
-      } catch (err) {
-        setMode("idle");
-        setError("That file couldn't be read as audio. Try an MP3, M4A or WAV.");
-        return;
-      }
-      // mix to mono, then halve the sample rate so analysis stays fast on phones
-      let data = audio.getChannelData(0);
-      if (audio.numberOfChannels > 1) {
-        const r = audio.getChannelData(1), m = new Float32Array(data.length);
-        for (let i = 0; i < data.length; i++) m[i] = (data[i] + r[i]) / 2;
-        data = m;
-      }
-      let sr = audio.sampleRate;
-      if (sr >= 44100) {
-        const h = new Float32Array(Math.floor(data.length / 2));
-        for (let i = 0; i < h.length; i++) h[i] = (data[2 * i] + data[2 * i + 1]) / 2;
-        data = h; sr = sr / 2;
-      }
-      const N = 1024, hop = 512, total = Math.max(1, Math.floor((data.length - N) / hop));
-      const found = [];
-      let cand = { midi: null, since: 0 }, confirmed = null, silentSince = -1;
-      const recent = [];
-      for (let f = 0; f < total; f++) {
-        if (cancelRef.current) return;
-        const t = (f * hop) / sr;
-        const r = detectPitch(data.subarray(f * hop, f * hop + N), sr);
-        if (r.freq > 0) {
-          silentSince = -1;
-          recent.push(r.freq); if (recent.length > 5) recent.shift();
-          const med = [...recent].sort((a, b) => a - b)[Math.floor(recent.length / 2)];
-          const { midi, cents } = freqToMidi(med);
-          if (midi !== cand.midi) cand = { midi, since: t };
-          if (t - cand.since >= 0.15 && confirmed !== midi) {
-            if (found.length && found[found.length - 1].end == null) found[found.length - 1].end = cand.since;
-            confirmed = midi; found.push({ midi, freq: med, cents, pos: cand.since, end: null });
-          }
-        } else {
-          if (silentSince < 0) silentSince = t;
-          if (t - silentSince > 0.12) { if (confirmed !== null && found.length && found[found.length - 1].end == null) found[found.length - 1].end = silentSince; confirmed = null; cand = { midi: null, since: 0 }; recent.length = 0; }
+    const onFile = useCallback(
+      async (e) => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = "";
+        if (!file) return;
+        setError("");
+        setFileResult("");
+        stop();
+        songRef.current = null;
+        setSong(null);
+        setPlayPos(0);
+        playRef.current.offset = 0;
+        cancelRef.current = false;
+        setFileName(file.name);
+        setMode("file");
+        setProgress(0);
+        let audio;
+        try {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          const ctx = new Ctx();
+          const ab = await file.arrayBuffer();
+          audio = await new Promise((res, rej) => {
+            const p = ctx.decodeAudioData(ab, res, rej);
+            if (p && p.then) p.then(res, rej);
+          });
+          if (ctx.close) ctx.close().catch(() => {});
+        } catch (err) {
+          setMode("idle");
+          setError(
+            "That file couldn't be read as audio. Try an MP3, M4A or WAV.",
+          );
+          return;
         }
-        if (f % 150 === 0) { setProgress(f / total); await new Promise((res) => setTimeout(res, 0)); }
-      }
-      if (found.length && found[found.length - 1].end == null) found[found.length - 1].end = data.length / sr;
-      songRef.current = { buffer: audio, notes: found };
-      setSong({ name: file.name, duration: audio.duration });
-      const now = Date.now();
-      const entries = found.map((n, i) => ({
-        id: now + "-" + i, t: now, note: midiInfo(n.midi).label, midi: n.midi,
-        freq: Math.round(n.freq * 10) / 10, cents: n.cents, pos: Math.round(n.pos * 10) / 10, src: file.name,
-      }));
-      setTrail(entries.slice(-12).map((x) => ({ id: x.id, midi: x.midi })));
-      if (recRef.current && entries.length) setHistory((h) => [...[...entries].reverse(), ...h].slice(0, 500));
-      setProgress(1); setMode("idle");
-      setFileResult(entries.length
-        ? "Found " + entries.length + " notes in " + file.name + (recRef.current ? " and saved them to the log." : ".") + " Tap Play to hear it with the notes on the staff."
-        : "No clear single notes found in " + file.name + ". Clips with one voice or instrument work best.");
-    }, [stop]);
+        // mix to mono, then halve the sample rate so analysis stays fast on phones
+        let data = audio.getChannelData(0);
+        if (audio.numberOfChannels > 1) {
+          const r = audio.getChannelData(1),
+            m = new Float32Array(data.length);
+          for (let i = 0; i < data.length; i++) m[i] = (data[i] + r[i]) / 2;
+          data = m;
+        }
+        let sr = audio.sampleRate;
+        if (sr >= 44100) {
+          const h = new Float32Array(Math.floor(data.length / 2));
+          for (let i = 0; i < h.length; i++)
+            h[i] = (data[2 * i] + data[2 * i + 1]) / 2;
+          data = h;
+          sr = sr / 2;
+        }
+        const N = 1024,
+          hop = 512,
+          total = Math.max(1, Math.floor((data.length - N) / hop));
+        const found = [];
+        let cand = { midi: null, since: 0 },
+          confirmed = null,
+          silentSince = -1;
+        const recent = [];
+        for (let f = 0; f < total; f++) {
+          if (cancelRef.current) return;
+          const t = (f * hop) / sr;
+          const r = detectPitch(data.subarray(f * hop, f * hop + N), sr);
+          if (r.freq > 0) {
+            silentSince = -1;
+            recent.push(r.freq);
+            if (recent.length > 5) recent.shift();
+            const med = [...recent].sort((a, b) => a - b)[
+              Math.floor(recent.length / 2)
+            ];
+            const { midi, cents } = freqToMidi(med);
+            if (midi !== cand.midi) cand = { midi, since: t };
+            if (t - cand.since >= 0.15 && confirmed !== midi) {
+              if (found.length && found[found.length - 1].end == null)
+                found[found.length - 1].end = cand.since;
+              confirmed = midi;
+              found.push({
+                midi,
+                freq: med,
+                cents,
+                pos: cand.since,
+                end: null,
+              });
+            }
+          } else {
+            if (silentSince < 0) silentSince = t;
+            if (t - silentSince > 0.12) {
+              if (
+                confirmed !== null &&
+                found.length &&
+                found[found.length - 1].end == null
+              )
+                found[found.length - 1].end = silentSince;
+              confirmed = null;
+              cand = { midi: null, since: 0 };
+              recent.length = 0;
+            }
+          }
+          if (f % 150 === 0) {
+            setProgress(f / total);
+            await new Promise((res) => setTimeout(res, 0));
+          }
+        }
+        if (found.length && found[found.length - 1].end == null)
+          found[found.length - 1].end = data.length / sr;
+        songRef.current = { buffer: audio, notes: found };
+        setSong({ name: file.name, duration: audio.duration });
+        const now = Date.now();
+        const entries = found.map((n, i) => ({
+          id: now + "-" + i,
+          t: now,
+          note: midiInfo(n.midi).label,
+          midi: n.midi,
+          freq: Math.round(n.freq * 10) / 10,
+          cents: n.cents,
+          pos: Math.round(n.pos * 10) / 10,
+          src: file.name,
+        }));
+        setTrail(entries.slice(-12).map((x) => ({ id: x.id, midi: x.midi })));
+        if (recRef.current && entries.length)
+          setHistory((h) => [...[...entries].reverse(), ...h].slice(0, 500));
+        setProgress(1);
+        setMode("idle");
+        setFileResult(
+          entries.length
+            ? "Found " +
+                entries.length +
+                " notes in " +
+                file.name +
+                (recRef.current ? " and saved them to the log." : ".") +
+                " Tap Play to hear it with the notes on the staff."
+            : "No clear single notes found in " +
+                file.name +
+                ". Clips with one voice or instrument work best.",
+        );
+      },
+      [stop],
+    );
 
     const counts = useMemo(() => {
       const m = {};
-      history.forEach((h) => { m[h.note] = (m[h.note] || 0) + 1; });
-      return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 6);
+      history.forEach((h) => {
+        m[h.note] = (m[h.note] || 0) + 1;
+      });
+      return Object.entries(m)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6);
     }, [history]);
 
-    const flash = (msg) => { setCopyMsg(msg); setTimeout(() => setCopyMsg(""), 2600); };
+    const flash = (msg) => {
+      setCopyMsg(msg);
+      setTimeout(() => setCopyMsg(""), 2600);
+    };
 
     const buildText = () => {
       const list = [...history].reverse();
-      const when = (h) => h.pos != null ? "at " + fmt(h.pos) + " (" + h.src + ")"
-        : new Date(h.t).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
+      const when = (h) =>
+        h.pos != null
+          ? "at " + fmt(h.pos) + " (" + h.src + ")"
+          : new Date(h.t).toLocaleString([], {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              second: "2-digit",
+            });
       const lines = [
         "Tono - note log",
-        "Exported " + new Date().toLocaleString([], { dateStyle: "medium", timeStyle: "short" }),
+        "Exported " +
+          new Date().toLocaleString([], {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
         list.length + " notes",
         "",
         "Sequence:",
         list.map((h) => h.note).join(" "),
         "",
-        "#".padEnd(5) + "Note".padEnd(7) + "When".padEnd(34) + "Freq (Hz)".padEnd(11) + "Cents",
+        "#".padEnd(5) +
+          "Note".padEnd(7) +
+          "When".padEnd(34) +
+          "Freq (Hz)".padEnd(11) +
+          "Cents",
       ];
       list.forEach((h, i) => {
-        lines.push(String(i + 1).padEnd(5) + h.note.padEnd(7) + when(h).padEnd(34) + h.freq.toFixed(1).padEnd(11) + (h.cents > 0 ? "+" : "") + h.cents);
+        lines.push(
+          String(i + 1).padEnd(5) +
+            h.note.padEnd(7) +
+            when(h).padEnd(34) +
+            h.freq.toFixed(1).padEnd(11) +
+            (h.cents > 0 ? "+" : "") +
+            h.cents,
+        );
       });
       return lines.join("\n") + "\n";
     };
@@ -6470,96 +17169,350 @@ import { midiInfo, freqToMidi, pretty, fmt } from "./lib/music.js";
     const exportTxt = async () => {
       if (!history.length) return;
       const text = buildText();
-      const filename = "pitch-staff-notes-" + new Date().toISOString().slice(0, 10) + ".txt";
+      const filename =
+        "pitch-staff-notes-" + new Date().toISOString().slice(0, 10) + ".txt";
       let dl = null;
-      try { dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch (e) { dl = null; }
+      try {
+        dl =
+          window.claude && window.claude.use
+            ? await window.claude.use("downloads")
+            : null;
+      } catch (e) {
+        dl = null;
+      }
       if (dl) {
-        try { await dl.save({ filename, data: text }); flash("Exported " + filename); }
-        catch (e) { flash(e && e.code === "declined" ? "Export cancelled" : e && e.code === "rate_limited" ? "One moment, then try again" : "Export isn't available in this view"); }
+        try {
+          await dl.save({ filename, data: text });
+          flash("Exported " + filename);
+        } catch (e) {
+          flash(
+            e && e.code === "declined"
+              ? "Export cancelled"
+              : e && e.code === "rate_limited"
+                ? "One moment, then try again"
+                : "Export isn't available in this view",
+          );
+        }
         return;
       }
       // opened as a plain file in a browser: use a normal download
       try {
-        const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+        const url = URL.createObjectURL(
+          new Blob([text], { type: "text/plain" }),
+        );
         const a = document.createElement("a");
-        a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click(); a.remove();
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
         flash("Exported " + filename);
-      } catch (e) { flash("Export isn't available in this view"); }
+      } catch (e) {
+        flash("Export isn't available in this view");
+      }
     };
 
     const copySequence = () => {
-      const seq = [...history].reverse().map((h) => h.note).join(" ");
+      const seq = [...history]
+        .reverse()
+        .map((h) => h.note)
+        .join(" ");
       if (!seq) return;
-      const done = (msg) => { setCopyMsg(msg); setTimeout(() => setCopyMsg(""), 2200); };
+      const done = (msg) => {
+        setCopyMsg(msg);
+        setTimeout(() => setCopyMsg(""), 2200);
+      };
       try {
-        navigator.clipboard.writeText(seq).then(() => done("Copied " + history.length + " notes"), () => done("Copy blocked here"));
-      } catch (e) { done("Copy blocked here"); }
+        navigator.clipboard.writeText(seq).then(
+          () => done("Copied " + history.length + " notes"),
+          () => done("Copy blocked here"),
+        );
+      } catch (e) {
+        done("Copy blocked here");
+      }
     };
 
     const info = live ? midiInfo(live.midi) : null;
-    const tuneColor = !live ? "var(--muted)" : Math.abs(live.cents) <= 10 ? "var(--good)" : Math.abs(live.cents) <= 25 ? "var(--warn)" : "var(--bad)";
-    const isDark = theme ? theme === "dark" : !window.matchMedia("(prefers-color-scheme: light)").matches;
-    useLayoutEffect(() => { document.documentElement.classList.toggle("kara", tab === "karaoke"); }, [tab]);
+    const tuneColor = !live
+      ? "var(--muted)"
+      : Math.abs(live.cents) <= 10
+        ? "var(--good)"
+        : Math.abs(live.cents) <= 25
+          ? "var(--warn)"
+          : "var(--bad)";
+    const isDark = theme
+      ? theme === "dark"
+      : !window.matchMedia("(prefers-color-scheme: light)").matches;
+    useLayoutEffect(() => {
+      document.documentElement.classList.toggle("kara", tab === "karaoke");
+    }, [tab]);
     const running = mode !== "idle";
     const showExample = !running && trail.length === 0;
-    const tm = matchTarget && matchStatus && matchStatus.midi === matchTarget.midi ? matchStatus : null;
+    const tm =
+      matchTarget && matchStatus && matchStatus.midi === matchTarget.midi
+        ? matchStatus
+        : null;
 
     const songReady = !!(vocal && vocal.data);
     const songNeeded = tab !== "live" && tab !== "lessons";
     const showPick = songNeeded && (!songReady || pickStay);
-    const lyricsReady = !!(vocalLyrics && vocalLyrics.lines && vocalLyrics.lines.length);
+    const lyricsReady = !!(
+      vocalLyrics &&
+      vocalLyrics.lines &&
+      vocalLyrics.lines.length
+    );
     return html`<div class="wrap app-wrap flex flex-col gap-5">
-      <header class="flex items-center justify-between gap-3" hidden=${lessonFocus}>
+      <header
+        class="flex items-center justify-between gap-3"
+        hidden=${lessonFocus}
+      >
         <div class="min-w-0">
-          <h1 class="display text-3xl font-bold flex items-center gap-2"><img src="data:image/png;base64,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" alt="" width="34" height="34" style=${{width:"34px",height:"34px",flex:"none"}} />Tono</h1>
-          <p class="muted text-sm" hidden=${tab === "live" || tab === "lessons" || (songNeeded && songReady)}>${tab === "live" ? "Sing, whistle or play one clean note and see exactly which note it is." : tab === "learn" ? "Learn a song's melody note by note, one phrase at a time." : tab === "karaoke" ? "Sing along to the music with scrolling lyrics and a live score." : "Compare your singing with the original vocal, phrase by phrase."}</p>
+          <h1 class="display text-3xl font-bold flex items-center gap-2">
+            <img
+              src="data:image/png;base64,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"
+              alt=""
+              width="34"
+              height="34"
+              style=${{ width: "34px", height: "34px", flex: "none" }}
+            />Tono
+          </h1>
+          <p
+            class="muted text-sm"
+            hidden=${tab === "live" ||
+            tab === "lessons" ||
+            (songNeeded && songReady)}
+          >
+            ${tab === "live"
+              ? "Sing, whistle or play one clean note and see exactly which note it is."
+              : tab === "learn"
+                ? "Learn a song's melody note by note, one phrase at a time."
+                : tab === "karaoke"
+                  ? "Sing along to the music with scrolling lyrics and a live score."
+                  : "Compare your singing with the original vocal, phrase by phrase."}
+          </p>
         </div>
         <div class="flex gap-2">
-          <button class="icon-btn" onClick=${() => setShowSettings((v) => !v)} aria-expanded=${showSettings ? "true" : "false"} aria-label="Settings"><${Icon} name="gear" /></button>
-          <button class="icon-btn" onClick=${() => setTheme(isDark ? "light" : "dark")} aria-label=${isDark ? "Switch to light theme" : "Switch to dark theme"}><${Icon} name=${isDark ? "sun" : "moon"} /></button>
+          <button
+            class="icon-btn"
+            onClick=${() => setShowSettings((v) => !v)}
+            aria-expanded=${showSettings ? "true" : "false"}
+            aria-label="Settings"
+          >
+            <${Icon} name="gear" />
+          </button>
+          <button
+            class="icon-btn"
+            onClick=${() => setTheme(isDark ? "light" : "dark")}
+            aria-label=${isDark
+              ? "Switch to light theme"
+              : "Switch to dark theme"}
+          >
+            <${Icon} name=${isDark ? "sun" : "moon"} />
+          </button>
         </div>
       </header>
 
-      ${showSettings && html`<${SettingsPanel} listening=${mode === "mic"} level=${level} onClose=${() => setShowSettings(false)}
-        onChange=${() => bumpSettings((n) => n + 1)} onMicChange=${() => { if (mode === "mic") startMic(); }} />`}
+      ${showSettings &&
+      html`<${SettingsPanel}
+        listening=${mode === "mic"}
+        level=${level}
+        onClose=${() => setShowSettings(false)}
+        onChange=${() => bumpSettings((n) => n + 1)}
+        onMicChange=${() => {
+          if (mode === "mic") startMic();
+        }}
+      />`}
 
       <nav class="bottom-nav" aria-label="Main" hidden=${lessonFocus}>
-        ${[["lessons", "Lessons", "cap"], ["live", "Tuner", "gauge"], ["learn", "Practice", "music"], ["karaoke", "Karaoke", "mic"], ["analyst", "Analyze", "chart"]].map(([k, l, ic]) => html`<button key=${k} aria-current=${tab === k ? "page" : undefined}
-          onClick=${() => goTab(k)}><span class="nav-ico"><${Icon} name=${ic} size=${22} /></span>${l}</button>`)}
+        ${[
+          ["lessons", "Lessons", "cap"],
+          ["live", "Tuner", "gauge"],
+          ["learn", "Practice", "music"],
+          ["karaoke", "Karaoke", "mic"],
+          ["analyst", "Analyze", "chart"],
+        ].map(
+          ([k, l, ic]) =>
+            html`<button
+              key=${k}
+              aria-current=${tab === k ? "page" : undefined}
+              onClick=${() => goTab(k)}
+            >
+              <span class="nav-ico"><${Icon} name=${ic} size=${22} /></span>${l}
+            </button>`,
+        )}
       </nav>
 
-      ${songNeeded && !showPick && html`<div class="song-bar">
+      ${songNeeded &&
+      !showPick &&
+      html`<div class="song-bar">
         <span class="song-ico"><${Icon} name="music" /></span>
         <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
-          <span class="display font-bold text-lg" style=${{ overflowWrap: "anywhere", lineHeight: 1.2 }}>${songTitle(sampleName, vocal)}</span>
-          <span class="text-xs muted">Vocal${music && music.buffer ? " · Music" : ""}${lyricsReady ? " · Lyrics" : ""}${music && music.busy ? " · loading music…" : ""}${vocal && typeof vocal.ai === "number" ? " · improving notes with AI " + Math.round(vocal.ai * 100) + "%" : vocal && vocal.ai === "done" ? " · AI notes ✓" : ""}</span>
+          <span
+            class="display font-bold text-lg"
+            style=${{ overflowWrap: "anywhere", lineHeight: 1.2 }}
+            >${songTitle(sampleName, vocal)}</span
+          >
+          <span class="text-xs muted"
+            >Vocal${music && music.buffer ? " · Music" : ""}${lyricsReady
+              ? " · Lyrics"
+              : ""}${music && music.busy ? " · loading music…" : ""}${vocal &&
+            typeof vocal.ai === "number"
+              ? " · improving notes with AI " + Math.round(vocal.ai * 100) + "%"
+              : vocal && vocal.ai === "done"
+                ? " · AI notes ✓"
+                : ""}</span
+          >
         </span>
-        <button class="btn" style=${{ padding: "7px 14px", fontSize: 13 }} onClick=${() => setSetupOpen(true)}>Change</button>
+        <button
+          class="btn"
+          style=${{ padding: "7px 14px", fontSize: 13 }}
+          onClick=${() => setSetupOpen(true)}
+        >
+          Change
+        </button>
       </div>`}
-
-      ${showPick && html`<section class="flex flex-col gap-5">
+      ${showPick &&
+      html`<section class="flex flex-col gap-5">
         <div class="empty-hero">
-          <h2 class="display text-3xl font-bold" style=${{ letterSpacing: "-0.02em" }}>Pick a song</h2>
-          <p class="muted text-sm">Practice, Karaoke and the Analyst all use the song you pick here.</p>
-          ${vocal && vocal.busy && html`<p class="text-sm" style=${{ color: "var(--accent)" }}>Analyzing ${vocal.name}… ${Math.round((vocal.progress || 0) * 100)}%</p>`}
+          <h2
+            class="display text-3xl font-bold"
+            style=${{ letterSpacing: "-0.02em" }}
+          >
+            Pick a song
+          </h2>
+          <p class="muted text-sm">
+            Practice, Karaoke and the Analyst all use the song you pick here.
+          </p>
+          ${vocal &&
+          vocal.busy &&
+          html`<p class="text-sm" style=${{ color: "var(--accent)" }}>
+            Analyzing ${vocal.name}… ${Math.round((vocal.progress || 0) * 100)}%
+          </p>`}
         </div>
-        <${SongSetup} vocal=${vocalEff} music=${music} lyricsEntry=${vocalLyrics} updateLyrics=${updateVocalLyrics} onPickVocal=${(f) => { setPickStay(true); setSampleName(null); pickVocal(f); }} onPickMusic=${pickMusic}
-          onLoadSample=${loadSample} canSplit=${canSplit} split=${split} onSplit=${onSplit} onCancelSplit=${onCancelSplit} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn}
-          onDone=${() => setPickStay(false)} onContinue=${() => setPickStay(false)} />
+        <${SongSetup}
+          vocal=${vocalEff}
+          music=${music}
+          lyricsEntry=${vocalLyrics}
+          updateLyrics=${updateVocalLyrics}
+          onPickVocal=${(f) => {
+            setPickStay(true);
+            setSampleName(null);
+            pickVocal(f);
+          }}
+          onPickMusic=${pickMusic}
+          onLoadSample=${loadSample}
+          canSplit=${canSplit}
+          split=${split}
+          onSplit=${onSplit}
+          onCancelSplit=${onCancelSplit}
+          sampleName=${sampleName}
+          sync=${msync.sync}
+          onSync=${saveMusicSync}
+          onAutoSync=${autoMusicSync}
+          syncMsg=${msync.msg}
+          keyWarn=${msync.keyWarn}
+          onDone=${() => setPickStay(false)}
+          onContinue=${() => setPickStay(false)}
+        />
       </section>`}
 
-      <${Sheet} open=${setupOpen} title="Song" onClose=${() => setSetupOpen(false)}>
-        <${SongSetup} vocal=${vocalEff} music=${music} lyricsEntry=${vocalLyrics} updateLyrics=${updateVocalLyrics} onPickVocal=${(f) => { setSampleName(null); pickVocal(f); }} onPickMusic=${pickMusic}
-          onLoadSample=${loadSample} canSplit=${canSplit} split=${split} onSplit=${onSplit} onCancelSplit=${onCancelSplit} sampleName=${sampleName} sync=${msync.sync} onSync=${saveMusicSync} onAutoSync=${autoMusicSync} syncMsg=${msync.msg} keyWarn=${msync.keyWarn} onDone=${() => setSetupOpen(false)} />
+      <${Sheet}
+        open=${setupOpen}
+        title="Song"
+        onClose=${() => setSetupOpen(false)}
+      >
+        <${SongSetup}
+          vocal=${vocalEff}
+          music=${music}
+          lyricsEntry=${vocalLyrics}
+          updateLyrics=${updateVocalLyrics}
+          onPickVocal=${(f) => {
+            setSampleName(null);
+            pickVocal(f);
+          }}
+          onPickMusic=${pickMusic}
+          onLoadSample=${loadSample}
+          canSplit=${canSplit}
+          split=${split}
+          onSplit=${onSplit}
+          onCancelSplit=${onCancelSplit}
+          sampleName=${sampleName}
+          sync=${msync.sync}
+          onSync=${saveMusicSync}
+          onAutoSync=${autoMusicSync}
+          syncMsg=${msync.msg}
+          keyWarn=${msync.keyWarn}
+          onDone=${() => setSetupOpen(false)}
+        />
       <//>
 
-      ${tab === "lessons" && html`<${Lessons} active=${tab === "lessons"} onGo=${goTab} onFocus=${setLessonFocus} />`}
-      ${tab === "live" && html`<${MatchTrainer} hookRef=${matchHook} listening=${mode === "mic"} onStartMic=${startMic} onStopMic=${stop} onTarget=${setMatchTarget} onStatus=${setMatchStatus} sung=${live ? live.midi : null} live=${live} level=${level} error=${error} />`}
-      <div hidden=${tab !== "learn" || showPick}>${visited.learn && html`<${Learn} themeKey=${isDark ? "dark" : "light"} active=${tab === "learn"} orig=${vocalEff} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} focus=${focus} onGo=${goTab} inst=${music} sync=${msync.sync} />`}</div>
-      <div hidden=${tab !== "karaoke" || showPick}>${visited.karaoke && html`<${Karaoke} themeKey=${tab === "karaoke" ? "kara" : isDark ? "dark" : "light"} active=${tab === "karaoke"} orig=${vocalEff} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} onSendTake=${sendTake} onTakeReady=${setLastTake} onPractice=${practiceRange} ...${musicProps} />`}</div>
-      <div hidden=${tab !== "analyst" || showPick}>${visited.analyst && html`<${Analyst} themeKey=${isDark ? "dark" : "light"} active=${tab === "analyst"} orig=${vocalEff} onPickOrig=${pickVocal} lyrics=${vocalLyrics} updateLyrics=${updateVocalLyrics} incomingTake=${handoff} lastTake=${lastTake} onUseTake=${(t) => setHandoff({ ...t, id: Date.now() })} onPractice=${practiceRange} onGo=${goTab} ...${musicProps} />`}</div>
+      ${tab === "lessons" &&
+      html`<${Lessons}
+        active=${tab === "lessons"}
+        onGo=${goTab}
+        onFocus=${setLessonFocus}
+      />`}
+      ${tab === "live" &&
+      html`<${MatchTrainer}
+        hookRef=${matchHook}
+        listening=${mode === "mic"}
+        onStartMic=${startMic}
+        onStopMic=${stop}
+        onTarget=${setMatchTarget}
+        onStatus=${setMatchStatus}
+        sung=${live ? live.midi : null}
+        live=${live}
+        level=${level}
+        error=${error}
+      />`}
+      <div hidden=${tab !== "learn" || showPick}>
+        ${visited.learn &&
+        html`<${Learn}
+          themeKey=${isDark ? "dark" : "light"}
+          active=${tab === "learn"}
+          orig=${vocalEff}
+          onPickOrig=${pickVocal}
+          lyrics=${vocalLyrics}
+          updateLyrics=${updateVocalLyrics}
+          focus=${focus}
+          onGo=${goTab}
+          inst=${music}
+          sync=${msync.sync}
+        />`}
+      </div>
+      <div hidden=${tab !== "karaoke" || showPick}>
+        ${visited.karaoke &&
+        html`<${Karaoke}
+          themeKey=${tab === "karaoke" ? "kara" : isDark ? "dark" : "light"}
+          active=${tab === "karaoke"}
+          orig=${vocalEff}
+          onPickOrig=${pickVocal}
+          lyrics=${vocalLyrics}
+          updateLyrics=${updateVocalLyrics}
+          onSendTake=${sendTake}
+          onTakeReady=${setLastTake}
+          onPractice=${practiceRange}
+          ...${musicProps}
+        />`}
+      </div>
+      <div hidden=${tab !== "analyst" || showPick}>
+        ${visited.analyst &&
+        html`<${Analyst}
+          themeKey=${isDark ? "dark" : "light"}
+          active=${tab === "analyst"}
+          orig=${vocalEff}
+          onPickOrig=${pickVocal}
+          lyrics=${vocalLyrics}
+          updateLyrics=${updateVocalLyrics}
+          incomingTake=${handoff}
+          lastTake=${lastTake}
+          onUseTake=${(t) => setHandoff({ ...t, id: Date.now() })}
+          onPractice=${practiceRange}
+          onGo=${goTab}
+          ...${musicProps}
+        />`}
+      </div>
     </div>`;
   }
 
