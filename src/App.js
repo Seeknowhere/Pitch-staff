@@ -1,4 +1,3 @@
-// The whole app: tabs, the chosen song, and the live mic.
 import { useState, useCallback, useMemo, useEffect, useRef, useLayoutEffect } from "react";
 import { Icon } from "./components/Icon.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
@@ -20,7 +19,9 @@ import { Analyst } from "./tabs/analyze/Analyst.js";
 import { Karaoke } from "./tabs/karaoke/Karaoke.js";
 import { Lessons } from "./tabs/lessons/Lessons.js";
 import { Learn } from "./tabs/practice/Learn.js";
-import { MatchTrainer } from "./tabs/tuner/tuner.js";
+import { MatchTrainer } from "./tabs/tuner/MatchTrainer.js";
+
+// The whole app: tabs, the chosen song, and the live mic.
 
 const KEY = "pitchstaff.history.v1";
 

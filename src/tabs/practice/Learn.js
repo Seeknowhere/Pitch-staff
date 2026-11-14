@@ -1,4 +1,3 @@
-// The Practice tab.
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { Icon } from "../../components/Icon.js";
 import { MelodyMap } from "../../components/MelodyMap.js";
@@ -17,9 +16,11 @@ import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
 import { loadJSON, saveJSON, MATCH_KEY } from "../../lib/storage.js";
 import { loadTries, saveTries } from "../../lib/tries.js";
 import { pianoKeys, howMuch } from "../../lib/wording.js";
+import { SongFit } from "../tuner/SongFit.js";
 import { PlanCard, PlanFlow } from "./Plan.js";
 import { SongSheet } from "./SongSheet.js";
-import { SongFit } from "../tuner/tuner.js";
+
+// The Practice tab.
 
 const BEST_KEY = "pitchstaff.phrasebest.v1";
 
