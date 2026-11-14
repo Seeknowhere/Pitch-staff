@@ -12,3 +12,5 @@ export function saveJSON(key, v) {
     localStorage.setItem(key, JSON.stringify(v));
   } catch (e) {}
 }
+
+export const MATCH_KEY = "pitchstaff.match.v1";

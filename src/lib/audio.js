@@ -179,3 +179,90 @@ export async function saveBlob(blob, filename) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
+
+// piano-like tone: a few slightly stretched partials with a fast attack and a natural decay
+export function playPiano(ctx, midi, dur = 3.2) {
+  const when = ctx.currentTime + 0.02;
+  const f = SETTINGS.a4 * Math.pow(2, (midi - 69) / 12);
+  const out = ctx.createGain();
+  // brightness fades as the string rings, like a real piano
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.Q.value = 0.6;
+  lp.frequency.setValueAtTime(Math.min(12000, f * 12), when);
+  lp.frequency.exponentialRampToValueAtTime(
+    Math.min(5000, f * 3.5),
+    when + Math.min(1.2, dur * 0.55),
+  );
+  out.connect(lp);
+  lp.connect(ctx.destination);
+  // quick hammer strike, a fast first drop, a slow natural decay, then a soft release
+  out.gain.setValueAtTime(0.0001, when);
+  out.gain.linearRampToValueAtTime(0.5, when + 0.005);
+  out.gain.exponentialRampToValueAtTime(0.3, when + 0.15);
+  out.gain.exponentialRampToValueAtTime(0.13, when + dur * 0.78);
+  out.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  const amps = [1, 0.55, 0.34, 0.22, 0.14, 0.09, 0.055, 0.035];
+  const total = amps.reduce((s, v) => s + v, 0);
+  amps.forEach((amp, i) => {
+    const n = i + 1,
+      fn = f * n * Math.sqrt(1 + 0.00012 * n * n);
+    if (fn > 12000) return;
+    // two slightly detuned strings per note give the warm piano shimmer
+    [-0.0006, 0.0006].forEach((dt) => {
+      const o = ctx.createOscillator();
+      o.type = i === 0 ? "triangle" : "sine";
+      o.frequency.value = fn * (1 + dt);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime((amp / total) * 0.5, when);
+      g.gain.exponentialRampToValueAtTime(
+        (amp / total) * 0.5 * 0.08,
+        when + dur / (1 + i * 0.55),
+      );
+      o.connect(g);
+      g.connect(out);
+      o.start(when);
+      o.stop(when + dur + 0.05);
+    });
+  });
+  // a tiny felt "thump" from the hammer
+  try {
+    const len = Math.floor(ctx.sampleRate * 0.03),
+      nb = ctx.createBuffer(1, len, ctx.sampleRate),
+      d = nb.getChannelData(0);
+    for (let i = 0; i < len; i++)
+      d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const ns = ctx.createBufferSource();
+    ns.buffer = nb;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = Math.min(4000, f * 3);
+    bp.Q.value = 1.2;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.06;
+    ns.connect(bp);
+    bp.connect(ng);
+    ng.connect(ctx.destination);
+    ns.start(when);
+  } catch (e) {}
+}
+
+export function playChime(ctx) {
+  [88, 93].forEach((m, i) => {
+    const t = ctx.currentTime + 0.02 + i * 0.09;
+    const o = ctx.createOscillator(),
+      g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = SETTINGS.a4 * Math.pow(2, (m - 69) / 12);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start(t);
+    o.stop(t + 0.4);
+  });
+}
+
+
+/* ---------- vocal range ---------- */
