@@ -1,3 +1,4 @@
+// Your saved "Repeat after me" tries per line, and breath-timing feedback.
 import { wordsToNotes, looksTagalog } from "./lyrics.js";
 import { pretty, midiInfo } from "./music.js";
 import { loadJSON, saveJSON } from "./storage.js";

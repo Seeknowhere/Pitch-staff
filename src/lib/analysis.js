@@ -1,3 +1,4 @@
+// The singing analyst engine: pitch tracking, lining up your take with the song, and comparing them.
 import { syllableCount } from "./lyrics.js";
 import { median } from "./math.js";
 import { freqToMidi } from "./music.js";

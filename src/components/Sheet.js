@@ -1,3 +1,4 @@
+// A bottom sheet / pop-up panel.
 import { useEffect } from "react";
 import { html } from "../html.js";
 

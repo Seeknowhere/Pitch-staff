@@ -1,3 +1,4 @@
+// Custom hooks for lessons: listening to the mic, and timers.
 import { useState, useCallback, useRef, useEffect } from "react";
 import { detectPitch } from "../../lib/pitch.js";
 import { micGate, getMicStream, SETTINGS } from "../../lib/settings.js";

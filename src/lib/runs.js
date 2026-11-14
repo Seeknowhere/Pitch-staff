@@ -1,3 +1,4 @@
+// Saved whole-song runs (Analyze tab) and the history charts helpers.
 import { GRID } from "./analysis.js";
 import { scorePhrase } from "./phrases.js";
 import { loadJSON, saveJSON } from "./storage.js";

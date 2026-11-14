@@ -1,3 +1,4 @@
+// The piano-roll chart comparing your singing with the song.
 import { useRef, useMemo, useEffect } from "react";
 import { html } from "../../html.js";
 import { GRID } from "../../lib/analysis.js";

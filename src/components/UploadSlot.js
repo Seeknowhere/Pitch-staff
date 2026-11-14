@@ -1,3 +1,4 @@
+// A file upload box with a step number and hint.
 import { useRef } from "react";
 import { html } from "../html.js";
 import { fmt } from "../lib/music.js";

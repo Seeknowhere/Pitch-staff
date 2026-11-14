@@ -1,3 +1,4 @@
+// Vocal technique checks: scoops, held notes, steadiness.
 import { invTime, GRID } from "./analysis.js";
 import { median, mean } from "./math.js";
 import { howMuch } from "./wording.js";

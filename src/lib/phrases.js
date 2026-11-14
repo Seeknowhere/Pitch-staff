@@ -1,3 +1,4 @@
+// Splitting a song into phrases, finding its key, and scoring a sung phrase.
 import { warpMap, fixedMap, detectKeyAndOffset, GRID, foldOct } from "./analysis.js";
 import { median, mean } from "./math.js";
 

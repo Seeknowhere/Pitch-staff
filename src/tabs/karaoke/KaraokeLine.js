@@ -1,3 +1,4 @@
+// One line of karaoke lyrics that fills in as you sing.
 import { html } from "../../html.js";
 
 // a line's words with start times; spreads them by length when the lyrics file has no word timing

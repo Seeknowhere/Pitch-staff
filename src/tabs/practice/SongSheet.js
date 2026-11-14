@@ -1,5 +1,5 @@
-import React from "react";
-import { useMemo, useState, useRef, useEffect } from "react";
+// The song sheet: every lyric line with its notes.
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import { html } from "../../html.js";
 import { looksTagalog, wordsToNotes } from "../../lib/lyrics.js";
 import { fmt, pretty, midiInfo } from "../../lib/music.js";

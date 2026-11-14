@@ -1,3 +1,4 @@
+// The lesson exercises: hold, hiss, siren, pattern, posture check, breathing.
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Icon } from "../../components/Icon.js";
 import { Ring } from "../../components/Ring.js";

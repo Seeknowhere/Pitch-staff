@@ -1,3 +1,4 @@
+// Lessons data: courses, daily warm-up, streaks and lesson progress.
 import { loadRanges, comfyOf } from "../../lib/range.js";
 import { loadJSON } from "../../lib/storage.js";
 

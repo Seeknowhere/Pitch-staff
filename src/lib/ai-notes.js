@@ -1,3 +1,4 @@
+// High-accuracy note detection with Spotify Basic Pitch (runs on the device).
 import { GRID } from "./analysis.js";
 import { median } from "./math.js";
 import { estimateKey } from "./phrases.js";

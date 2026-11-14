@@ -1,3 +1,4 @@
+// Your saved vocal range (from the range test) and the comfortable part of it.
 import { loadJSON } from "./storage.js";
 
 export const RANGE_KEY = "pitchstaff.range.v1";

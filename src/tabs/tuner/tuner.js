@@ -1,5 +1,5 @@
-import React from "react";
-import { useState, useRef, useMemo, useEffect } from "react";
+// The Tuner tab (Match a note, My range, Song fit). Not split yet: your turn!
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import { Dial } from "../../components/Dial.js";
 import { Icon } from "../../components/Icon.js";
 import { Keyboard } from "../../components/Keyboard.js";

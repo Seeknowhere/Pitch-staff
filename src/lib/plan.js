@@ -1,3 +1,4 @@
+// Practice plan: drills built from your mistakes (the data side).
 import { median } from "./math.js";
 import { fmt, pretty, midiInfo } from "./music.js";
 import { loadJSON, saveJSON } from "./storage.js";

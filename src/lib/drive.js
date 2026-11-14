@@ -1,3 +1,4 @@
+// Sample songs from the shared Google Drive folder.
 export const DRIVE_FOLDER = "1wPR3_B8Yn-fawCBnQD8wFt5JiKZFa_vK"; // Tono > Songs (shared: anyone with the link can view)
 
 export const DRIVE_KEY = "AIzaSyBxpIBmELpY8JDFsYggMuZU_eROl4KYRrI"; // restricted to seeknowhere.github.io and the Drive API

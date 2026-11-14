@@ -1,3 +1,4 @@
+// "Pick a song" sheet: song, vocal, instrumental and lyrics files.
 import { useState, useRef, useEffect } from "react";
 import { Icon } from "../components/Icon.js";
 import { html } from "../html.js";

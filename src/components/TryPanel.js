@@ -1,5 +1,5 @@
-import React from "react";
-import { useState, useEffect } from "react";
+// The "your tries" panel: try charts and breath-timing view.
+import React, { useState, useEffect } from "react";
 import { html } from "../html.js";
 import { GRID } from "../lib/analysis.js";
 import { NAMES, pretty } from "../lib/music.js";

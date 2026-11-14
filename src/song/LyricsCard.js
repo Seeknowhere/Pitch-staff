@@ -1,3 +1,4 @@
+// Adding and syncing lyrics for the chosen song.
 import { useState, useRef, useEffect } from "react";
 import { html } from "../html.js";
 import { saveBlob } from "../lib/audio.js";

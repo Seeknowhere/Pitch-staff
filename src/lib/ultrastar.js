@@ -1,3 +1,4 @@
+// Reading and writing UltraStar karaoke files (.txt).
 import { GRID } from "./analysis.js";
 import { wordsToNotes, looksTagalog } from "./lyrics.js";
 import { median } from "./math.js";

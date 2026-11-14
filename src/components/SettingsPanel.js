@@ -1,3 +1,4 @@
+// App-wide settings: A4 tuning, mic sensitivity, mic choice, AI notes.
 import { useState, useEffect } from "react";
 import { html } from "../html.js";
 import { saveSettings, SETTINGS } from "../lib/settings.js";

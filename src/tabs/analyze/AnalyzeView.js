@@ -1,5 +1,5 @@
-import React from "react";
-import { useState, useEffect } from "react";
+// Analyze results: this run, progress charts and line-by-line feedback.
+import React, { useState, useEffect } from "react";
 import { BtTags } from "../../components/BtTags.js";
 import { Sheet } from "../../components/Sheet.js";
 import { TryChart, BreathTimingView } from "../../components/TryPanel.js";

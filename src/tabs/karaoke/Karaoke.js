@@ -1,5 +1,5 @@
-import React from "react";
-import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+// The Karaoke tab.
+import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { Icon } from "../../components/Icon.js";
 import { MelodyMap } from "../../components/MelodyMap.js";
 import { Sheet } from "../../components/Sheet.js";

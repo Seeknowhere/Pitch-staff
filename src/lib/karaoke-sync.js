@@ -1,3 +1,4 @@
+// Lining up the vocal and instrumental tracks for karaoke.
 import { GRID } from "./analysis.js";
 import { monoHalf } from "./audio.js";
 import { pearson, mean } from "./math.js";

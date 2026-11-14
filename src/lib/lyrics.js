@@ -1,3 +1,4 @@
+// Lyrics: reading .lrc files, saving them per song, matching words and syllables to notes.
 const LYR_KEY = "pitchstaff.lyrics.v1";
 
 export function parseLrc(text) {

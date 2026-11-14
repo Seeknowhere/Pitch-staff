@@ -1,3 +1,4 @@
+// Turns scores and pitch errors into plain-language feedback.
 export const howMuch = (c) => {
   const a = Math.abs(c);
   return a < 10

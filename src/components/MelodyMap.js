@@ -1,3 +1,4 @@
+// The scrolling melody chart used in Practice and Karaoke.
 import { useRef, useMemo, useEffect } from "react";
 import { html } from "../html.js";
 import { GRID } from "../lib/analysis.js";

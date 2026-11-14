@@ -1,3 +1,4 @@
+// The Analyze tab.
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { Icon } from "../../components/Icon.js";
 import { UploadSlot } from "../../components/UploadSlot.js";

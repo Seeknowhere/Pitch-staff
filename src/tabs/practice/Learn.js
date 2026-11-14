@@ -1,5 +1,5 @@
-import React from "react";
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+// The Practice tab.
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { Icon } from "../../components/Icon.js";
 import { MelodyMap } from "../../components/MelodyMap.js";
 import { Sheet } from "../../components/Sheet.js";
