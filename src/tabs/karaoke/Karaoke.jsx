@@ -1136,7 +1136,30 @@ export function Karaoke({
       countIn(() => startAt(0, true));
     } else startAt(t, false);
   };
-  if (battleCtl) battleCtl.setStarter(startPressed);
+  // battle: both phones end their countdown at the same shared moment (atLocal, this phone's clock)
+  const battleStart = (atLocal) => {
+    cancelCount();
+    stopAll();
+    setFinal(null);
+    ensureCtx();
+    const go = () => countIn(() => startAt(0, true));
+    const wait = atLocal - 2100 - Date.now(); // the 3-2-1 takes 2.1 s
+    if (wait > 0) countTimers.current.push(setTimeout(go, wait));
+    else go();
+  };
+  if (battleCtl)
+    battleCtl.setPlayer({
+      // called straight from the lobby's tap, so creating the audio context here unlocks sound
+      prepare: () => {
+        ensureCtx();
+        return runCheck();
+      },
+      setHpMode: (mode) => {
+        setHp(mode);
+        hpRef.current = mode;
+      },
+      start: battleStart,
+    });
   const checkThenSing = async () => {
     const st = await runCheck();
     if (st === "ok") {
