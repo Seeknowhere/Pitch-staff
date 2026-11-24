@@ -1,0 +1,119 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tono split test</title>
+<script src="coi-serviceworker.min.js"></script>
+<style>
+:root{--bg:#f7f6f3;--fg:#1d1d1f;--muted:#6b6b70;--line:#e2e0da;--card:#fff;--accent:#7c5cff}
+@media (prefers-color-scheme:dark){:root{--bg:#121318;--fg:#ececf1;--muted:#9a9aa6;--line:#2a2c35;--card:#1b1d24;--accent:#9d86ff}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:560px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:24px;margin:0 0 4px}p{margin:6px 0}.muted{color:var(--muted);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:16px}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;padding:10px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:10px}.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+audio{width:100%;margin-top:6px}.big{font-size:22px;font-weight:700}
+</style></head><body><main>
+<h1>Split test</h1>
+<p class="muted">Tests whether Tono can split a normal song into vocal and music on your device. Nothing is uploaded.</p>
+<div class="card">
+  <p><b>1.</b> Pick a normal song (with singing and music).</p>
+  <input type="file" id="file" accept="audio/*">
+  <p class="muted" id="dev"></p>
+</div>
+<div class="card">
+  <p><b>2.</b> Run the test.</p>
+  <div class="row"><button class="primary" id="quick" disabled>Quick test (30 s)</button><button id="full" disabled>Whole song</button><button id="stop" hidden>Stop</button></div>
+  <label class="muted" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="cpu"> Use CPU only (try this if the graphics chip way gets stuck)</label>
+  <p class="big" id="clock" style="margin-top:10px">0:00</p>
+  <p class="muted" id="status">The first run downloads the AI model once (about 50 MB).</p>
+  <div class="bar"><i id="bar"></i></div>
+</div>
+<div class="card" id="result" hidden>
+  <p class="big" id="speed"></p><p class="muted" id="est"></p>
+  <p><b>Vocal</b></p><audio id="av" controls></audio>
+  <p><b>Music</b></p><audio id="ai" controls></audio>
+</div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let buf = null, worker = null, loadedFor = null, modelBuf = null, timer = 0, t0 = 0, backend = "";
+let hasGPU = false;
+(async () => {
+  try { hasGPU = !!(navigator.gpu && (await navigator.gpu.requestAdapter())); } catch (e) {}
+  const cores = navigator.hardwareConcurrency || "?";
+  $("dev").textContent = (hasGPU ? "Graphics chip (WebGPU) available: the fast way." : "No graphics chip access here: it will use the CPU.") +
+    (self.crossOriginIsolated ? " CPU can use several cores (" + cores + ")." : " CPU limited to 1 core.");
+})();
+const fmt = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+const startClock = () => { t0 = performance.now(); clearInterval(timer); timer = setInterval(() => ($("clock").textContent = fmt((performance.now() - t0) / 1000)), 250); };
+const stopClock = () => clearInterval(timer);
+const busy = (on) => { $("quick").disabled = $("full").disabled = on || !buf; $("stop").hidden = !on; $("cpu").disabled = on; };
+$("file").onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  $("status").textContent = "Reading the song…";
+  const ctx = new AudioContext({ sampleRate: 44100 });
+  buf = await ctx.decodeAudioData(await f.arrayBuffer()); ctx.close();
+  $("status").textContent = "Ready: " + Math.round(buf.duration) + " s song."; busy(false);
+};
+async function getModel() {
+  if (modelBuf) return modelBuf;
+  const res = await fetch("../sep/UVR_MDXNET_KARA_2.onnx"), total = +res.headers.get("content-length") || 52786726;
+  const rd = res.body.getReader(), parts = []; let got = 0;
+  for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length;
+    $("status").textContent = "Downloading the AI model (once): " + Math.round(got / 1e6) + " of " + Math.round(total / 1e6) + " MB";
+    $("bar").style.width = Math.round((100 * got) / total) + "%"; }
+  const out = new Uint8Array(got); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
+  return (modelBuf = out.buffer);
+}
+function call(msg, transfer) {
+  return new Promise((resolve, reject) => {
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === "progress") { $("bar").style.width = Math.round(m.p * 100) + "%"; const el = (performance.now() - t0) / 1000;
+        $("status").textContent = "Splitting on the " + backend + "… " + Math.round(m.p * 100) + "% · about " + fmt(Math.max(0, el / m.p - el)) + " left"; }
+      else if (m.type === "log") console.warn(m.text);
+      else if (m.type === "error") reject(new Error(m.text));
+      else resolve(m);
+    };
+    worker.postMessage(msg, transfer || []);
+  });
+}
+function wav(chs, sr) {
+  const n = chs[0].length, b = new ArrayBuffer(44 + n * 4), v = new DataView(b);
+  const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 4, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 4, true);
+  for (let i = 0; i < n; i++) for (let c = 0; c < 2; c++) v.setInt16(44 + i * 4 + c * 2, Math.max(-1, Math.min(1, chs[c][i])) * 32767, true);
+  return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
+}
+async function run(secs) {
+  busy(true); $("result").hidden = true; startClock();
+  try {
+    const cpuOnly = $("cpu").checked || !hasGPU;
+    if (!worker || loadedFor !== cpuOnly) {
+      if (worker) worker.terminate();
+      const model = await getModel();
+      worker = new Worker("../sep/sep-worker.js");
+      $("status").textContent = "Starting the AI model…"; $("bar").style.width = "0%";
+      const r = await call({ type: "load", model: model.slice(0), cpuOnly });
+      backend = r.backend === "webgpu" ? "graphics chip" : "CPU (" + r.threads + " core" + (r.threads > 1 ? "s" : "") + ")";
+      loadedFor = cpuOnly;
+    }
+    const start = buf.duration > 60 && secs ? 30 : 0;
+    const a = Math.round(start * 44100), len = secs ? Math.min(buf.length - a, secs * 44100) : buf.length;
+    const L = buf.getChannelData(0).slice(a, a + len), R = (buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0)).slice(a, a + len);
+    startClock(); $("status").textContent = "Splitting on the " + backend + "…"; $("bar").style.width = "0%";
+    const r = await call({ type: "run", L, R }, [L.buffer, R.buffer]);
+    const dt = (performance.now() - t0) / 1000, audioSecs = len / 44100;
+    $("speed").textContent = audioSecs.toFixed(0) + " s of song split in " + dt.toFixed(1) + " s";
+    $("est").textContent = "A 4-minute song would take about " + Math.max(0.1, ((dt / audioSecs) * 240) / 60).toFixed(1) + " minutes on this device (" + backend + ").";
+    $("av").src = wav([r.bufs[0], r.bufs[1]], 44100); $("ai").src = wav([r.bufs[2], r.bufs[3]], 44100);
+    $("result").hidden = false; $("status").textContent = "Done.";
+  } catch (err) { $("status").textContent = "Something went wrong: " + err.message; console.error(err); }
+  stopClock(); busy(false);
+}
+$("quick").onclick = () => run(30);
+$("full").onclick = () => run(0);
+$("stop").onclick = () => { if (worker) worker.terminate(); worker = null; loadedFor = null; stopClock(); busy(false); $("status").textContent = "Stopped."; $("bar").style.width = "0%"; };
+</script></body></html>
