@@ -148,8 +148,8 @@ export function BattleResults({
               onClick={onPlayHighlights}
             >
               {highlights.waiting
-                ? "Getting " + rivalName + "'s highlights…"
-                : "▶ Play highlights"}
+                ? "Getting " + rivalName + "'s voice…"
+                : "▶ Play the battle remix"}
             </button>
           )}
         </div>

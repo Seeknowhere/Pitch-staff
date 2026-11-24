@@ -1,59 +1,47 @@
-// Picks a battle's highlight moments from both players' line scores. Both phones run this on
-// the same numbers (just swapped), so they agree on which lines to clip without asking each other.
-//   myBest / theirBest: each player's highest-scoring line
-//   closest: the line won by the smallest margin (a tie if every shared line was tied)
-//   win: { line, who } the line where the eventual winner took the lead for good
-//        (who 1 = me, -1 = them); null if lines won were tied
-export function pickHighlights(mine, theirs) {
-  const best = (o) => {
-    let k = null;
-    Object.keys(o)
-      .map(Number)
-      .sort((a, b) => a - b)
-      .forEach((i) => {
-        if (k == null || o[i] > o[k]) k = i;
-      });
-    return k;
-  };
+// The battle remix: one continuous stretch of the song where each line is sung by whoever won
+// it. Both phones run this on the same numbers (just swapped), so they agree on the stretch
+// without asking each other.
+
+export const REMIX_MAX = 35; // seconds of song, at most
+const PAD = 0.6; // lead-in before the first line and tail after the last
+
+// mine/theirs: { lineIndex: score }; lines: [{ start, end, text }] in song time
+// → { t0, t1, segs: [{ line, who, from, to, text }] } (who: 1 me, -1 them, 0 tie), or null
+export function pickRemix(mine, theirs, lines) {
   const both = Object.keys(mine)
     .map(Number)
-    .filter((i) => theirs[i] != null)
+    .filter((i) => theirs[i] != null && lines[i])
     .sort((a, b) => a - b);
-  let closest = null;
-  both.forEach((i) => {
-    const d = Math.abs(mine[i] - theirs[i]);
-    if (d === 0) return;
-    if (closest == null || d < Math.abs(mine[closest] - theirs[closest]))
-      closest = i;
-  });
-  if (closest == null && both.length) closest = both[0];
-  // running lines-won tally; remember when the final leader last moved ahead
-  let y = 0,
-    o = 0,
-    since = null,
-    lead = 0;
-  both.forEach((i) => {
-    if (mine[i] > theirs[i]) y++;
-    else if (mine[i] < theirs[i]) o++;
-    const now = Math.sign(y - o);
-    if (now !== lead) {
-      lead = now;
-      since = now ? i : null;
+  if (!both.length) return null;
+  const who = (i) => Math.sign(mine[i] - theirs[i]);
+  // best stretch: the most back-and-forth (winner changes), then the closest scores, then earliest
+  let best = null;
+  for (let a = 0; a < both.length; a++) {
+    let switches = 0,
+      gap = 0,
+      e = a;
+    for (let b = a; b < both.length; b++) {
+      if (lines[both[b]].end - lines[both[a]].start > REMIX_MAX) break;
+      if (b > a && both[b] !== both[b - 1] + 1) break; // keep it to consecutive lines
+      if (b > a && who(both[b]) !== who(both[b - 1])) switches++;
+      gap += Math.abs(mine[both[b]] - theirs[both[b]]);
+      e = b;
     }
-  });
-  const win = lead && since != null ? { line: since, who: lead } : null;
-  return { myBest: best(mine), theirBest: best(theirs), closest, win };
+    const n = e - a + 1,
+      score = switches * 1000 + n * 10 - gap / n;
+    if (!best || score > best.score) best = { a, e, score };
+  }
+  const idx = both.slice(best.a, best.e + 1);
+  const t0 = Math.max(0, lines[idx[0]].start - PAD),
+    t1 = lines[idx[idx.length - 1]].end + PAD;
+  // each line owns the time up to halfway to the next one, so the voices hand over between lines
+  const segs = idx.map((i, k) => ({
+    line: i,
+    who: who(i),
+    text: lines[i].text || "",
+    from: k === 0 ? t0 : (lines[idx[k - 1]].end + lines[i].start) / 2,
+    to:
+      k === idx.length - 1 ? t1 : (lines[i].end + lines[idx[k + 1]].start) / 2,
+  }));
+  return { t0, t1, segs };
 }
-
-// which of my lines the other phone needs my voice for (mirrors what it plays)
-export function linesToSend(h) {
-  const s = new Set();
-  if (h.myBest != null) s.add(h.myBest);
-  if (h.closest != null) s.add(h.closest);
-  if (h.win && h.win.who > 0) s.add(h.win.line);
-  return [...s];
-}
-
-// a line's clip, with a little lead-in and tail
-export const CLIP_PAD = 0.4;
-export const CLIP_MAX = 12;

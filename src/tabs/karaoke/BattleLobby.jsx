@@ -189,11 +189,11 @@ export function BattleLobby({
           onChange={(e) => ctl.setShareHL(e.target.checked)}
         />
         <span className="flex flex-col">
-          <span className="font-semibold">🎧 Share my highlights</span>
+          <span className="font-semibold">🎧 Battle remix</span>
           <span className="text-xs muted">
-            Your best moments are recorded and played on the results. Only{" "}
-            {peer ? peer.name : "your friend"} hears them, and they're never
-            saved.
+            Your voice is recorded so the results can play a part of the song
+            with each line sung by whoever won it. Only{" "}
+            {peer ? peer.name : "your friend"} hears it, and it's never saved.
           </span>
         </span>
       </label>

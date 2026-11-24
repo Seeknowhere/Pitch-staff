@@ -22,12 +22,7 @@ import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
 import { loadJSON, saveJSON } from "../../lib/storage.js";
 import { KaraokeLine } from "./KaraokeLine.jsx";
 import { BattleResults } from "./BattleResults.jsx";
-import {
-  CLIP_MAX,
-  CLIP_PAD,
-  linesToSend,
-  pickHighlights,
-} from "./battleHighlights.js";
+import { pickRemix } from "./battleHighlights.js";
 
 const KARA_BEST_KEY = "pitchstaff.karabest.v1";
 
@@ -174,25 +169,25 @@ export function Karaoke({
     setPop({ id: Date.now() + Math.random(), kind, text });
   }, [lineScores, battle && battle.lines]);
   const [takeBuf, setTakeBuf] = useState(null);
-  // ---- battle highlights: clips of both singers' best moments, played back over the music ----
-  const hl = useRef({ sentRound: -1, stop: null, readyAt: 0 });
-  const [hlNow, setHlNow] = useState(null); // label of the highlight playing, or null
+  // ---- battle remix: one stretch of the song, each line sung by whoever won it ----
+  const hl = useRef({ sentRound: -1, stop: null });
+  const [hlNow, setHlNow] = useState(null); // who's singing in the remix right now, or null
   const [hlWaitOver, setHlWaitOver] = useState(false);
-  // your voice for line i, lined up with song time (latency taken out), from the battle take
-  const myClip = (tb, i, lat) => {
-    const ln = lines[i];
-    if (!tb || !ln) return null;
+  // your voice from song time t0 to t1, lined up with the song (headphone delay taken out)
+  const myVoice = (tb, t0, t1, lat) => {
+    if (!tb) return null;
     const sr = tb.sampleRate,
-      a = Math.max(0, Math.round((ln.start - CLIP_PAD + lat) * sr)),
-      b = Math.min(
-        tb.length,
-        Math.round(
-          (Math.min(ln.end, ln.start + CLIP_MAX) + CLIP_PAD + lat) * sr,
-        ),
-      );
-    return b - a > sr * 0.5
-      ? { sr, data: tb.getChannelData(0).slice(a, b), t0: ln.start - CLIP_PAD }
-      : null;
+      a = Math.max(0, Math.round((t0 + lat) * sr)),
+      b = Math.min(tb.length, Math.round((t1 + lat) * sr));
+    if (b - a < sr * 0.5) return null;
+    // a take that started late or ended early: pad with silence so it still lines up
+    const out = new Float32Array(Math.round((t1 - t0) * sr)),
+      off = Math.max(0, a - Math.round((t0 + lat) * sr));
+    out.set(
+      tb.getChannelData(0).subarray(a, Math.min(b, a + out.length - off)),
+      off,
+    );
+    return { sr, data: out };
   };
   const [hearing, setHearing] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
@@ -913,15 +908,16 @@ export function Karaoke({
     return best > 40 ? bestL * GRID : 0;
   };
   // when both songs are over (and the last line scores have had a moment to arrive), send your
-  // clips for the lines the other phone will play
+  // voice for the remix stretch to the other phone
   const hlLatest = useRef({});
   hlLatest.current = {
     lineScores,
     battle,
     takeBuf,
     estimateLatency,
-    myClip,
+    myVoice,
     battleCtl,
+    lines,
   };
   const bothDone = !!(battle && battle.started && final && battle.peerFinal);
   useEffect(() => {
@@ -940,136 +936,129 @@ export function Karaoke({
       )
         return;
       hl.current.sentRound = round;
-      const tb = L.takeBuf;
-      if (!tb) return;
-      const lat = L.estimateLatency();
-      const h = pickHighlights(L.lineScores, L.battle.lines);
-      linesToSend(h).forEach((i) => {
-        const c = L.myClip(tb, i, lat);
-        if (c) L.battleCtl.sendClip(i, c.sr, c.data);
-      });
+      const rx = pickRemix(L.lineScores, L.battle.lines, L.lines);
+      const v = rx && L.myVoice(L.takeBuf, rx.t0, rx.t1, L.estimateLatency());
+      if (v) L.battleCtl.sendClip("remix", v.sr, v.data);
     }, 1500);
-    // don't wait forever for the other phone's clips
+    // don't wait forever for the other phone's voice
     const t2 = setTimeout(() => setHlWaitOver(true), 15000);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
     };
   }, [bothDone]);
-  // the reel: what to play, in order, with whose voice
-  const reel = (() => {
-    if (!bothDone) return null;
-    const mine = lineScores,
-      theirs = battle.lines,
-      their = battle.theirClips || {};
-    const h = pickHighlights(mine, theirs);
-    const me = (i) => (i == null || !takeBuf ? null : { mine: true, line: i });
-    const them = (i) =>
-      i == null || !their[i] ? null : { mine: false, line: i };
-    const myName = ((battleCtl && battleCtl.myName) || "").trim() || "You";
-    const items = [
-      {
-        label: "🌟 " + myName + "'s best line · " + mine[h.myBest] + "%",
-        segs: [me(h.myBest)],
-      },
-      {
-        label:
-          "🌟 " + rivalName + "'s best line · " + theirs[h.theirBest] + "%",
-        segs: [them(h.theirBest)],
-      },
-      h.closest != null && {
-        label:
-          "⚔️ Closest line · " +
-          mine[h.closest] +
-          "% vs " +
-          theirs[h.closest] +
-          "%",
-        segs: [me(h.closest), them(h.closest)],
-      },
-      h.win && {
-        label: "🏆 The winning line · " + (h.win.who > 0 ? myName : rivalName),
-        segs: [h.win.who > 0 ? me(h.win.line) : them(h.win.line)],
-      },
-    ]
-      .filter(Boolean)
-      .map((it) => ({ ...it, segs: it.segs.filter(Boolean) }))
-      .filter((it) => it.segs.length);
-    // the clips the other phone should be sending us
-    const peerShares = !!(battle.peer && battle.peer.hl);
-    const expect = peerShares
-      ? linesToSend(pickHighlights(theirs, mine)).filter((i) => !their[i])
-          .length
-      : 0;
-    return { items, waiting: expect > 0 && !hlWaitOver };
-  })();
+  const remix = bothDone ? pickRemix(lineScores, battle.lines, lines) : null;
+  const theirRemix =
+    battle && battle.theirClips ? battle.theirClips.remix : null;
+  const reel =
+    remix && (takeBuf || theirRemix)
+      ? {
+          items: [remix],
+          waiting: !!(
+            battle.peer &&
+            battle.peer.hl &&
+            !theirRemix &&
+            !hlWaitOver
+          ),
+        }
+      : null;
   const stopHighlights = () => {
     if (hl.current.stop) hl.current.stop();
     hl.current.stop = null;
     setHlNow(null);
   };
-  // plays each highlight over the music at that spot, one after another
+  // the remix: the music plays straight through, and the two voices hand over line by line
   const playHighlights = () => {
-    if (!reel || !reel.items.length) return;
+    if (!remix) return;
     stopHighlights();
     killSources();
     setPlaying(false);
-    const ctx = ensureCtx(),
-      lat = estimateLatency(),
-      their = battle.theirClips || {};
+    const ctx = ensureCtx();
+    const mine = myVoice(takeBuf, remix.t0, remix.t1, estimateLatency());
+    let theirs = null;
+    if (theirRemix) {
+      const f = new Float32Array(theirRemix.pcm.length);
+      for (let i = 0; i < f.length; i++) f[i] = theirRemix.pcm[i] / 0x8000;
+      theirs = { sr: theirRemix.sr, data: f };
+    }
+    if (!mine && !theirs) return;
+    const dur = remix.t1 - remix.t0,
+      at = ctx.currentTime + 0.15,
+      FADE = 0.08;
     const nodes = [],
       timers = [];
     const out = ctx.createDynamicsCompressor();
     out.connect(ctx.destination);
-    let at = ctx.currentTime + 0.15;
-    reel.items.forEach((it) => {
-      const startItem = at;
-      it.segs.forEach((sg) => {
-        let clip = null;
-        if (sg.mine) clip = myClip(takeBuf, sg.line, lat);
-        else if (their[sg.line]) {
-          const c = their[sg.line],
-            f = new Float32Array(c.pcm.length);
-          for (let i = 0; i < f.length; i++) f[i] = c.pcm[i] / 0x8000;
-          const ln = lines[sg.line];
-          clip = { sr: c.sr, data: f, t0: ln ? ln.start - CLIP_PAD : 0 };
-        }
-        if (!clip) return;
-        const len = clip.data.length / clip.sr;
-        if (inst && inst.buffer) {
-          const m = ctx.createBufferSource(),
-            mg = ctx.createGain();
-          m.buffer = inst.buffer;
-          mg.gain.value = mixVol.m;
-          m.connect(mg);
-          mg.connect(out);
-          m.start(at, Math.max(0, clip.t0 + syncRef.current), len);
-          nodes.push(m);
-        }
-        const vb = ctx.createBuffer(1, clip.data.length, clip.sr);
-        vb.getChannelData(0).set(clip.data);
-        const v = ctx.createBufferSource(),
-          hp = ctx.createBiquadFilter(),
-          vg = ctx.createGain();
-        v.buffer = vb;
-        hp.type = "highpass";
-        hp.frequency.value = 90;
-        vg.gain.value =
-          Math.min(8, 0.5 / Math.max(1e-3, peakOf(vb))) * mixVol.v;
-        v.connect(hp);
-        hp.connect(vg);
-        vg.connect(out);
-        v.start(at);
-        nodes.push(v);
-        at += len + 0.5;
+    if (inst && inst.buffer) {
+      const m = ctx.createBufferSource(),
+        mg = ctx.createGain();
+      m.buffer = inst.buffer;
+      m.connect(mg);
+      mg.connect(out);
+      // fade the music in and out at the ends
+      mg.gain.setValueAtTime(0, at);
+      mg.gain.linearRampToValueAtTime(mixVol.m, at + 0.4);
+      mg.gain.setValueAtTime(mixVol.m, at + dur - 0.8);
+      mg.gain.linearRampToValueAtTime(0, at + dur);
+      m.start(at, Math.max(0, remix.t0 + syncRef.current), dur);
+      nodes.push(m);
+    }
+    // one voice track per singer; each is turned up for the lines that singer won
+    // (both for a tied line), and only the voice we have is used if the other's is missing
+    const voice = (clip, side) => {
+      if (!clip) return;
+      const vb = ctx.createBuffer(1, clip.data.length, clip.sr);
+      vb.getChannelData(0).set(clip.data);
+      const v = ctx.createBufferSource(),
+        hp = ctx.createBiquadFilter(),
+        vg = ctx.createGain();
+      v.buffer = vb;
+      hp.type = "highpass";
+      hp.frequency.value = 90;
+      const level = Math.min(8, 0.5 / Math.max(1e-3, peakOf(vb))) * mixVol.v;
+      let prev = 0;
+      vg.gain.setValueAtTime(0, at);
+      remix.segs.forEach((sg) => {
+        const on = !mine || !theirs ? true : sg.who === side || sg.who === 0;
+        const g = on ? level * (sg.who === 0 && mine && theirs ? 0.75 : 1) : 0;
+        const t = at + (sg.from - remix.t0);
+        vg.gain.setValueAtTime(prev, t);
+        vg.gain.linearRampToValueAtTime(g, t + FADE);
+        prev = g;
       });
-      const delay = Math.max(0, (startItem - ctx.currentTime) * 1000);
-      timers.push(setTimeout(() => setHlNow(it.label), delay));
-      at += 0.4;
+      vg.gain.setValueAtTime(prev, at + dur - 0.6);
+      vg.gain.linearRampToValueAtTime(0, at + dur);
+      v.connect(hp);
+      hp.connect(vg);
+      vg.connect(out);
+      v.start(at);
+      nodes.push(v);
+    };
+    voice(mine, 1);
+    voice(theirs, -1);
+    const myName = ((battleCtl && battleCtl.myName) || "").trim() || "You";
+    remix.segs.forEach((sg) => {
+      const who = !mine
+        ? rivalName
+        : !theirs
+          ? myName
+          : sg.who > 0
+            ? myName
+            : sg.who < 0
+              ? rivalName
+              : "Both of you";
+      const label = "🎤 " + who + (sg.text ? " · “" + sg.text + "”" : "");
+      timers.push(
+        setTimeout(
+          () => setHlNow(label),
+          Math.max(0, (at + (sg.from - remix.t0) - ctx.currentTime) * 1000),
+        ),
+      );
     });
     timers.push(
       setTimeout(
         () => stopHighlights(),
-        Math.max(0, (at - ctx.currentTime) * 1000),
+        Math.max(0, (at + dur - ctx.currentTime) * 1000 + 200),
       ),
     );
     hl.current.stop = () => {
