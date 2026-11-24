@@ -3,19 +3,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { joinRoom, makeCode } from "../../lib/battleNet.js";
 import { loadJSON, saveJSON } from "../../lib/storage.js";
-import { CHUNK, CHUNK_GAP_MS, chunkCount, fromB64, packFile, toB64 } from "../../lib/songShare.js";
+import {
+  CHUNK,
+  CHUNK_GAP_MS,
+  chunkCount,
+  fromB64,
+  packFile,
+  toB64,
+} from "../../lib/songShare.js";
 
 // state: { code, host, status, peer: { name, host, song, dur, ready } | null, lastName,
 //          started, round, synced, lines: { lineIndex: friend's score },
 //          paused: { by: "me" | "peer", pos } | null,
 //          stopReq: { by: "me" | "peer", pos, until } | null,
 //          peerFinal: { bestCombo } | null, again: { me, peer } | null,
-//          sending: { pct } | null (sharing your song), recv: { pct, done, error } | null } | null
+//          sending: { pct } | null (sharing your song), recv: { pct, done, error } | null,
+//          theirClips: { lineIndex: { sr, pcm: Int16Array } } (their voice for the highlights) } | null
 export function useBattle() {
   const [state, setState] = useState(null);
   const [myName, setMyName] = useState(() => loadJSON("tono.battle.name", ""));
+  // share my voice for the end-of-battle highlights (only sent to the other player, never saved)
+  const [shareHL, setShareHLState] = useState(
+    () => loadJSON("tono.battle.highlights", true) !== false,
+  );
   const net = useRef(null);
-  const me = useRef({ name: "", host: false, song: "", dur: 0, ready: false });
+  const me = useRef({
+    name: "",
+    host: false,
+    song: "",
+    dur: 0,
+    ready: false,
+    hl: true,
+  });
   // Karaoke registers its player here: prepare() (headphone check + unlock sound, from a tap),
   // setHpMode(mode) and start(atMs), so either phone can start the song at a shared moment
   const player = useRef(null);
@@ -29,6 +48,7 @@ export function useBattle() {
   const onReceived = useRef(null);
   const recv = useRef(null);
   const sendJob = useRef(0);
+  const blobs = useRef({}); // small files arriving in chunks (highlight clips): id -> { meta, parts, left }
   useEffect(() => () => net.current && net.current.leave(), []);
   // times sent between phones are on the host's clock
   const toHost = (local) => local + offset.current;
@@ -74,7 +94,19 @@ export function useBattle() {
   const doLobby = () => {
     me.current = { ...me.current, ready: false };
     announce();
-    setState((b) => b && { ...b, started: false, paused: null, stopReq: null, peerFinal: null, again: null, lines: {} });
+    setState(
+      (b) =>
+        b && {
+          ...b,
+          started: false,
+          paused: null,
+          stopReq: null,
+          peerFinal: null,
+          again: null,
+          lines: {},
+          theirClips: {},
+        },
+    );
   };
   // ending needs the other singer's OK; no answer in 20 s ends it anyway
   const STOP_WAIT = 20000;
@@ -96,7 +128,8 @@ export function useBattle() {
     setState((b) => b && { ...b, sending: { pct: 0 } });
     try {
       const files = [{ role: "vocal", ...(await packFile(src.vocal)) }];
-      if (src.music) files.push({ role: "music", ...(await packFile(src.music)) });
+      if (src.music)
+        files.push({ role: "music", ...(await packFile(src.music)) });
       const total = files.reduce((a, f) => a + f.bytes.length, 0);
       let meta = {
         type: "songMeta",
@@ -105,20 +138,36 @@ export function useBattle() {
         notes: src.notes,
         lyrics: src.lyrics,
         sync: src.sync,
-        files: files.map((f) => ({ role: f.role, name: f.name, type: f.type, size: f.bytes.length, n: chunkCount(f.bytes.length) })),
+        files: files.map((f) => ({
+          role: f.role,
+          name: f.name,
+          type: f.type,
+          size: f.bytes.length,
+          n: chunkCount(f.bytes.length),
+        })),
       };
       // keep the first message under the size limit: the other phone can work these out itself
       if (JSON.stringify(meta).length > 200000) meta = { ...meta, notes: null };
-      if (JSON.stringify(meta).length > 200000) meta = { ...meta, lyrics: null };
+      if (JSON.stringify(meta).length > 200000)
+        meta = { ...meta, lyrics: null };
       await send(meta);
       let sent = 0;
       for (const f of files)
         for (let i = 0; i < chunkCount(f.bytes.length); i++) {
           if (sendJob.current !== job || !net.current) return;
           const part = f.bytes.subarray(i * CHUNK, (i + 1) * CHUNK);
-          await send({ type: "chunk", id: job, role: f.role, i, d: toB64(part) });
+          await send({
+            type: "chunk",
+            id: job,
+            role: f.role,
+            i,
+            d: toB64(part),
+          });
           sent += part.length;
-          setState((b) => b && { ...b, sending: { pct: Math.round((100 * sent) / total) } });
+          setState(
+            (b) =>
+              b && { ...b, sending: { pct: Math.round((100 * sent) / total) } },
+          );
           await new Promise((r) => setTimeout(r, CHUNK_GAP_MS));
         }
     } catch (e) {
@@ -147,7 +196,16 @@ export function useBattle() {
     r.got += u.length;
     r.left--;
     const done = r.left === 0;
-    setState((b) => b && { ...b, recv: { pct: Math.min(100, Math.round((100 * r.got) / r.total)), done } });
+    setState(
+      (b) =>
+        b && {
+          ...b,
+          recv: {
+            pct: Math.min(100, Math.round((100 * r.got) / r.total)),
+            done,
+          },
+        },
+    );
     if (!done) return;
     const file = (role) => {
       const f = r.meta.files.find((x) => x.role === role);
@@ -155,13 +213,93 @@ export function useBattle() {
     };
     recv.current = null;
     const { title, notes, lyrics, sync } = r.meta;
-    if (onReceived.current) onReceived.current({ title, vocal: file("vocal"), music: file("music"), notes, lyrics, sync });
+    if (onReceived.current)
+      onReceived.current({
+        title,
+        vocal: file("vocal"),
+        music: file("music"),
+        notes,
+        lyrics,
+        sync,
+      });
+  };
+
+  // highlight clips: 16-bit mono PCM of your voice for one line, in chunks like a shared song
+  const sendClip = async (line, sr, samples) => {
+    const pcm = new Int16Array(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+      const v = Math.max(-1, Math.min(1, samples[i]));
+      pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+    }
+    const bytes = new Uint8Array(pcm.buffer),
+      n = chunkCount(bytes.length),
+      id = Math.random().toString(36).slice(2);
+    await send({ type: "blobMeta", id, kind: "clip", meta: { line, sr }, n });
+    for (let i = 0; i < n; i++) {
+      if (!net.current) return;
+      await send({
+        type: "blobChunk",
+        id,
+        i,
+        d: toB64(bytes.subarray(i * CHUNK, (i + 1) * CHUNK)),
+      });
+      await new Promise((r) => setTimeout(r, CHUNK_GAP_MS));
+    }
+  };
+  const gotBlobMeta = (m) => {
+    blobs.current[m.id] = {
+      kind: m.kind,
+      meta: m.meta,
+      parts: new Array(m.n),
+      left: m.n,
+    };
+  };
+  const gotBlobChunk = (m) => {
+    const b = blobs.current[m.id];
+    if (!b || b.parts[m.i]) return;
+    b.parts[m.i] = fromB64(m.d);
+    if (--b.left) return;
+    delete blobs.current[m.id];
+    const len = b.parts.reduce((a, p) => a + p.length, 0),
+      all = new Uint8Array(len);
+    let o = 0;
+    b.parts.forEach((p) => {
+      all.set(p, o);
+      o += p.length;
+    });
+    if (b.kind === "clip") {
+      const pcm = new Int16Array(all.buffer, 0, len >> 1);
+      setState(
+        (s) =>
+          s && {
+            ...s,
+            theirClips: {
+              ...(s.theirClips || {}),
+              [b.meta.line]: { sr: b.meta.sr, pcm },
+            },
+          },
+      );
+    }
   };
 
   // atLocal: the moment (this phone's clock, ms) the countdown should end and the music start
   const begin = useCallback((atLocal) => {
     again.current = { me: false, peer: false };
-    setState((b) => b && { ...b, started: true, paused: null, stopReq: null, peerFinal: null, again: null, lines: {}, round: (b.round || 0) + 1 });
+    blobs.current = {};
+    setState(
+      (b) =>
+        b && {
+          ...b,
+          started: true,
+          paused: null,
+          stopReq: null,
+          peerFinal: null,
+          again: null,
+          lines: {},
+          theirClips: {},
+          round: (b.round || 0) + 1,
+        },
+    );
     if (player.current) player.current.start(atLocal);
   }, []);
 
@@ -171,17 +309,30 @@ export function useBattle() {
     if (net.current) net.current.leave();
     const name = myName.trim() || "Singer";
     saveJSON("tono.battle.name", name);
-    me.current = { ...me.current, name, host, ready: false };
+    me.current = { ...me.current, name, host, ready: false, hl: shareHL };
     offset.current = 0;
     bestRtt.current = Infinity;
-    setState({ code, host, status: "connecting", peer: null, lastName: "", started: false, round: 0, lines: {}, synced: host });
+    setState({
+      code,
+      host,
+      status: "connecting",
+      peer: null,
+      lastName: "",
+      started: false,
+      round: 0,
+      lines: {},
+      synced: host,
+    });
     net.current = joinRoom(code, me.current, {
       onStatus: (status) => setState((b) => b && { ...b, status }),
       onPeer: (peer) =>
-        setState((b) => b && { ...b, peer, lastName: peer ? peer.name : b.lastName }),
+        setState(
+          (b) => b && { ...b, peer, lastName: peer ? peer.name : b.lastName },
+        ),
       onMessage: (m) => {
         if (m.type === "ping") {
-          if (host && net.current) net.current.send({ type: "pong", t0: m.t0, t1: Date.now() });
+          if (host && net.current)
+            net.current.send({ type: "pong", t0: m.t0, t1: Date.now() });
         } else if (m.type === "pong") {
           // NTP-style: the host read its clock about halfway through the round trip
           const now = Date.now(),
@@ -197,14 +348,24 @@ export function useBattle() {
         else if (m.type === "stopReq") {
           doPause(m.pos, "peer");
           clearStopTimer();
-          setState((b) => b && { ...b, stopReq: { by: "peer", pos: m.pos, until: Date.now() + STOP_WAIT } });
+          setState(
+            (b) =>
+              b && {
+                ...b,
+                stopReq: {
+                  by: "peer",
+                  pos: m.pos,
+                  until: Date.now() + STOP_WAIT,
+                },
+              },
+          );
           stopTimer.current = setTimeout(() => answerStop(true), STOP_WAIT);
         } else if (m.type === "stopOk") doFinish();
         else if (m.type === "stopNo") {
           clearStopTimer();
           setState((b) => b && { ...b, stopReq: null });
-        }
-        else if (m.type === "final") setState((b) => b && { ...b, peerFinal: m.stats });
+        } else if (m.type === "final")
+          setState((b) => b && { ...b, peerFinal: m.stats });
         else if (m.type === "again") {
           again.current = { ...again.current, peer: true };
           checkAgain(host);
@@ -212,6 +373,8 @@ export function useBattle() {
         else if (m.type === "line")
           setState((b) => b && { ...b, lines: { ...b.lines, [m.i]: m.score } });
         else if (m.type === "songReq") sendSong();
+        else if (m.type === "blobMeta") gotBlobMeta(m);
+        else if (m.type === "blobChunk") gotBlobChunk(m);
         else if (m.type === "songMeta") gotMeta(m);
         else if (m.type === "chunk") gotChunk(m);
         else if (m.type === "songNone" || m.type === "songFail") {
@@ -227,7 +390,10 @@ export function useBattle() {
   useEffect(() => {
     if (!peerIn || !state || state.host) return;
     const ids = [0, 1, 2, 3, 4, 5].map((k) =>
-      setTimeout(() => net.current && net.current.send({ type: "ping", t0: Date.now() }), k * 250),
+      setTimeout(
+        () => net.current && net.current.send({ type: "ping", t0: Date.now() }),
+        k * 250,
+      ),
     );
     return () => ids.forEach(clearTimeout);
   }, [peerIn]);
@@ -256,7 +422,8 @@ export function useBattle() {
     },
     // tap "I'm ready": the headphone check also unlocks sound on this phone, so the song can
     // start later from a network message. Resolves to the check's result.
-    prepare: () => (player.current ? player.current.prepare() : Promise.resolve("nomic")),
+    prepare: () =>
+      player.current ? player.current.prepare() : Promise.resolve("nomic"),
     setHpMode: (mode) => player.current && player.current.setHpMode(mode),
     setReady: (ready) => {
       me.current = { ...me.current, ready };
@@ -288,14 +455,31 @@ export function useBattle() {
       send({ type: "stopReq", pos });
       doPause(pos, "me");
       clearStopTimer();
-      setState((b) => b && { ...b, stopReq: { by: "me", pos, until: Date.now() + STOP_WAIT } });
+      setState(
+        (b) =>
+          b && {
+            ...b,
+            stopReq: { by: "me", pos, until: Date.now() + STOP_WAIT },
+          },
+      );
       // a little extra so the friend's own timeout (and its "end" message) lands first
       stopTimer.current = setTimeout(doFinish, STOP_WAIT + 3000);
     },
     answerStop,
-    sendLine: (i, score) => net.current && net.current.send({ type: "line", i, score }),
+    sendLine: (i, score) =>
+      net.current && net.current.send({ type: "line", i, score }),
     resetLines: () =>
-      setState((b) => (b && Object.keys(b.lines).length ? { ...b, lines: {} } : b)),
+      setState((b) =>
+        b && Object.keys(b.lines).length ? { ...b, lines: {} } : b,
+      ),
+    shareHL,
+    setShareHL: (on) => {
+      saveJSON("tono.battle.highlights", on);
+      setShareHLState(on);
+      me.current = { ...me.current, hl: on };
+      announce();
+    },
+    sendClip,
     setPlayer: (p) => {
       player.current = p;
     },
@@ -315,4 +499,5 @@ export function useBattle() {
 }
 
 // both phones have a song loaded and their lengths agree (so it's very likely the same version)
-export const songsMatch = (a, b) => !!(a && b && a.dur && b.dur && Math.abs(a.dur - b.dur) <= 2);
+export const songsMatch = (a, b) =>
+  !!(a && b && a.dur && b.dur && Math.abs(a.dur - b.dur) <= 2);

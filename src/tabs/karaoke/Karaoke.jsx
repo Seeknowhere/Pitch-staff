@@ -22,6 +22,12 @@ import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
 import { loadJSON, saveJSON } from "../../lib/storage.js";
 import { KaraokeLine } from "./KaraokeLine.jsx";
 import { BattleResults } from "./BattleResults.jsx";
+import {
+  CLIP_MAX,
+  CLIP_PAD,
+  linesToSend,
+  pickHighlights,
+} from "./battleHighlights.js";
 
 const KARA_BEST_KEY = "pitchstaff.karabest.v1";
 
@@ -96,11 +102,16 @@ export function Karaoke({
   const sentLines = useRef(new Set());
   const judgedLines = useRef(new Set());
   const battleLead = useRef(0); // 1 = you lead, -1 = rival leads, 0 = nobody yet
-  const rivalName = battle ? (battle.peer && battle.peer.name) || battle.lastName || "Rival" : "";
+  const rivalName = battle
+    ? (battle.peer && battle.peer.name) || battle.lastName || "Rival"
+    : "";
   const inBattle = !!(battle && battle.started && battle.peer);
   // read from callbacks scheduled earlier (timers), so they see the current battle
   const battleOn = useRef(false);
   battleOn.current = !!(battle && battle.started);
+  // in a battle your voice is only recorded when you share highlights
+  const shareHLRef = useRef(true);
+  shareHLRef.current = !!(battleCtl && battleCtl.shareHL);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!battle || !battle.stopReq) return;
@@ -146,7 +157,8 @@ export function Karaoke({
     const lead = Math.sign(t.you - t.opp);
     let text, kind;
     if (lead && battleLead.current && lead !== battleLead.current) {
-      text = lead > 0 ? "You took the lead! 🚀" : rivalName + " takes the lead! 😱";
+      text =
+        lead > 0 ? "You took the lead! 🚀" : rivalName + " takes the lead! 😱";
       kind = lead > 0 ? "perfect" : "lose";
     } else if (me > them) {
       text = "You win this line! 🔥";
@@ -162,6 +174,26 @@ export function Karaoke({
     setPop({ id: Date.now() + Math.random(), kind, text });
   }, [lineScores, battle && battle.lines]);
   const [takeBuf, setTakeBuf] = useState(null);
+  // ---- battle highlights: clips of both singers' best moments, played back over the music ----
+  const hl = useRef({ sentRound: -1, stop: null, readyAt: 0 });
+  const [hlNow, setHlNow] = useState(null); // label of the highlight playing, or null
+  const [hlWaitOver, setHlWaitOver] = useState(false);
+  // your voice for line i, lined up with song time (latency taken out), from the battle take
+  const myClip = (tb, i, lat) => {
+    const ln = lines[i];
+    if (!tb || !ln) return null;
+    const sr = tb.sampleRate,
+      a = Math.max(0, Math.round((ln.start - CLIP_PAD + lat) * sr)),
+      b = Math.min(
+        tb.length,
+        Math.round(
+          (Math.min(ln.end, ln.start + CLIP_MAX) + CLIP_PAD + lat) * sr,
+        ),
+      );
+    return b - a > sr * 0.5
+      ? { sr, data: tb.getChannelData(0).slice(a, b), t0: ln.start - CLIP_PAD }
+      : null;
+  };
   const [hearing, setHearing] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const tape = useRef({ on: false, sr: 24000, chunks: [] });
@@ -588,7 +620,7 @@ export function Karaoke({
     const v = t.reduce((s, x) => s + x.v, 0),
       ok = t.reduce((s, x) => s + x.ok, 0);
     const tb = buildTake();
-    if (tb && onTakeReady)
+    if (tb && onTakeReady && !battleOn.current)
       onTakeReady({
         id: Date.now(),
         name:
@@ -610,7 +642,8 @@ export function Karaoke({
       Math.min(songEnd, play.current.lastSongT || cursor || 0),
     );
     const lis = isListening();
-    if (battleOn.current && battleCtl) battleCtl.sendFinal({ bestCombo: R.bestCombo || 0 });
+    if (battleOn.current && battleCtl)
+      battleCtl.sendFinal({ bestCombo: R.bestCombo || 0 });
     if (!lis || v < 50) {
       setFinal({ score: null, lines: 0, scoring: lis, reached });
       return;
@@ -722,7 +755,12 @@ export function Karaoke({
     p.guide = scheduleGuide(ctx, p.gG, notes, t, end, now, 0, 1);
     p.songAt = () => t + Math.max(0, ctx.currentTime - now);
     tape.current.pos = null;
-    tape.current.on = !!(lis && mic.current.an && !check && !battleOn.current);
+    tape.current.on = !!(
+      lis &&
+      mic.current.an &&
+      !check &&
+      (!battleOn.current || shareHLRef.current)
+    );
     setPlaying(true);
     const an = lis ? mic.current.an : null,
       buf = an ? new Float32Array(an.fftSize) : null;
@@ -872,6 +910,176 @@ export function Karaoke({
     }
     return best > 40 ? bestL * GRID : 0;
   };
+  // when both songs are over (and the last line scores have had a moment to arrive), send your
+  // clips for the lines the other phone will play
+  const hlLatest = useRef({});
+  hlLatest.current = {
+    lineScores,
+    battle,
+    takeBuf,
+    estimateLatency,
+    myClip,
+    battleCtl,
+  };
+  const bothDone = !!(battle && battle.started && final && battle.peerFinal);
+  useEffect(() => {
+    if (!bothDone) {
+      setHlWaitOver(false);
+      return;
+    }
+    const round = battle.round;
+    const t1 = setTimeout(() => {
+      const L = hlLatest.current;
+      if (
+        hl.current.sentRound === round ||
+        !L.battle ||
+        !L.battleCtl ||
+        !L.battleCtl.shareHL
+      )
+        return;
+      hl.current.sentRound = round;
+      const tb = L.takeBuf;
+      if (!tb) return;
+      const lat = L.estimateLatency();
+      const h = pickHighlights(L.lineScores, L.battle.lines);
+      linesToSend(h).forEach((i) => {
+        const c = L.myClip(tb, i, lat);
+        if (c) L.battleCtl.sendClip(i, c.sr, c.data);
+      });
+    }, 1500);
+    // don't wait forever for the other phone's clips
+    const t2 = setTimeout(() => setHlWaitOver(true), 15000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [bothDone]);
+  // the reel: what to play, in order, with whose voice
+  const reel = (() => {
+    if (!bothDone) return null;
+    const mine = lineScores,
+      theirs = battle.lines,
+      their = battle.theirClips || {};
+    const h = pickHighlights(mine, theirs);
+    const me = (i) => (i == null || !takeBuf ? null : { mine: true, line: i });
+    const them = (i) =>
+      i == null || !their[i] ? null : { mine: false, line: i };
+    const myName = ((battleCtl && battleCtl.myName) || "").trim() || "You";
+    const items = [
+      {
+        label: "🌟 " + myName + "'s best line · " + mine[h.myBest] + "%",
+        segs: [me(h.myBest)],
+      },
+      {
+        label:
+          "🌟 " + rivalName + "'s best line · " + theirs[h.theirBest] + "%",
+        segs: [them(h.theirBest)],
+      },
+      h.closest != null && {
+        label:
+          "⚔️ Closest line · " +
+          mine[h.closest] +
+          "% vs " +
+          theirs[h.closest] +
+          "%",
+        segs: [me(h.closest), them(h.closest)],
+      },
+      h.win && {
+        label: "🏆 The winning line · " + (h.win.who > 0 ? myName : rivalName),
+        segs: [h.win.who > 0 ? me(h.win.line) : them(h.win.line)],
+      },
+    ]
+      .filter(Boolean)
+      .map((it) => ({ ...it, segs: it.segs.filter(Boolean) }))
+      .filter((it) => it.segs.length);
+    // the clips the other phone should be sending us
+    const peerShares = !!(battle.peer && battle.peer.hl);
+    const expect = peerShares
+      ? linesToSend(pickHighlights(theirs, mine)).filter((i) => !their[i])
+          .length
+      : 0;
+    return { items, waiting: expect > 0 && !hlWaitOver };
+  })();
+  const stopHighlights = () => {
+    if (hl.current.stop) hl.current.stop();
+    hl.current.stop = null;
+    setHlNow(null);
+  };
+  // plays each highlight over the music at that spot, one after another
+  const playHighlights = () => {
+    if (!reel || !reel.items.length) return;
+    stopHighlights();
+    killSources();
+    setPlaying(false);
+    const ctx = ensureCtx(),
+      lat = estimateLatency(),
+      their = battle.theirClips || {};
+    const nodes = [],
+      timers = [];
+    const out = ctx.createDynamicsCompressor();
+    out.connect(ctx.destination);
+    let at = ctx.currentTime + 0.15;
+    reel.items.forEach((it) => {
+      const startItem = at;
+      it.segs.forEach((sg) => {
+        let clip = null;
+        if (sg.mine) clip = myClip(takeBuf, sg.line, lat);
+        else if (their[sg.line]) {
+          const c = their[sg.line],
+            f = new Float32Array(c.pcm.length);
+          for (let i = 0; i < f.length; i++) f[i] = c.pcm[i] / 0x8000;
+          const ln = lines[sg.line];
+          clip = { sr: c.sr, data: f, t0: ln ? ln.start - CLIP_PAD : 0 };
+        }
+        if (!clip) return;
+        const len = clip.data.length / clip.sr;
+        if (inst && inst.buffer) {
+          const m = ctx.createBufferSource(),
+            mg = ctx.createGain();
+          m.buffer = inst.buffer;
+          mg.gain.value = mixVol.m;
+          m.connect(mg);
+          mg.connect(out);
+          m.start(at, Math.max(0, clip.t0 + syncRef.current), len);
+          nodes.push(m);
+        }
+        const vb = ctx.createBuffer(1, clip.data.length, clip.sr);
+        vb.getChannelData(0).set(clip.data);
+        const v = ctx.createBufferSource(),
+          hp = ctx.createBiquadFilter(),
+          vg = ctx.createGain();
+        v.buffer = vb;
+        hp.type = "highpass";
+        hp.frequency.value = 90;
+        vg.gain.value =
+          Math.min(8, 0.5 / Math.max(1e-3, peakOf(vb))) * mixVol.v;
+        v.connect(hp);
+        hp.connect(vg);
+        vg.connect(out);
+        v.start(at);
+        nodes.push(v);
+        at += len + 0.5;
+      });
+      const delay = Math.max(0, (startItem - ctx.currentTime) * 1000);
+      timers.push(setTimeout(() => setHlNow(it.label), delay));
+      at += 0.4;
+    });
+    timers.push(
+      setTimeout(
+        () => stopHighlights(),
+        Math.max(0, (at - ctx.currentTime) * 1000),
+      ),
+    );
+    hl.current.stop = () => {
+      timers.forEach(clearTimeout);
+      nodes.forEach((n) => {
+        try {
+          n.stop();
+        } catch (e) {}
+      });
+    };
+  };
+  useEffect(() => () => hl.current.stop && hl.current.stop(), []);
   const setOut = (k, v) => {
     const next = { ...mixVol, [k]: v };
     setMixVol(next);
@@ -1213,12 +1421,23 @@ export function Karaoke({
           mine={lineScores}
           theirs={battle.lines}
           myCombo={final.bestCombo ?? run.current.bestCombo ?? null}
+          highlights={reel}
+          hlNow={hlNow}
+          onPlayHighlights={playHighlights}
+          onStopHighlights={stopHighlights}
           theirCombo={battle.peerFinal ? battle.peerFinal.bestCombo : null}
           again={battle.again}
           rivalHere={!!battle.peer}
-          onRematch={battleCtl.rematch}
-          onNewSong={battleCtl.newSong}
+          onRematch={() => {
+            stopHighlights();
+            battleCtl.rematch();
+          }}
+          onNewSong={() => {
+            stopHighlights();
+            battleCtl.newSong();
+          }}
           onLeave={() => {
+            stopHighlights();
             stopAll();
             battleCtl.leave();
           }}
@@ -1760,14 +1979,16 @@ export function Karaoke({
                     Mix
                   </button>
                   {battle && (
-                  <button
-                    className="k-chip"
-                    aria-pressed="true"
-                    onClick={() => setBattleOpen(true)}
-                  >
-                    <Icon name="mic" size={16} />
-                    {battle.peer ? "Battle: " + battle.peer.name : "Battle " + battle.code}
-                  </button>
+                    <button
+                      className="k-chip"
+                      aria-pressed="true"
+                      onClick={() => setBattleOpen(true)}
+                    >
+                      <Icon name="mic" size={16} />
+                      {battle.peer
+                        ? "Battle: " + battle.peer.name
+                        : "Battle " + battle.code}
+                    </button>
                   )}
                 </div>
               </div>
@@ -1831,24 +2052,44 @@ export function Karaoke({
                     </span>
                   </div>
                   <div className="battle-track">
-                    <span className="battle-fill" style={{ width: push + "%" }} />
+                    <span
+                      className="battle-fill"
+                      style={{ width: push + "%" }}
+                    />
                     <span className="battle-mid" />
                   </div>
                 </div>
               )}
               {inBattle && battle.stopReq ? (
-                <div className="battle-notice" role="alertdialog" aria-live="assertive">
+                <div
+                  className="battle-notice"
+                  role="alertdialog"
+                  aria-live="assertive"
+                >
                   {battle.stopReq.by === "peer" ? (
                     <>
                       <b>{rivalName} wants to end the battle</b>
                       <span className="text-xs muted">
-                        Ends by itself in {Math.max(0, Math.ceil((battle.stopReq.until - now) / 1000))}s
+                        Ends by itself in{" "}
+                        {Math.max(
+                          0,
+                          Math.ceil((battle.stopReq.until - now) / 1000),
+                        )}
+                        s
                       </span>
                       <div className="flex gap-2">
-                        <button className="btn btn-primary" onClick={() => battleCtl.answerStop(true)}>
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => battleCtl.answerStop(true)}
+                        >
                           End battle
                         </button>
-                        <button className="btn" onClick={() => battleCtl.answerStop(false, battle.stopReq.pos)}>
+                        <button
+                          className="btn"
+                          onClick={() =>
+                            battleCtl.answerStop(false, battle.stopReq.pos)
+                          }
+                        >
                           Keep singing
                         </button>
                       </div>
@@ -1857,7 +2098,12 @@ export function Karaoke({
                     <>
                       <b>Waiting for {rivalName} to confirm…</b>
                       <span className="text-xs muted">
-                        The battle ends in {Math.max(0, Math.ceil((battle.stopReq.until - now) / 1000))}s if they don't answer
+                        The battle ends in{" "}
+                        {Math.max(
+                          0,
+                          Math.ceil((battle.stopReq.until - now) / 1000),
+                        )}
+                        s if they don't answer
                       </span>
                     </>
                   )}
@@ -1868,8 +2114,16 @@ export function Karaoke({
                 !playing &&
                 count == null && (
                   <div className="battle-notice" aria-live="polite">
-                    <b>⏸ {battle.paused.by === "peer" ? rivalName + " paused" : "You paused"}</b>
-                    <button className="btn btn-primary" onClick={() => battleCtl.resume(cursor)}>
+                    <b>
+                      ⏸{" "}
+                      {battle.paused.by === "peer"
+                        ? rivalName + " paused"
+                        : "You paused"}
+                    </b>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => battleCtl.resume(cursor)}
+                    >
                       Resume for both
                     </button>
                   </div>
@@ -2044,9 +2298,15 @@ export function Karaoke({
         onClose={() => setBattleOpen(false)}
       >
         {battle && (
-          <div className="opt-group" style={{ alignItems: "center", textAlign: "center" }}>
+          <div
+            className="opt-group"
+            style={{ alignItems: "center", textAlign: "center" }}
+          >
             <span className="label">Battle code</span>
-            <span className="display font-bold mono" style={{ fontSize: 40, letterSpacing: "0.15em" }}>
+            <span
+              className="display font-bold mono"
+              style={{ fontSize: 40, letterSpacing: "0.15em" }}
+            >
               {battle.code}
             </span>
             {battle.status === "error" ? (
@@ -2066,12 +2326,15 @@ export function Karaoke({
                   : "Waiting for a friend to join with this code…"}
               </p>
             )}
-            {battle.peer && data && battle.peer.dur && Math.abs(battle.peer.dur - data.duration) > 2 && (
-              <p className="text-xs" style={{ color: "var(--warn)" }}>
-                Your songs look like different versions ({fmt(data.duration)} vs{" "}
-                {fmt(battle.peer.dur)}), so scores may not line up.
-              </p>
-            )}
+            {battle.peer &&
+              data &&
+              battle.peer.dur &&
+              Math.abs(battle.peer.dur - data.duration) > 2 && (
+                <p className="text-xs" style={{ color: "var(--warn)" }}>
+                  Your songs look like different versions ({fmt(data.duration)}{" "}
+                  vs {fmt(battle.peer.dur)}), so scores may not line up.
+                </p>
+              )}
             {!listening && (
               <p className="text-xs" style={{ color: "var(--warn)" }}>
                 Do the headphone check first, or your singing won't be scored.
@@ -2080,14 +2343,20 @@ export function Karaoke({
             {battle.host ? (
               <button
                 className="btn btn-primary"
-                style={{ justifyContent: "center", minHeight: 48, alignSelf: "stretch" }}
+                style={{
+                  justifyContent: "center",
+                  minHeight: 48,
+                  alignSelf: "stretch",
+                }}
                 disabled={!battle.peer}
                 onClick={() => {
                   setBattleOpen(false);
                   battleCtl.start();
                 }}
               >
-                {battle.started ? "Restart the battle for both" : "Start battle"}
+                {battle.started
+                  ? "Restart the battle for both"
+                  : "Start battle"}
               </button>
             ) : (
               battle.peer && (

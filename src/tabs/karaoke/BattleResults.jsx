@@ -17,6 +17,10 @@ export function BattleResults({
   theirCombo,
   again,
   rivalHere,
+  highlights,
+  hlNow,
+  onPlayHighlights,
+  onStopHighlights,
   onRematch,
   onNewSong,
   onLeave,
@@ -50,13 +54,27 @@ export function BattleResults({
   const fmtStat = (v, suf = "", pre = "") => (v == null ? "—" : pre + v + suf);
 
   return (
-    <section className="flex flex-col gap-5" style={{ maxWidth: 560, width: "100%", margin: "0 auto" }}>
-      <div className={"battle-win " + (result > 0 ? "you" : result < 0 ? "opp" : "tie")}>
+    <section
+      className="flex flex-col gap-5"
+      style={{ maxWidth: 560, width: "100%", margin: "0 auto" }}
+    >
+      <div
+        className={
+          "battle-win " + (result > 0 ? "you" : result < 0 ? "opp" : "tie")
+        }
+      >
         <span className="battle-win-emoji" aria-hidden="true">
           {result > 0 ? "🏆" : result < 0 ? "😤" : "🤝"}
         </span>
-        <h2 className="display font-bold" style={{ fontSize: 32, lineHeight: 1.1, margin: 0 }}>
-          {result > 0 ? "You win!" : result < 0 ? rivalName + " wins this round" : "It's a draw!"}
+        <h2
+          className="display font-bold"
+          style={{ fontSize: 32, lineHeight: 1.1, margin: 0 }}
+        >
+          {result > 0
+            ? "You win!"
+            : result < 0
+              ? rivalName + " wins this round"
+              : "It's a draw!"}
         </h2>
         <span className="display font-bold mono" style={{ fontSize: 22 }}>
           <span style={{ color: "#f3d18c" }}>{you}</span>
@@ -73,21 +91,58 @@ export function BattleResults({
       <div className="battle-stats" role="table" aria-label="Head to head">
         <div className="battle-stats-row head" role="row">
           <span role="columnheader"></span>
-          <span role="columnheader" className="you">{myName}</span>
-          <span role="columnheader" className="opp">{rivalName}</span>
+          <span role="columnheader" className="you">
+            {myName}
+          </span>
+          <span role="columnheader" className="opp">
+            {rivalName}
+          </span>
         </div>
         {stats.map(([label, a, b, suf, pre]) => (
           <div className="battle-stats-row" role="row" key={label}>
-            <span role="rowheader" className="muted text-sm">{label}</span>
-            <span role="cell" className={a != null && (b == null || a > b) ? "best you" : ""}>
+            <span role="rowheader" className="muted text-sm">
+              {label}
+            </span>
+            <span
+              role="cell"
+              className={a != null && (b == null || a > b) ? "best you" : ""}
+            >
               {fmtStat(a, suf, pre)}
             </span>
-            <span role="cell" className={b != null && (a == null || b > a) ? "best opp" : ""}>
+            <span
+              role="cell"
+              className={b != null && (a == null || b > a) ? "best opp" : ""}
+            >
               {fmtStat(b, suf, pre)}
             </span>
           </div>
         ))}
       </div>
+
+      {highlights && (highlights.waiting || highlights.items.length > 0) && (
+        <div className="battle-hl" aria-live="polite">
+          {hlNow ? (
+            <>
+              <span className="label">Now playing</span>
+              <b style={{ overflowWrap: "anywhere" }}>{hlNow}</b>
+              <button className="btn" onClick={onStopHighlights}>
+                ■ Stop
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn-primary"
+              style={{ justifyContent: "center", minHeight: 52, fontSize: 16 }}
+              disabled={highlights.waiting}
+              onClick={onPlayHighlights}
+            >
+              {highlights.waiting
+                ? "Getting " + rivalName + "'s highlights…"
+                : "▶ Play highlights"}
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <button
@@ -105,10 +160,19 @@ export function BattleResults({
                 : "Rematch ⚔️"}
         </button>
         <div className="flex gap-2">
-          <button className="btn" style={{ flex: 1, justifyContent: "center" }} disabled={!rivalHere} onClick={onNewSong}>
+          <button
+            className="btn"
+            style={{ flex: 1, justifyContent: "center" }}
+            disabled={!rivalHere}
+            onClick={onNewSong}
+          >
             New song
           </button>
-          <button className="btn btn-ghost" style={{ flex: 1, justifyContent: "center" }} onClick={onLeave}>
+          <button
+            className="btn btn-ghost"
+            style={{ flex: 1, justifyContent: "center" }}
+            onClick={onLeave}
+          >
             Leave battle
           </button>
         </div>

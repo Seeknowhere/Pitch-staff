@@ -9,18 +9,27 @@ export function KaraokeModePick({ onSolo, onBattle }) {
   return (
     <section className="flex flex-col gap-4">
       <div className="empty-hero">
-        <h2 className="display text-3xl font-bold" style={{ letterSpacing: "-0.02em" }}>
+        <h2
+          className="display text-3xl font-bold"
+          style={{ letterSpacing: "-0.02em" }}
+        >
           How do you want to sing?
         </h2>
       </div>
       <div className="mode-cards">
         <button className="mode-card" onClick={onSolo}>
-          <span className="mode-emoji" aria-hidden="true">🎤</span>
+          <span className="mode-emoji" aria-hidden="true">
+            🎤
+          </span>
           <span className="display font-bold text-xl">Sing solo</span>
-          <span className="text-sm muted">Sing a song and beat your own best score.</span>
+          <span className="text-sm muted">
+            Sing a song and beat your own best score.
+          </span>
         </button>
         <button className="mode-card battle" onClick={onBattle}>
-          <span className="mode-emoji" aria-hidden="true">⚔️</span>
+          <span className="mode-emoji" aria-hidden="true">
+            ⚔️
+          </span>
           <span className="display font-bold text-xl">Battle a friend</span>
           <span className="text-sm muted">
             Challenge a friend, line by line. Best singer takes it.
@@ -34,7 +43,10 @@ export function KaraokeModePick({ onSolo, onBattle }) {
 export function BattleJoin({ ctl, onBack }) {
   const [code, setCode] = useState("");
   return (
-    <section className="flex flex-col gap-4" style={{ maxWidth: 420, width: "100%", margin: "0 auto" }}>
+    <section
+      className="flex flex-col gap-4"
+      style={{ maxWidth: 420, width: "100%", margin: "0 auto" }}
+    >
       <BackLink onClick={onBack} label="Modes" />
       <h2 className="display text-2xl font-bold">Battle a friend</h2>
       <label className="flex flex-col gap-1" htmlFor="battle-name">
@@ -67,11 +79,17 @@ export function BattleJoin({ ctl, onBack }) {
           onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
           style={{ flex: 1, letterSpacing: "0.3em", textAlign: "center" }}
         />
-        <button className="btn" disabled={code.length !== 4} onClick={() => ctl.join(code)}>
+        <button
+          className="btn"
+          disabled={code.length !== 4}
+          onClick={() => ctl.join(code)}
+        >
           Join
         </button>
       </div>
-      <p className="text-xs muted">Only your names and line scores are shared, never your voice.</p>
+      <p className="text-xs muted">
+        Only your names and line scores are shared, never your voice.
+      </p>
     </section>
   );
 }
@@ -79,20 +97,34 @@ export function BattleJoin({ ctl, onBack }) {
 // mySong: { song, dur } for the song loaded on this phone (song "" when none)
 // picker: the song picker to show while you still need a song
 // onChangeSong: open the song sheet to swap songs
-export function BattleLobby({ ctl, mySong, picker, onChangeSong, preparing, prepPct }) {
+export function BattleLobby({
+  ctl,
+  mySong,
+  picker,
+  onChangeSong,
+  preparing,
+  prepPct,
+}) {
   const b = ctl.state;
   const peer = b.peer;
   const hostSong = b.host ? mySong : peer && peer.host ? peer : null;
   const haveSong = !!mySong.song;
   const match = songsMatch(mySong, peer);
   const meReady = ctl.isReady();
-  const canStart = b.host && peer && haveSong && peer.song && meReady && peer.ready;
+  const canStart =
+    b.host && peer && haveSong && peer.song && meReady && peer.ready;
   return (
-    <section className="flex flex-col gap-4" style={{ maxWidth: 520, width: "100%", margin: "0 auto" }}>
+    <section
+      className="flex flex-col gap-4"
+      style={{ maxWidth: 520, width: "100%", margin: "0 auto" }}
+    >
       <BackLink onClick={ctl.leave} label="Leave battle" />
       <div className="battle-lobby">
         <span className="label">Battle code</span>
-        <span className="display font-bold mono" style={{ fontSize: 44, letterSpacing: "0.15em", lineHeight: 1 }}>
+        <span
+          className="display font-bold mono"
+          style={{ fontSize: 44, letterSpacing: "0.15em", lineHeight: 1 }}
+        >
           {b.code}
         </span>
         {b.status === "error" ? (
@@ -109,8 +141,21 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong, preparing, prep
           </p>
         ) : null}
         <div className="lobby-players">
-          <PlayerRow you name={ctl.myName.trim() || "You"} song={mySong} host={b.host} ready={meReady} />
-          {peer && <PlayerRow name={peer.name} song={peer} host={peer.host} ready={peer.ready} />}
+          <PlayerRow
+            you
+            name={ctl.myName.trim() || "You"}
+            song={mySong}
+            host={b.host}
+            ready={meReady}
+          />
+          {peer && (
+            <PlayerRow
+              name={peer.name}
+              song={peer}
+              host={peer.host}
+              ready={peer.ready}
+            />
+          )}
         </div>
       </div>
 
@@ -119,12 +164,36 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong, preparing, prep
           Sending your song to {peer.name}… {b.sending.pct}%
         </p>
       )}
+      <label className="battle-opt">
+        <input
+          type="checkbox"
+          checked={ctl.shareHL}
+          onChange={(e) => ctl.setShareHL(e.target.checked)}
+        />
+        <span className="flex flex-col">
+          <span className="font-semibold">🎧 Share my highlights</span>
+          <span className="text-xs muted">
+            Your best moments are recorded and played on the results. Only{" "}
+            {peer ? peer.name : "your friend"} hears them, and they're never
+            saved.
+          </span>
+        </span>
+      </label>
       {!haveSong && (preparing || (b.recv && !b.recv.error)) ? (
-        <ShareProgress recv={b.recv} preparing={preparing} prepPct={prepPct} from={peer ? peer.name : "your friend"} />
+        <ShareProgress
+          recv={b.recv}
+          preparing={preparing}
+          prepPct={prepPct}
+          from={peer ? peer.name : "your friend"}
+        />
       ) : !haveSong ? (
         <>
           {peer && peer.song && (
-            <UseTheirSong ctl={ctl} peer={peer} failed={b.recv && b.recv.error} />
+            <UseTheirSong
+              ctl={ctl}
+              peer={peer}
+              failed={b.recv && b.recv.error}
+            />
           )}
           <div>
             <h3 className="display text-xl font-bold">
@@ -134,8 +203,15 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong, preparing, prep
               {b.host
                 ? "Your friend will need the same song on their phone."
                 : hostSong && hostSong.song
-                  ? hostSong.name + " picked “" + hostSong.song + "”" + (hostSong.dur ? " (" + fmt(hostSong.dur) + ")" : "") + ". Load the same song."
-                  : "Waiting for " + (peer ? peer.name : "the host") + " to pick a song. You can load it as soon as you know which."}
+                  ? hostSong.name +
+                    " picked “" +
+                    hostSong.song +
+                    "”" +
+                    (hostSong.dur ? " (" + fmt(hostSong.dur) + ")" : "") +
+                    ". Load the same song."
+                  : "Waiting for " +
+                    (peer ? peer.name : "the host") +
+                    " to pick a song. You can load it as soon as you know which."}
             </p>
           </div>
           {picker}
@@ -144,12 +220,23 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong, preparing, prep
         <div className="flex flex-col gap-2">
           {peer && peer.song && !match && (
             <p className="text-sm" style={{ color: "var(--warn)" }}>
-              Your songs look like different versions ({fmt(mySong.dur)} vs {fmt(peer.dur)}), so
-              your scores won't line up. Load the same file as {peer.name}, or use theirs.
+              Your songs look like different versions ({fmt(mySong.dur)} vs{" "}
+              {fmt(peer.dur)}), so your scores won't line up. Load the same file
+              as {peer.name}, or use theirs.
             </p>
           )}
-          {peer && peer.song && !match && <UseTheirSong ctl={ctl} peer={peer} failed={b.recv && b.recv.error} />}
-          <button className="btn" style={{ alignSelf: "flex-start" }} onClick={onChangeSong}>
+          {peer && peer.song && !match && (
+            <UseTheirSong
+              ctl={ctl}
+              peer={peer}
+              failed={b.recv && b.recv.error}
+            />
+          )}
+          <button
+            className="btn"
+            style={{ alignSelf: "flex-start" }}
+            onClick={onChangeSong}
+          >
             Change song
           </button>
           <ReadyStep ctl={ctl} ready={meReady} />
@@ -177,7 +264,9 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong, preparing, prep
         peer &&
         meReady && (
           <p className="text-sm muted" style={{ textAlign: "center" }}>
-            {b.synced ? "Waiting for " + peer.name + " to start…" : "Syncing with " + peer.name + "…"}
+            {b.synced
+              ? "Waiting for " + peer.name + " to start…"
+              : "Syncing with " + peer.name + "…"}
           </p>
         )
       )}
@@ -189,12 +278,16 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong, preparing, prep
 function UseTheirSong({ ctl, peer, failed }) {
   return (
     <div className="share-song">
-      <button className="btn btn-primary" style={{ justifyContent: "center", minHeight: 48 }} onClick={ctl.requestSong}>
+      <button
+        className="btn btn-primary"
+        style={{ justifyContent: "center", minHeight: 48 }}
+        onClick={ctl.requestSong}
+      >
         Use {peer.name}'s song
       </button>
       <span className="text-xs muted">
-        “{peer.song}” is sent to your phone for this battle only. It isn't saved, and it's gone when the
-        battle ends.
+        “{peer.song}” is sent to your phone for this battle only. It isn't
+        saved, and it's gone when the battle ends.
       </span>
       {failed && (
         <span className="text-xs" style={{ color: "var(--warn)" }}>
@@ -207,10 +300,18 @@ function UseTheirSong({ ctl, peer, failed }) {
 
 function ShareProgress({ recv, preparing, prepPct, from }) {
   const getting = !preparing;
-  const pct = getting ? (recv && recv.pct) || 0 : Math.round(100 * (prepPct || 0));
+  const pct = getting
+    ? (recv && recv.pct) || 0
+    : Math.round(100 * (prepPct || 0));
   return (
     <div className="share-song" aria-live="polite">
-      <b>{getting ? (pct ? "Receiving " + from + "'s song…" : "Asking " + from + " for the song…") : "Getting the song ready…"}</b>
+      <b>
+        {getting
+          ? pct
+            ? "Receiving " + from + "'s song…"
+            : "Asking " + from + " for the song…"
+          : "Getting the song ready…"}
+      </b>
       <div className="share-track">
         <span className="share-fill" style={{ width: pct + "%" }} />
       </div>
@@ -252,8 +353,8 @@ function ReadyStep({ ctl, ready }) {
       {check === "heard" && (
         <>
           <p className="text-sm" style={{ color: "var(--warn)" }}>
-            Your mic can hear the music, so your score would be off. Put headphones on and try again,
-            or carry on anyway.
+            Your mic can hear the music, so your score would be off. Put
+            headphones on and try again, or carry on anyway.
           </p>
           <button className="btn" onClick={() => done("override")}>
             Score anyway
@@ -270,7 +371,9 @@ function ReadyStep({ ctl, ready }) {
           Sing without scoring
         </button>
       )}
-      <p className="text-xs muted">Wear headphones so the mic only hears you, not the music.</p>
+      <p className="text-xs muted">
+        Wear headphones so the mic only hears you, not the music.
+      </p>
     </div>
   );
 }
@@ -284,10 +387,15 @@ function PlayerRow({ name, song, host, you, ready }) {
         {host ? " · host" : ""}
       </span>
       <span className="text-xs muted" style={{ overflowWrap: "anywhere" }}>
-        {song && song.song ? "✓ " + song.song + (song.dur ? " · " + fmt(song.dur) : "") : "No song yet"}
+        {song && song.song
+          ? "✓ " + song.song + (song.dur ? " · " + fmt(song.dur) : "")
+          : "No song yet"}
       </span>
       {ready && (
-        <span className="text-xs font-semibold" style={{ color: "var(--good)" }}>
+        <span
+          className="text-xs font-semibold"
+          style={{ color: "var(--good)" }}
+        >
           Ready
         </span>
       )}
@@ -297,7 +405,11 @@ function PlayerRow({ name, song, host, you, ready }) {
 
 function BackLink({ onClick, label }) {
   return (
-    <button className="btn btn-ghost" style={{ alignSelf: "flex-start", padding: "6px 10px" }} onClick={onClick}>
+    <button
+      className="btn btn-ghost"
+      style={{ alignSelf: "flex-start", padding: "6px 10px" }}
+      onClick={onClick}
+    >
       <span className="flex items-center gap-1">
         <Icon name="back" size={18} />
         {label}
