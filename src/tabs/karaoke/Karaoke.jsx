@@ -1210,7 +1210,6 @@ export function Karaoke({
         <BattleResults
           myName={(battleCtl.myName || "").trim() || "You"}
           rivalName={rivalName}
-          lines={lines}
           mine={lineScores}
           theirs={battle.lines}
           myCombo={final.bestCombo ?? run.current.bestCombo ?? null}
