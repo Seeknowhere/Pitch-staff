@@ -12,11 +12,13 @@ const sb = () => client || (client = createClient(SUPABASE_URL, SUPABASE_KEY));
 
 export const makeCode = () => String(1000 + Math.floor(Math.random() * 9000));
 
-// Join room `code` as `me` ({ name, dur, host }).
+// Join room `code` as `me` ({ name, host, song, dur }).
 // handlers: onPeer(peer | null), onMessage(msg), onStatus("connecting" | "connected" | "error")
-// Returns { send(msg), leave() }.
+// Returns { send(msg), update(me), leave() }; update() re-announces you, e.g. after loading a song.
 export function joinRoom(code, me, { onPeer, onMessage, onStatus }) {
   const id = Math.random().toString(36).slice(2);
+  let current = me,
+    live = false;
   const ch = sb().channel("tono-battle-" + code, {
     config: { broadcast: { self: false }, presence: { key: id } },
   });
@@ -31,12 +33,17 @@ export function joinRoom(code, me, { onPeer, onMessage, onStatus }) {
   onStatus("connecting");
   ch.subscribe(async (status) => {
     if (status === "SUBSCRIBED") {
-      await ch.track(me);
+      live = true;
+      await ch.track(current);
       onStatus("connected");
     } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") onStatus("error");
   });
   return {
     send: (msg) => ch.send({ type: "broadcast", event: "msg", payload: msg }),
+    update: (next) => {
+      current = next;
+      if (live) ch.track(current);
+    },
     leave: () => {
       ch.untrack();
       sb().removeChannel(ch);
