@@ -75,6 +75,23 @@ export function Karaoke({
   const [marks, setMarks] = useState([]);
   const [lineScores, setLineScores] = useState({});
   const [final, setFinal] = useState(null);
+  const [battle, setBattle] = useState(null); // { name, lines: { lineIndex: score } }
+  // fake rival for now: each time one of your lines is scored, the rival gets a random score for it
+  useEffect(() => {
+    if (!battle) return;
+    if (!Object.keys(lineScores).length) {
+      setBattle((b) =>
+        b && Object.keys(b.lines).length ? { ...b, lines: {} } : b,
+      );
+      return;
+    }
+    const add = {};
+    Object.keys(lineScores).forEach((i) => {
+      if (battle.lines[i] == null) add[i] = 50 + Math.floor(Math.random() * 46);
+    });
+    if (Object.keys(add).length)
+      setBattle((b) => b && { ...b, lines: { ...b.lines, ...add } });
+  }, [lineScores]);
   const [takeBuf, setTakeBuf] = useState(null);
   const [hearing, setHearing] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
@@ -1015,6 +1032,12 @@ export function Karaoke({
       ? Math.round(v.reduce((a, b) => a + b, 0) / v.length)
       : null;
   })();
+  const oppScore = (() => {
+    const v = battle ? Object.values(battle.lines) : [];
+    return v.length
+      ? Math.round(v.reduce((a, b) => a + b, 0) / v.length)
+      : null;
+  })();
   // 3-2-1 before a fresh start, so it feels like stepping on stage
   const countIn = (fn) => {
     cancelCount();
@@ -1601,6 +1624,16 @@ export function Karaoke({
                     <Icon name="sliders" size={16} />
                     Mix
                   </button>
+                  <button
+                    className="k-chip"
+                    aria-pressed={battle ? "true" : "false"}
+                    onClick={() =>
+                      setBattle((b) => (b ? null : { name: "Rival", lines: {} }))
+                    }
+                  >
+                    <Icon name="mic" size={16} />
+                    {battle ? "Battle on" : "Battle"}
+                  </button>
                 </div>
               </div>
             </section>
@@ -1640,6 +1673,25 @@ export function Karaoke({
                         Score
                       </span>
                       <b>{liveScore != null ? liveScore + "%" : "—"}</b>
+                    </span>
+                  )}
+                  {listening && battle && (
+                    <span
+                      className="score-chip"
+                      style={{
+                        background: "rgba(127,178,255,.12)",
+                        borderColor: "rgba(127,178,255,.35)",
+                      }}
+                    >
+                      <span
+                        className="label"
+                        style={{ fontSize: 9, color: "var(--you)" }}
+                      >
+                        {battle.name}
+                      </span>
+                      <b style={{ color: "var(--you)" }}>
+                        {oppScore != null ? oppScore + "%" : "—"}
+                      </b>
                     </span>
                   )}
                 </span>
