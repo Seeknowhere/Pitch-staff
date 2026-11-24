@@ -85,7 +85,8 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong }) {
   const hostSong = b.host ? mySong : peer && peer.host ? peer : null;
   const haveSong = !!mySong.song;
   const match = songsMatch(mySong, peer);
-  const canStart = b.host && peer && haveSong && peer.song;
+  const meReady = ctl.isReady();
+  const canStart = b.host && peer && haveSong && peer.song && meReady && peer.ready;
   return (
     <section className="flex flex-col gap-4" style={{ maxWidth: 520, width: "100%", margin: "0 auto" }}>
       <BackLink onClick={ctl.leave} label="Leave battle" />
@@ -108,8 +109,8 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong }) {
           </p>
         ) : null}
         <div className="lobby-players">
-          <PlayerRow you name={ctl.myName.trim() || "You"} song={mySong} host={b.host} />
-          {peer && <PlayerRow name={peer.name} song={peer} host={peer.host} />}
+          <PlayerRow you name={ctl.myName.trim() || "You"} song={mySong} host={b.host} ready={meReady} />
+          {peer && <PlayerRow name={peer.name} song={peer} host={peer.host} ready={peer.ready} />}
         </div>
       </div>
 
@@ -140,6 +141,7 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong }) {
           <button className="btn" style={{ alignSelf: "flex-start" }} onClick={onChangeSong}>
             Change song
           </button>
+          <ReadyStep ctl={ctl} ready={meReady} />
         </div>
       )}
 
@@ -154,23 +156,81 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong }) {
             ? "Waiting for a friend…"
             : !haveSong || !peer.song
               ? "Waiting for both songs…"
-              : "Start battle ⚔️"}
+              : !meReady
+                ? "Tap “I'm ready” first"
+                : !peer.ready
+                  ? "Waiting for " + peer.name + " to be ready…"
+                  : "Start battle ⚔️"}
         </button>
       ) : (
-        peer && (
+        peer &&
+        meReady && (
           <p className="text-sm muted" style={{ textAlign: "center" }}>
-            {haveSong ? "Ready! Waiting for " + peer.name + " to start…" : ""}
+            {b.synced ? "Waiting for " + peer.name + " to start…" : "Syncing with " + peer.name + "…"}
           </p>
         )
       )}
-      <p className="text-xs muted" style={{ textAlign: "center" }}>
-        Wear headphones: you'll get a quick headphone check before the countdown if you haven't done one.
-      </p>
     </section>
   );
 }
 
-function PlayerRow({ name, song, host, you }) {
+// "I'm ready": a quick headphone check, which also unlocks sound on this phone (it needs a tap)
+// so the music can start later when the host starts the battle
+function ReadyStep({ ctl, ready }) {
+  const [check, setCheck] = useState(null); // null | "checking" | "heard" | "nomic"
+  const done = (mode) => {
+    if (mode) ctl.setHpMode(mode);
+    setCheck(null);
+    ctl.setReady(true);
+  };
+  if (ready)
+    return (
+      <p className="text-sm" style={{ color: "var(--good)" }}>
+        ✓ You're ready
+      </p>
+    );
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        className="btn btn-primary"
+        style={{ justifyContent: "center", minHeight: 48 }}
+        disabled={check === "checking"}
+        onClick={async () => {
+          setCheck("checking");
+          const st = await ctl.prepare();
+          if (st === "ok" || st === "override") done();
+          else setCheck(st);
+        }}
+      >
+        {check === "checking" ? "Listening…" : "I'm ready (headphone check)"}
+      </button>
+      {check === "heard" && (
+        <>
+          <p className="text-sm" style={{ color: "var(--warn)" }}>
+            Your mic can hear the music, so your score would be off. Put headphones on and try again,
+            or carry on anyway.
+          </p>
+          <button className="btn" onClick={() => done("override")}>
+            Score anyway
+          </button>
+        </>
+      )}
+      {check === "nomic" && (
+        <p className="text-sm" style={{ color: "var(--warn)" }}>
+          The microphone isn't available, so you can sing but won't be scored.
+        </p>
+      )}
+      {(check === "heard" || check === "nomic") && (
+        <button className="btn btn-ghost" onClick={() => done("skip")}>
+          Sing without scoring
+        </button>
+      )}
+      <p className="text-xs muted">Wear headphones so the mic only hears you, not the music.</p>
+    </div>
+  );
+}
+
+function PlayerRow({ name, song, host, you, ready }) {
   return (
     <div className={"lobby-player" + (you ? " you" : "")}>
       <span className="font-semibold">
@@ -181,6 +241,11 @@ function PlayerRow({ name, song, host, you }) {
       <span className="text-xs muted" style={{ overflowWrap: "anywhere" }}>
         {song && song.song ? "✓ " + song.song + (song.dur ? " · " + fmt(song.dur) : "") : "No song yet"}
       </span>
+      {ready && (
+        <span className="text-xs font-semibold" style={{ color: "var(--good)" }}>
+          Ready
+        </span>
+      )}
     </div>
   );
 }
