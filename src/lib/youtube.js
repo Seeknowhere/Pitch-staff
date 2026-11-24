@@ -3,7 +3,7 @@
 
 // a browser key from Google Cloud, locked to this site's address there; empty = search is off,
 // pasting a YouTube link still works
-export const YT_KEY = "";
+export const YT_KEY = "AIzaSyBuyrX1lwpSYsDXjb15CtFfsTXZXsIhB9I";
 
 // the free plan allows 100 searches a day for the whole app, so results are remembered for a day
 const CACHE = "tono.yt.search.v1",
