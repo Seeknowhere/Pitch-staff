@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef, useLayoutEffect } from "react";
-import { Icon } from "./components/Icon.js";
-import { SettingsPanel } from "./components/SettingsPanel.js";
-import { Sheet } from "./components/Sheet.js";
+import { Icon } from "./components/Icon.jsx";
+import { SettingsPanel } from "./components/SettingsPanel.jsx";
+import { Sheet } from "./components/Sheet.jsx";
 import { html } from "./html.js";
 import { aiCachePut, aiCacheGet, snapToKey, aiNotes } from "./lib/ai-notes.js";
 import { trackPitch, decodeFile, guideBySyllables } from "./lib/analysis.js";
@@ -14,12 +14,12 @@ import { SETTINGS, micGate, getMicStream } from "./lib/settings.js";
 import { cancelSplit, splitSong, canSplitSongs, wavFile } from "./lib/split.js";
 import { loadJSON, saveJSON } from "./lib/storage.js";
 import { usNotesFor } from "./lib/ultrastar.js";
-import { SongSetup } from "./song/SongSetup.js";
-import { Analyst } from "./tabs/analyze/Analyst.js";
-import { Karaoke } from "./tabs/karaoke/Karaoke.js";
-import { Lessons } from "./tabs/lessons/Lessons.js";
-import { Learn } from "./tabs/practice/Learn.js";
-import { MatchTrainer } from "./tabs/tuner/MatchTrainer.js";
+import { SongSetup } from "./song/SongSetup.jsx";
+import { Analyst } from "./tabs/analyze/Analyst.jsx";
+import { Karaoke } from "./tabs/karaoke/Karaoke.jsx";
+import { Lessons } from "./tabs/lessons/Lessons.jsx";
+import { Learn } from "./tabs/practice/Learn.jsx";
+import { MatchTrainer } from "./tabs/tuner/MatchTrainer.jsx";
 
 // The whole app: tabs, the chosen song, and the live mic.
 

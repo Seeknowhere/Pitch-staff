@@ -1,11 +1,11 @@
 // The Lessons tab.
 import { useMemo, useState, useEffect } from "react";
-import { Icon } from "../../components/Icon.js";
+import { Icon } from "../../components/Icon.jsx";
 import { html } from "../../html.js";
 import { playPiano } from "../../lib/audio.js";
 import { saveJSON, MATCH_KEY } from "../../lib/storage.js";
 import { COURSES, SOON, bumpStreak, streakNow, loadLessons, WARMUP, LESSON_KEY, dayKey, lessonRange } from "./data.js";
-import { Exercise, patternFor, nm } from "./exercises.js";
+import { Exercise, patternFor, nm } from "./exercises.jsx";
 import { useLessonMic } from "./hooks.js";
 
 const Bar = ({ p, tone = "accent", h = 6 }) =>

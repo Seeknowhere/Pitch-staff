@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { Icon } from "../../components/Icon.js";
-import { MelodyMap } from "../../components/MelodyMap.js";
-import { Sheet } from "../../components/Sheet.js";
-import { TryPanel } from "../../components/TryPanel.js";
-import { UploadSlot } from "../../components/UploadSlot.js";
+import { Icon } from "../../components/Icon.jsx";
+import { MelodyMap } from "../../components/MelodyMap.jsx";
+import { Sheet } from "../../components/Sheet.jsx";
+import { TryPanel } from "../../components/TryPanel.jsx";
+import { UploadSlot } from "../../components/UploadSlot.jsx";
 import { html } from "../../html.js";
 import { trackPitch, scheduleGuide } from "../../lib/analysis.js";
 import { lyricSpans } from "../../lib/lyrics.js";
@@ -16,9 +16,9 @@ import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
 import { loadJSON, saveJSON, MATCH_KEY } from "../../lib/storage.js";
 import { loadTries, saveTries } from "../../lib/tries.js";
 import { pianoKeys, howMuch } from "../../lib/wording.js";
-import { SongFit } from "../tuner/SongFit.js";
-import { PlanCard, PlanFlow } from "./Plan.js";
-import { SongSheet } from "./SongSheet.js";
+import { SongFit } from "../tuner/SongFit.jsx";
+import { PlanCard, PlanFlow } from "./Plan.jsx";
+import { SongSheet } from "./SongSheet.jsx";
 
 // The Practice tab.
 

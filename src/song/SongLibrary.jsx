@@ -1,6 +1,6 @@
 // The sample song library.
 import { useState, useEffect } from "react";
-import { Icon } from "../components/Icon.js";
+import { Icon } from "../components/Icon.jsx";
 import { html } from "../html.js";
 import { driveFile, DRIVE_FOLDER, sortSongFiles, DRIVE_KEY, driveList } from "../lib/drive.js";
 

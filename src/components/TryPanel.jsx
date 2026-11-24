@@ -4,7 +4,7 @@ import { html } from "../html.js";
 import { GRID } from "../lib/analysis.js";
 import { NAMES, pretty } from "../lib/music.js";
 import { tryStats, btInfo } from "../lib/tries.js";
-import { Sheet } from "./Sheet.js";
+import { Sheet } from "./Sheet.jsx";
 
 export function BreathTimingView({ rec, notes, text }) {
   const info = btInfo(rec, notes, text);

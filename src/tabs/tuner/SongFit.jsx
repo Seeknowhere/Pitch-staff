@@ -1,10 +1,10 @@
 // Song fit: does this song suit your range, and which key to sing it in.
 import { useMemo } from "react";
-import { RangeKeys } from "../../components/RangeKeys.js";
+import { RangeKeys } from "../../components/RangeKeys.jsx";
 import { html } from "../../html.js";
 import { fmt, pretty, midiInfo } from "../../lib/music.js";
 import { loadRanges, comfyOf } from "../../lib/range.js";
-import { keyDot } from "./voice.js";
+import { keyDot } from "./voice.jsx";
 
 // Practice: how the loaded song sits against the singer's saved range
 export function SongFit({

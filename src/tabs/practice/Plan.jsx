@@ -2,9 +2,9 @@
 import { useState, useMemo, useEffect } from "react";
 import { html } from "../../html.js";
 import { fmt } from "../../lib/music.js";
-import { FlowHead } from "../lessons/Lessons.js";
+import { FlowHead } from "../lessons/Lessons.jsx";
 import { lessonRange } from "../lessons/data.js";
-import { Exercise } from "../lessons/exercises.js";
+import { Exercise } from "../lessons/exercises.jsx";
 import { useLessonMic } from "../lessons/hooks.js";
 
 export function PlanCard({ plan, onStart, onHide, onClear }) {

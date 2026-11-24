@@ -1,10 +1,10 @@
 // The Karaoke tab.
 import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
-import { Icon } from "../../components/Icon.js";
-import { MelodyMap } from "../../components/MelodyMap.js";
-import { Sheet } from "../../components/Sheet.js";
-import { Stars } from "../../components/Stars.js";
-import { UploadSlot } from "../../components/UploadSlot.js";
+import { Icon } from "../../components/Icon.jsx";
+import { MelodyMap } from "../../components/MelodyMap.jsx";
+import { Sheet } from "../../components/Sheet.jsx";
+import { Stars } from "../../components/Stars.jsx";
+import { UploadSlot } from "../../components/UploadSlot.jsx";
 import { html } from "../../html.js";
 import { GRID, foldOct, scheduleGuide } from "../../lib/analysis.js";
 import { saveBlob, encodeWav, peakOf, makeImpulse } from "../../lib/audio.js";
@@ -15,7 +15,7 @@ import { buildPhrases } from "../../lib/phrases.js";
 import { detectPitch } from "../../lib/pitch.js";
 import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
 import { loadJSON, saveJSON } from "../../lib/storage.js";
-import { KaraokeLine } from "./KaraokeLine.js";
+import { KaraokeLine } from "./KaraokeLine.jsx";
 
 const KARA_BEST_KEY = "pitchstaff.karabest.v1";
 

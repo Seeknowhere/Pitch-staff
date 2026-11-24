@@ -1,12 +1,12 @@
 // Tuner > My range: find your lowest and highest notes.
 import React, { useState, useRef, useEffect } from "react";
-import { Icon } from "../../components/Icon.js";
-import { RangeKeys } from "../../components/RangeKeys.js";
+import { Icon } from "../../components/Icon.jsx";
+import { RangeKeys } from "../../components/RangeKeys.jsx";
 import { html } from "../../html.js";
 import { pretty, midiInfo } from "../../lib/music.js";
 import { loadRanges, RANGE_KEY, comfyOf } from "../../lib/range.js";
 import { saveJSON } from "../../lib/storage.js";
-import { spanWords, keyDot, voiceType } from "./voice.js";
+import { spanWords, keyDot, voiceType } from "./voice.jsx";
 
 export function RangeFinder({ feedRef, listening, onStartMic, onStopMic }) {
   const [history, setHistory] = useState(loadRanges);

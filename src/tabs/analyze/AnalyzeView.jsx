@@ -1,8 +1,8 @@
 // Analyze results: this run, progress charts and line-by-line feedback.
 import React, { useState, useEffect } from "react";
-import { BtTags } from "../../components/BtTags.js";
-import { Sheet } from "../../components/Sheet.js";
-import { TryChart, BreathTimingView } from "../../components/TryPanel.js";
+import { BtTags } from "../../components/BtTags.jsx";
+import { Sheet } from "../../components/Sheet.jsx";
+import { TryChart, BreathTimingView } from "../../components/TryPanel.jsx";
 import { html } from "../../html.js";
 import { fmt } from "../../lib/music.js";
 import { scoreTone, lineHistory, dayLabel } from "../../lib/runs.js";

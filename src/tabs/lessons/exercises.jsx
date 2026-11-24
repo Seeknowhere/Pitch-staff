@@ -1,7 +1,7 @@
 // The lesson exercises: hold, hiss, siren, pattern, posture check, breathing.
 import { useEffect, useMemo, useState, useRef } from "react";
-import { Icon } from "../../components/Icon.js";
-import { Ring } from "../../components/Ring.js";
+import { Icon } from "../../components/Icon.jsx";
+import { Ring } from "../../components/Ring.jsx";
 import { html } from "../../html.js";
 import { playPiano, playChime } from "../../lib/audio.js";
 import { median } from "../../lib/math.js";

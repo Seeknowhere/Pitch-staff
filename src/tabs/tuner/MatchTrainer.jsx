@@ -1,14 +1,14 @@
 // Tuner > Match a note: hear a note, sing it back.
 import React, { useEffect, useState, useRef } from "react";
-import { Dial } from "../../components/Dial.js";
-import { Icon } from "../../components/Icon.js";
-import { Keyboard } from "../../components/Keyboard.js";
-import { Sheet } from "../../components/Sheet.js";
+import { Dial } from "../../components/Dial.jsx";
+import { Icon } from "../../components/Icon.jsx";
+import { Keyboard } from "../../components/Keyboard.jsx";
+import { Sheet } from "../../components/Sheet.jsx";
 import { html } from "../../html.js";
 import { playPiano, playChime } from "../../lib/audio.js";
 import { signed, pretty, midiInfo } from "../../lib/music.js";
 import { loadJSON, saveJSON, MATCH_KEY } from "../../lib/storage.js";
-import { RangeFinder } from "./RangeFinder.js";
+import { RangeFinder } from "./RangeFinder.jsx";
 
 const RANGES = {
   low: [40, 60, "Low"],

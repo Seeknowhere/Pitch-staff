@@ -1,13 +1,13 @@
 // "Pick a song" sheet: song, vocal, instrumental and lyrics files.
 import { useState, useRef, useEffect } from "react";
-import { Icon } from "../components/Icon.js";
+import { Icon } from "../components/Icon.jsx";
 import { html } from "../html.js";
 import { saveBlob } from "../lib/audio.js";
 import { lyricSpans } from "../lib/lyrics.js";
 import { hasWebGPU } from "../lib/split.js";
 import { pianoKeys } from "../lib/wording.js";
-import { LyricsCard } from "./LyricsCard.js";
-import { SongLibrary } from "./SongLibrary.js";
+import { LyricsCard } from "./LyricsCard.jsx";
+import { SongLibrary } from "./SongLibrary.jsx";
 
 function FileRow({ id, title, sub, slot, onPick, disabled }) {
   const ref = useRef(null);

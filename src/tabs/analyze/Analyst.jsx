@@ -1,7 +1,7 @@
 // The Analyze tab.
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
-import { Icon } from "../../components/Icon.js";
-import { UploadSlot } from "../../components/UploadSlot.js";
+import { Icon } from "../../components/Icon.jsx";
+import { UploadSlot } from "../../components/UploadSlot.jsx";
 import { html } from "../../html.js";
 import { mapTime, fixedMap, detectKeyAndOffset, GRID, loadSessions, warpTake, invTime, compare, trackPitch, scheduleGuide, SESS_KEY, decodeFile } from "../../lib/analysis.js";
 import { lyricSpans } from "../../lib/lyrics.js";
@@ -12,8 +12,8 @@ import { loadRuns, analyzeRun, loadLastRun, saveLastRun, addRun } from "../../li
 import { loadJSON, saveJSON } from "../../lib/storage.js";
 import { technique } from "../../lib/technique.js";
 import { loadTries } from "../../lib/tries.js";
-import { AnalyzeView } from "./AnalyzeView.js";
-import { RollChart } from "./RollChart.js";
+import { AnalyzeView } from "./AnalyzeView.jsx";
+import { RollChart } from "./RollChart.jsx";
 
 const MIX_KEY = "pitchstaff.mix.v1";
 
