@@ -75,7 +75,9 @@ function SplitRow({ split, onSplit, onCancel }) {
     : split.error
       ? split.error
       : split.done
-        ? "Split " + split.name + "."
+        ? split.fromSaved
+          ? "Split " + split.name + " before, so it's ready right away."
+          : "Split " + split.name + ". Tono remembers it, so next time it's instant."
         : split.stage === "decode"
           ? "Reading " + split.name + "…"
           : split.stage === "model"

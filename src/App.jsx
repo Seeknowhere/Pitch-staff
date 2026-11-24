@@ -30,12 +30,17 @@ import { fmt, midiInfo, freqToMidi } from "./lib/music.js";
 import { detectPitch } from "./lib/pitch.js";
 import { SETTINGS, micGate, getMicStream } from "./lib/settings.js";
 import { cancelSplit, splitSong, canSplitSongs, wavFile } from "./lib/split.js";
+import { getSplit, putSplit } from "./lib/splitCache.js";
 import { loadJSON, saveJSON } from "./lib/storage.js";
 import { usNotesFor } from "./lib/ultrastar.js";
 import { SongSetup } from "./song/SongSetup.jsx";
 import { Analyst } from "./tabs/analyze/Analyst.jsx";
 import { Karaoke } from "./tabs/karaoke/Karaoke.jsx";
-import { KaraokeModePick, BattleJoin, BattleLobby } from "./tabs/karaoke/BattleLobby.jsx";
+import {
+  KaraokeModePick,
+  BattleJoin,
+  BattleLobby,
+} from "./tabs/karaoke/BattleLobby.jsx";
 import { useBattle } from "./tabs/karaoke/useBattle.js";
 import { Lessons } from "./tabs/lessons/Lessons.jsx";
 import { Learn } from "./tabs/practice/Learn.jsx";
@@ -123,7 +128,8 @@ export function App() {
     );
     if (!data || vocalJob.current !== job) return;
     // a shared song comes with the notes its owner's phone found, so both phones score alike
-    data.notes = preset && preset.notes ? preset.notes : snapToKey(data.notes, data.grid);
+    data.notes =
+      preset && preset.notes ? preset.notes : snapToKey(data.notes, data.grid);
     if (!SETTINGS.ai || (preset && preset.notes)) {
       setVocal({ name: file.name, buffer, data });
       return;
@@ -319,7 +325,11 @@ export function App() {
   // a song from your battle partner: load it like a picked song, but don't keep anything about it
   const applySharedSong = useCallback(
     async ({ title, vocal: vf, music: mf, notes, lyrics, sync }) => {
-      const from = (battleCtl.state && battleCtl.state.peer && battleCtl.state.peer.name) || "your friend";
+      const from =
+        (battleCtl.state &&
+          battleCtl.state.peer &&
+          battleCtl.state.peer.name) ||
+        "your friend";
       shared.current = { vocalName: vf.name, lyrics, sync, from };
       setPickStay(false);
       setSampleName(title || null);
@@ -356,20 +366,31 @@ export function App() {
         base = file.name.replace(/\.[^.]+$/, "");
       setSplit({ name: file.name, stage: "decode", p: 0 });
       try {
-        const r = await splitSong(file, (st) => {
-          if (splitJob.current === job)
-            setSplit((x) => ({
-              ...x,
-              ...st,
-              t0:
-                st.stage === "split" && !(x && x.stage === "split")
-                  ? Date.now()
-                  : x && x.t0,
-            }));
-        });
+        // split this exact file before? then there's nothing to wait for
+        const saved = await getSplit(file).catch(() => null);
         if (splitJob.current !== job) return;
-        const vf = wavFile(r.vocals, r.sr, base + ".wav"),
+        let vf, mf;
+        if (saved) {
+          vf = saved.vocal;
+          mf = saved.music;
+        } else {
+          const r = await splitSong(file, (st) => {
+            if (splitJob.current === job)
+              setSplit((x) => ({
+                ...x,
+                ...st,
+                t0:
+                  st.stage === "split" && !(x && x.stage === "split")
+                    ? Date.now()
+                    : x && x.t0,
+              }));
+          });
+          if (splitJob.current !== job) return;
+          vf = wavFile(r.vocals, r.sr, base + ".wav");
           mf = wavFile(r.inst, r.sr, base + " (music).wav");
+          // keep it for next time (if the device has room; it's fine if not)
+          putSplit(file, vf, mf).catch(() => {});
+        }
         // both halves come from the same file, so they are already in time
         const all = loadJSON(KARA_SYNC_KEY, {});
         all[vf.name] = { inst: mf.name, sync: 0, split: true };
@@ -377,6 +398,7 @@ export function App() {
         setSplit({
           name: file.name,
           done: true,
+          fromSaved: !!saved,
           base,
           files: { vocal: vf, music: mf },
         });
@@ -1033,7 +1055,11 @@ export function App() {
   );
   useEffect(() => {
     battleCtl.setSong(battleSong.song, battleSong.dur);
-  }, [battleSong.song, battleSong.dur, battleCtl.state && battleCtl.state.code]);
+  }, [
+    battleSong.song,
+    battleSong.dur,
+    battleCtl.state && battleCtl.state.code,
+  ]);
   // Karaoke screens that come before the song: pick a mode, then (for a battle) the room and lobby
   const karaScreen =
     tab !== "karaoke"
@@ -1175,7 +1201,14 @@ export function App() {
         <BattleLobby
           ctl={battleCtl}
           mySong={battleSong}
-          preparing={!!(battleCtl.state && battleCtl.state.recv && battleCtl.state.recv.done && !songReady)}
+          preparing={
+            !!(
+              battleCtl.state &&
+              battleCtl.state.recv &&
+              battleCtl.state.recv.done &&
+              !songReady
+            )
+          }
           prepPct={vocal && vocal.busy ? vocal.progress : null}
           picker={pickSetup}
           onChangeSong={() => setPickStay(true)}
