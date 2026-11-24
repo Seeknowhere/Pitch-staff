@@ -93,8 +93,14 @@ export function App() {
   // the acapella is shared by Practice, Karaoke and the Singing Analyst
   const [vocal, setVocal] = useState(null);
   const vocalJob = useRef(0);
-  const pickVocal = useCallback(async (file) => {
+  // the original files, kept so a battle partner can be sent this song
+  const vocalFile = useRef(null),
+    musicFile = useRef(null);
+  // a song received from a battle partner: { vocalName, lyrics, sync, from }, only for that battle
+  const shared = useRef(null);
+  const pickVocal = useCallback(async (file, preset) => {
     const job = ++vocalJob.current;
+    vocalFile.current = file;
     setVocal({ name: file.name, busy: true, progress: 0 });
     let buffer;
     try {
@@ -116,8 +122,9 @@ export function App() {
       () => vocalJob.current !== job,
     );
     if (!data || vocalJob.current !== job) return;
-    data.notes = snapToKey(data.notes, data.grid);
-    if (!SETTINGS.ai) {
+    // a shared song comes with the notes its owner's phone found, so both phones score alike
+    data.notes = preset && preset.notes ? preset.notes : snapToKey(data.notes, data.grid);
+    if (!SETTINGS.ai || (preset && preset.notes)) {
       setVocal({ name: file.name, buffer, data });
       return;
     }
@@ -165,6 +172,10 @@ export function App() {
       setVocalLyrics(null);
       return;
     }
+    if (shared.current && shared.current.vocalName === vocalName) {
+      setVocalLyrics(shared.current.lyrics || null);
+      return;
+    }
     const saved = loadLyricsStore()[vocalName];
     setVocalLyrics(saved && Array.isArray(saved.lines) ? saved : null);
   }, [vocalName]);
@@ -206,6 +217,7 @@ export function App() {
   const musicJob = useRef(0);
   const pickMusic = useCallback(async (file) => {
     const job = ++musicJob.current;
+    musicFile.current = file;
     setMusic({ name: file.name, busy: true });
     let buffer;
     try {
@@ -256,6 +268,15 @@ export function App() {
   }, [vocal, music, saveMusicSync]);
   useEffect(() => {
     if (!vocal || !vocal.data || !music || !music.buffer) return;
+    if (shared.current && shared.current.vocalName === vocal.name) {
+      setMsync((x) => ({
+        ...x,
+        keyWarn: 0,
+        sync: shared.current.sync || 0,
+        msg: "Using " + shared.current.from + "'s timing for this song.",
+      }));
+      return;
+    }
     const saved = loadJSON(KARA_SYNC_KEY, {})[vocal.name];
     // a song Tono split itself can't be in two keys, so skip the clash check there
     const sameSource = saved && saved.split && saved.inst === music.name;
@@ -295,6 +316,34 @@ export function App() {
     },
     [pickVocal, pickMusic],
   );
+  // a song from your battle partner: load it like a picked song, but don't keep anything about it
+  const applySharedSong = useCallback(
+    async ({ title, vocal: vf, music: mf, notes, lyrics, sync }) => {
+      const from = (battleCtl.state && battleCtl.state.peer && battleCtl.state.peer.name) || "your friend";
+      shared.current = { vocalName: vf.name, lyrics, sync, from };
+      setPickStay(false);
+      setSampleName(title || null);
+      setMusic(null);
+      const jobs = [pickVocal(vf, { notes })];
+      if (mf) jobs.push(pickMusic(mf));
+      await Promise.all(jobs);
+    },
+    [pickVocal, pickMusic, battleCtl.state],
+  );
+  battleCtl.setOnSongReceived(applySharedSong);
+  // when the battle ends, a shared song goes with it
+  const inBattleRoom = !!battleCtl.state;
+  useEffect(() => {
+    if (inBattleRoom || !shared.current) return;
+    shared.current = null;
+    vocalJob.current++;
+    musicJob.current++;
+    vocalFile.current = null;
+    musicFile.current = null;
+    setVocal(null);
+    setMusic(null);
+    setSampleName(null);
+  }, [inBattleRoom]);
   const [canSplit, setCanSplit] = useState(false);
   useEffect(() => {
     canSplitSongs().then(setCanSplit);
@@ -969,6 +1018,19 @@ export function App() {
     song: songReady && !pickStay ? songTitle(sampleName, vocal) : "",
     dur: songReady && !pickStay ? Math.round(vocal.data.duration * 10) / 10 : 0,
   };
+  // what this phone can send a battle partner: the original files plus what it worked out
+  battleCtl.setShareSource(() =>
+    vocalFile.current && vocal && vocal.data
+      ? {
+          title: songTitle(sampleName, vocal),
+          vocal: vocalFile.current,
+          music: music && music.buffer ? musicFile.current : null,
+          notes: vocal.data.notes,
+          lyrics: vocalLyrics,
+          sync: msync.sync,
+        }
+      : null,
+  );
   useEffect(() => {
     battleCtl.setSong(battleSong.song, battleSong.dur);
   }, [battleSong.song, battleSong.dur, battleCtl.state && battleCtl.state.code]);
@@ -1113,6 +1175,8 @@ export function App() {
         <BattleLobby
           ctl={battleCtl}
           mySong={battleSong}
+          preparing={!!(battleCtl.state && battleCtl.state.recv && battleCtl.state.recv.done && !songReady)}
+          prepPct={vocal && vocal.busy ? vocal.progress : null}
           picker={pickSetup}
           onChangeSong={() => setPickStay(true)}
         />
