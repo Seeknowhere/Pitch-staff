@@ -40,6 +40,7 @@ export function useBattle() {
     ready: false,
     hl: true,
     ph: true,
+    mode: "battle", // "battle" or "duel" (the lyric duel); the host's choice counts
   });
   // Karaoke registers its player here: prepare() (headphone check + unlock sound, from a tap),
   // setHpMode(mode) and start(atMs), so either phone can start the song at a shared moment
@@ -51,6 +52,8 @@ export function useBattle() {
   const again = useRef({ me: false, peer: false }); // who's tapped Rematch since the last start
   // who's tapped "Save to album" for this round (it's only saved when both have)
   const keep = useRef({ me: false, peer: false });
+  // lyric duel messages are handled by Karaoke, which runs the game
+  const duelHandler = useRef(null);
   const theirPhotoBlobs = useRef([]);
   // song sharing: App tells us what this phone can share, and takes a song that arrives
   const shareSource = useRef(null); // () => { title, vocal: File, music: File | null, notes, lyrics, sync } | null
@@ -415,6 +418,9 @@ export function useBattle() {
         else if (m.type === "line")
           setState((b) => b && { ...b, lines: { ...b.lines, [m.i]: m.score } });
         else if (m.type === "songReq") sendSong();
+        else if (m.type && m.type.startsWith("duel")) {
+          if (duelHandler.current) duelHandler.current(m);
+        }
         else if (m.type === "blobMeta") gotBlobMeta(m);
         else if (m.type === "blobChunk") gotBlobChunk(m);
         else if (m.type === "songMeta") gotMeta(m);
@@ -445,6 +451,19 @@ export function useBattle() {
     myName,
     setMyName,
     create: () => open(makeCode(), true),
+    // the game this room plays: the host's pick, which the guest follows
+    setMode: (mode) => {
+      me.current = { ...me.current, mode };
+      announce();
+    },
+    mode: () =>
+      state && !state.host && state.peer && state.peer.mode
+        ? state.peer.mode
+        : me.current.mode,
+    sendDuel: (msg) => send(msg),
+    setDuelHandler: (fn) => {
+      duelHandler.current = fn;
+    },
     join: (code) => open(code, false),
     leave: () => {
       clearStopTimer();
