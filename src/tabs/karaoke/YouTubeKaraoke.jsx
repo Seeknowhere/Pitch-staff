@@ -6,6 +6,7 @@ import { Icon } from "../../components/Icon.jsx";
 import { detectPitch } from "../../lib/pitch.js";
 import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
 import { midiInfo } from "../../lib/music.js";
+import { saveBlob } from "../../lib/audio.js";
 import {
   canSearch,
   loadYouTube,
@@ -193,7 +194,37 @@ function Player({ video, onBack }) {
   const canvas = useRef(null);
   const trail = useRef([]);
   const rec = useRef(null); // { recorder, chunks, start }
-  const [take, setTake] = useState(null); // { url, start }
+  const [take, setTake] = useState(null); // { url, start, blob }
+  const [saveMsg, setSaveMsg] = useState("");
+  useEffect(() => setSaveMsg(""), [take]);
+  // your voice as a file (the video's music can't be included: Tono never has it)
+  const saveTake = async () => {
+    if (!take || !take.blob) return;
+    const type = take.blob.type || "";
+    const ext = /mp4|m4a|aac/.test(type)
+      ? "m4a"
+      : /ogg/.test(type)
+        ? "ogg"
+        : "webm";
+    const base =
+      (title || "YouTube karaoke")
+        .replace(/\(.*?\)|\[.*?\]/g, "")
+        .replace(/karaoke|instrumental|lyrics/gi, "")
+        .replace(/[^\w\- ]+/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 40) || "song";
+    try {
+      await saveBlob(take.blob, base + " - my singing." + ext);
+      setSaveMsg("Saved. It's your voice only, without the music.");
+    } catch (e) {
+      setSaveMsg(
+        e && e.code === "declined"
+          ? "Save cancelled."
+          : "Saving isn't available here.",
+      );
+    }
+  };
   const [hearing, setHearing] = useState(false);
   const audio = useRef(null);
   const syncTimer = useRef(0);
@@ -345,7 +376,7 @@ function Player({ video, onBack }) {
         const blob = new Blob(r.chunks, {
           type: r.chunks[0].type || "audio/webm",
         });
-        setTake({ url: URL.createObjectURL(blob), start: r.start });
+        setTake({ url: URL.createObjectURL(blob), start: r.start, blob });
       };
       try {
         r.recorder.stop();
@@ -501,11 +532,16 @@ function Player({ video, onBack }) {
               {hearing ? "Stop listening" : "🎧 Hear yourself"}
             </button>
           )}
+          {take && !singing && (
+            <button className="btn" onClick={saveTake}>
+              💾 Save my recording
+            </button>
+          )}
         </div>
         {take && !singing && (
           <p className="text-xs muted" style={{ margin: 0 }}>
-            Plays the video with your recording on top. It stays on this phone
-            and is gone when you leave.
+            {saveMsg ||
+              "Hear yourself plays the video with your recording on top. Saving gives you a file of your voice only, since Tono can't record YouTube's music."}
           </p>
         )}
       </div>
