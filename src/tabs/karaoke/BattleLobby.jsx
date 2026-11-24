@@ -5,7 +5,7 @@ import { Icon } from "../../components/Icon.jsx";
 import { fmt } from "../../lib/music.js";
 import { songsMatch } from "./useBattle.js";
 
-export function KaraokeModePick({ onSolo, onBattle, onAlbum }) {
+export function KaraokeModePick({ onSolo, onBattle, onAlbum, onYouTube }) {
   return (
     <section className="flex flex-col gap-4">
       <div className="empty-hero">
@@ -33,6 +33,15 @@ export function KaraokeModePick({ onSolo, onBattle, onAlbum }) {
           <span className="display font-bold text-xl">Battle a friend</span>
           <span className="text-sm muted">
             Challenge a friend, line by line. Best singer takes it.
+          </span>
+        </button>
+        <button className="mode-card" onClick={onYouTube}>
+          <span className="mode-emoji" aria-hidden="true">
+            ▶️
+          </span>
+          <span className="display font-bold text-xl">YouTube karaoke</span>
+          <span className="text-sm muted">
+            Search any karaoke video and sing along. No score, just fun.
           </span>
         </button>
       </div>

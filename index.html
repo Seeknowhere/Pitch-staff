@@ -312,6 +312,18 @@ select.btn { appearance: auto; }
 .album-stats [role="cell"], .album-stats [role="columnheader"] { text-align: center; font-weight: 600; overflow-wrap: anywhere; }
 .album-remove { align-self: center; color: var(--bad); }
 .battle-keep { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+/* YouTube karaoke */
+.yt-list { display: flex; flex-direction: column; gap: 8px; }
+.yt-item { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); color: var(--fg); text-align: left; cursor: pointer; min-height: 64px; }
+.yt-item img { width: 112px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; flex: none; background: var(--line); }
+.yt-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; }
+.yt-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #000; }
+.yt-frame > div, .yt-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.yt-voice { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); }
+.yt-note { flex: none; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; font-size: 20px; background: var(--surface); border: 2px solid var(--accent); color: var(--accent); }
+.yt-level { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 6px; }
+.yt-level span { display: block; height: 100%; background: var(--accent); transition: width .08s; }
+.yt-trail { width: 100%; height: 110px; border-radius: 10px; background: var(--surface); }
 .battle-notice { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 14px 16px; border-radius: 16px; background: rgba(127,178,255,.10); border: 1px solid rgba(127,178,255,.35); }
 /* Battle results */
 .battle-win { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 24px 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); }
