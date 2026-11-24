@@ -35,6 +35,8 @@ import { usNotesFor } from "./lib/ultrastar.js";
 import { SongSetup } from "./song/SongSetup.jsx";
 import { Analyst } from "./tabs/analyze/Analyst.jsx";
 import { Karaoke } from "./tabs/karaoke/Karaoke.jsx";
+import { KaraokeModePick, BattleJoin, BattleLobby } from "./tabs/karaoke/BattleLobby.jsx";
+import { useBattle } from "./tabs/karaoke/useBattle.js";
 import { Lessons } from "./tabs/lessons/Lessons.jsx";
 import { Learn } from "./tabs/practice/Learn.jsx";
 import { MatchTrainer } from "./tabs/tuner/MatchTrainer.jsx";
@@ -73,6 +75,9 @@ export function App() {
   const [lastTake, setLastTake] = useState(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const [pickStay, setPickStay] = useState(false);
+  // Karaoke starts with a mode: null (not chosen yet) | "solo" | "battle"
+  const [karaMode, setKaraMode] = useState(null);
+  const battleCtl = useBattle();
   const [focus, setFocus] = useState(null);
 
   const sendTake = useCallback((t) => {
@@ -932,6 +937,52 @@ export function App() {
     vocalLyrics.lines &&
     vocalLyrics.lines.length
   );
+  const pickSetup = (
+    <SongSetup
+      vocal={vocalEff}
+      music={music}
+      lyricsEntry={vocalLyrics}
+      updateLyrics={updateVocalLyrics}
+      onPickVocal={(f) => {
+        setPickStay(true);
+        setSampleName(null);
+        pickVocal(f);
+      }}
+      onPickMusic={pickMusic}
+      onLoadSample={loadSample}
+      canSplit={canSplit}
+      split={split}
+      onSplit={onSplit}
+      onCancelSplit={onCancelSplit}
+      sampleName={sampleName}
+      sync={msync.sync}
+      onSync={saveMusicSync}
+      onAutoSync={autoMusicSync}
+      syncMsg={msync.msg}
+      keyWarn={msync.keyWarn}
+      onDone={() => setPickStay(false)}
+      onContinue={() => setPickStay(false)}
+    />
+  );
+  // tell a battle partner which song this phone has (once it's set up, not while still picking)
+  const battleSong = {
+    song: songReady && !pickStay ? songTitle(sampleName, vocal) : "",
+    dur: songReady && !pickStay ? Math.round(vocal.data.duration * 10) / 10 : 0,
+  };
+  useEffect(() => {
+    battleCtl.setSong(battleSong.song, battleSong.dur);
+  }, [battleSong.song, battleSong.dur, battleCtl.state && battleCtl.state.code]);
+  // Karaoke screens that come before the song: pick a mode, then (for a battle) the room and lobby
+  const karaScreen =
+    tab !== "karaoke"
+      ? null
+      : !karaMode
+        ? "mode"
+        : karaMode === "battle" && !battleCtl.state
+          ? "join"
+          : karaMode === "battle" && !battleCtl.state.started
+            ? "lobby"
+            : null;
   return (
     <div className="wrap app-wrap flex flex-col gap-5">
       <header
@@ -1015,7 +1066,7 @@ export function App() {
           </button>
         ))}
       </nav>
-      {songNeeded && !showPick && (
+      {songNeeded && !showPick && !karaScreen && (
         <div className="song-bar">
           <span className="song-ico">
             <Icon name="music" />
@@ -1049,7 +1100,36 @@ export function App() {
           </button>
         </div>
       )}
-      {showPick && (
+      {karaScreen === "mode" && (
+        <KaraokeModePick
+          onSolo={() => setKaraMode("solo")}
+          onBattle={() => setKaraMode("battle")}
+        />
+      )}
+      {karaScreen === "join" && (
+        <BattleJoin ctl={battleCtl} onBack={() => setKaraMode(null)} />
+      )}
+      {karaScreen === "lobby" && (
+        <BattleLobby
+          ctl={battleCtl}
+          mySong={battleSong}
+          picker={pickSetup}
+          onChangeSong={() => setPickStay(true)}
+        />
+      )}
+      {tab === "karaoke" && karaMode === "solo" && (
+        <button
+          className="btn btn-ghost"
+          style={{ alignSelf: "flex-start", padding: "4px 8px", fontSize: 13 }}
+          onClick={() => setKaraMode(null)}
+        >
+          <span className="flex items-center gap-1">
+            <Icon name="back" size={16} />
+            Modes
+          </span>
+        </button>
+      )}
+      {showPick && !karaScreen && (
         <section className="flex flex-col gap-5">
           <div className="empty-hero">
             <h2
@@ -1068,31 +1148,7 @@ export function App() {
               </p>
             )}
           </div>
-          <SongSetup
-            vocal={vocalEff}
-            music={music}
-            lyricsEntry={vocalLyrics}
-            updateLyrics={updateVocalLyrics}
-            onPickVocal={(f) => {
-              setPickStay(true);
-              setSampleName(null);
-              pickVocal(f);
-            }}
-            onPickMusic={pickMusic}
-            onLoadSample={loadSample}
-            canSplit={canSplit}
-            split={split}
-            onSplit={onSplit}
-            onCancelSplit={onCancelSplit}
-            sampleName={sampleName}
-            sync={msync.sync}
-            onSync={saveMusicSync}
-            onAutoSync={autoMusicSync}
-            syncMsg={msync.msg}
-            keyWarn={msync.keyWarn}
-            onDone={() => setPickStay(false)}
-            onContinue={() => setPickStay(false)}
-          />
+          {pickSetup}
         </section>
       )}
       <Sheet open={setupOpen} title="Song" onClose={() => setSetupOpen(false)}>
@@ -1157,7 +1213,7 @@ export function App() {
           />
         )}
       </div>
-      <div hidden={tab !== "karaoke" || showPick}>
+      <div hidden={tab !== "karaoke" || showPick || !!karaScreen}>
         {visited.karaoke && (
           <Karaoke
             themeKey={tab === "karaoke" ? "kara" : isDark ? "dark" : "light"}
@@ -1170,6 +1226,7 @@ export function App() {
             onTakeReady={setLastTake}
             onPractice={practiceRange}
             {...musicProps}
+            battleCtl={karaMode === "battle" ? battleCtl : null}
           />
         )}
       </div>

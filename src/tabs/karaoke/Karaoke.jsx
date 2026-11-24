@@ -20,7 +20,6 @@ import { buildPhrases } from "../../lib/phrases.js";
 import { detectPitch } from "../../lib/pitch.js";
 import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
 import { loadJSON, saveJSON } from "../../lib/storage.js";
-import { joinRoom, makeCode } from "../../lib/battleNet.js";
 import { KaraokeLine } from "./KaraokeLine.jsx";
 
 const KARA_BEST_KEY = "pitchstaff.karabest.v1";
@@ -74,6 +73,7 @@ export function Karaoke({
   keyWarn,
   onSync,
   onAutoSync,
+  battleCtl,
 }) {
   const data = orig && orig.data ? orig.data : null;
   const notes = data ? data.notes : [];
@@ -88,67 +88,35 @@ export function Karaoke({
   const [marks, setMarks] = useState([]);
   const [lineScores, setLineScores] = useState({});
   const [final, setFinal] = useState(null);
-  // Live battle with a friend on another phone (see lib/battleNet.js).
-  // battle: { code, host, status, peer: { name, dur } | null, lastName, started, lines: { lineIndex: their score } }
-  const [battle, setBattle] = useState(null);
+  // Live battle with a friend on another phone. The room and lobby live in App (useBattle);
+  // here we send your line scores, judge each line once both scores are in, and show the bar.
+  const battle = battleCtl ? battleCtl.state : null;
   const [battleOpen, setBattleOpen] = useState(false);
-  const [myName, setMyName] = useState(() => loadJSON("tono.battle.name", ""));
-  const [joinCode, setJoinCode] = useState("");
-  const net = useRef(null);
-  const startRef = useRef(null); // latest startPressed, for messages that arrive later
   const sentLines = useRef(new Set());
   const judgedLines = useRef(new Set());
   const battleLead = useRef(0); // 1 = you lead, -1 = rival leads, 0 = nobody yet
   const rivalName = battle ? (battle.peer && battle.peer.name) || battle.lastName || "Rival" : "";
-  const leaveBattle = () => {
-    if (net.current) net.current.leave();
-    net.current = null;
-    setBattle(null);
-  };
-  useEffect(() => () => net.current && net.current.leave(), []);
-  const openRoom = (code, host) => {
-    if (net.current) net.current.leave();
-    const name = myName.trim() || "Singer";
-    saveJSON("tono.battle.name", name);
-    setBattle({ code, host, status: "connecting", peer: null, lastName: "", started: false, lines: {} });
-    net.current = joinRoom(code, { name, dur: data ? Math.round(data.duration * 10) / 10 : 0, host }, {
-      onStatus: (status) => setBattle((b) => b && { ...b, status }),
-      onPeer: (peer) =>
-        setBattle((b) => b && { ...b, peer, lastName: peer ? peer.name : b.lastName }),
-      onMessage: (m) => {
-        if (m.type === "start") beginBattle();
-        else if (m.type === "line")
-          setBattle((b) => b && { ...b, lines: { ...b.lines, [m.i]: m.score } });
-      },
-    });
-  };
-  const beginBattle = () => {
+  // a new battle round starts with a clean slate
+  useEffect(() => {
     sentLines.current = new Set();
     judgedLines.current = new Set();
     battleLead.current = 0;
-    setBattle((b) => b && { ...b, started: true, lines: {} });
-    setBattleOpen(false);
-    if (startRef.current) startRef.current(true);
-  };
-  const hostStart = () => {
-    if (net.current) net.current.send({ type: "start" });
-    beginBattle();
-  };
+  }, [battle && battle.round]);
   // a restart clears your scores: clear the battle's too
   useEffect(() => {
     if (!battle || Object.keys(lineScores).length) return;
     sentLines.current = new Set();
     judgedLines.current = new Set();
     battleLead.current = 0;
-    setBattle((b) => (b && Object.keys(b.lines).length ? { ...b, lines: {} } : b));
+    battleCtl.resetLines();
   }, [lineScores]);
   // send each of your line scores to the other phone once
   useEffect(() => {
-    if (!battle || !battle.started || !net.current) return;
+    if (!battle || !battle.started) return;
     Object.keys(lineScores).forEach((i) => {
       if (sentLines.current.has(i)) return;
       sentLines.current.add(i);
-      net.current.send({ type: "line", i, score: lineScores[i] });
+      battleCtl.sendLine(i, lineScores[i]);
     });
   }, [lineScores, battle && battle.started]);
   // every line is a round: once both of you have a score for it, pop up who won it
@@ -1168,7 +1136,7 @@ export function Karaoke({
       countIn(() => startAt(0, true));
     } else startAt(t, false);
   };
-  startRef.current = startPressed;
+  if (battleCtl) battleCtl.setStarter(startPressed);
   const checkThenSing = async () => {
     const st = await runCheck();
     if (st === "ok") {
@@ -1721,18 +1689,16 @@ export function Karaoke({
                     <Icon name="sliders" size={16} />
                     Mix
                   </button>
+                  {battle && (
                   <button
                     className="k-chip"
-                    aria-pressed={battle ? "true" : "false"}
+                    aria-pressed="true"
                     onClick={() => setBattleOpen(true)}
                   >
                     <Icon name="mic" size={16} />
-                    {battle
-                      ? battle.peer
-                        ? "Battle: " + battle.peer.name
-                        : "Battle " + battle.code
-                      : "Battle"}
+                    {battle.peer ? "Battle: " + battle.peer.name : "Battle " + battle.code}
                   </button>
+                  )}
                 </div>
               </div>
             </section>
@@ -1962,52 +1928,7 @@ export function Karaoke({
         title="Battle a friend"
         onClose={() => setBattleOpen(false)}
       >
-        {!battle ? (
-          <div className="opt-group">
-            <label className="flex flex-col gap-1" htmlFor="battle-name">
-              <span className="label">Your name</span>
-              <input
-                id="battle-name"
-                className="battle-input"
-                value={myName}
-                maxLength={16}
-                onChange={(e) => setMyName(e.target.value)}
-              />
-            </label>
-            <button
-              className="btn btn-primary"
-              style={{ justifyContent: "center", minHeight: 48 }}
-              onClick={() => openRoom(makeCode(), true)}
-            >
-              Create battle
-            </button>
-            <span className="text-xs muted" style={{ textAlign: "center" }}>
-              or join a friend's battle
-            </span>
-            <div className="flex gap-2">
-              <input
-                className="battle-input mono"
-                aria-label="Battle code"
-                inputMode="numeric"
-                maxLength={4}
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, ""))}
-                style={{ flex: 1, letterSpacing: "0.3em", textAlign: "center" }}
-              />
-              <button
-                className="btn"
-                disabled={joinCode.length !== 4}
-                onClick={() => openRoom(joinCode, false)}
-              >
-                Join
-              </button>
-            </div>
-            <p className="text-xs muted">
-              You both need this same song loaded in Karaoke. Only your names and
-              line scores are shared, never your voice.
-            </p>
-          </div>
-        ) : (
+        {battle && (
           <div className="opt-group" style={{ alignItems: "center", textAlign: "center" }}>
             <span className="label">Battle code</span>
             <span className="display font-bold mono" style={{ fontSize: 40, letterSpacing: "0.15em" }}>
@@ -2030,7 +1951,7 @@ export function Karaoke({
                   : "Waiting for a friend to join with this code…"}
               </p>
             )}
-            {battle.peer && data && Math.abs(battle.peer.dur - data.duration) > 2 && (
+            {battle.peer && data && battle.peer.dur && Math.abs(battle.peer.dur - data.duration) > 2 && (
               <p className="text-xs" style={{ color: "var(--warn)" }}>
                 Your songs look like different versions ({fmt(data.duration)} vs{" "}
                 {fmt(battle.peer.dur)}), so scores may not line up.
@@ -2046,9 +1967,12 @@ export function Karaoke({
                 className="btn btn-primary"
                 style={{ justifyContent: "center", minHeight: 48, alignSelf: "stretch" }}
                 disabled={!battle.peer}
-                onClick={hostStart}
+                onClick={() => {
+                  setBattleOpen(false);
+                  battleCtl.start();
+                }}
               >
-                Start battle
+                {battle.started ? "Restart the battle for both" : "Start battle"}
               </button>
             ) : (
               battle.peer && (
@@ -2057,7 +1981,14 @@ export function Karaoke({
                 </p>
               )
             )}
-            <button className="btn btn-ghost" onClick={leaveBattle}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                setBattleOpen(false);
+                stopAll();
+                battleCtl.leave();
+              }}
+            >
               Leave battle
             </button>
           </div>
