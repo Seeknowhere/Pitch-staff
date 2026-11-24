@@ -23,7 +23,7 @@ export function KaraokeModePick({ onSolo, onBattle }) {
           <span className="mode-emoji" aria-hidden="true">⚔️</span>
           <span className="display font-bold text-xl">Battle a friend</span>
           <span className="text-sm muted">
-            Same song, two phones. Win the most lines to win the battle.
+            Challenge a friend, line by line. Best singer takes it.
           </span>
         </button>
       </div>
