@@ -21,6 +21,7 @@ import { detectPitch } from "../../lib/pitch.js";
 import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
 import { loadJSON, saveJSON } from "../../lib/storage.js";
 import { KaraokeLine } from "./KaraokeLine.jsx";
+import { BattleResults } from "./BattleResults.jsx";
 
 const KARA_BEST_KEY = "pitchstaff.karabest.v1";
 
@@ -97,6 +98,9 @@ export function Karaoke({
   const battleLead = useRef(0); // 1 = you lead, -1 = rival leads, 0 = nobody yet
   const rivalName = battle ? (battle.peer && battle.peer.name) || battle.lastName || "Rival" : "";
   const inBattle = !!(battle && battle.started && battle.peer);
+  // read from callbacks scheduled earlier (timers), so they see the current battle
+  const battleOn = useRef(false);
+  battleOn.current = !!(battle && battle.started);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!battle || !battle.stopReq) return;
@@ -606,6 +610,7 @@ export function Karaoke({
       Math.min(songEnd, play.current.lastSongT || cursor || 0),
     );
     const lis = isListening();
+    if (battleOn.current && battleCtl) battleCtl.sendFinal({ bestCombo: R.bestCombo || 0 });
     if (!lis || v < 50) {
       setFinal({ score: null, lines: 0, scoring: lis, reached });
       return;
@@ -717,7 +722,7 @@ export function Karaoke({
     p.guide = scheduleGuide(ctx, p.gG, notes, t, end, now, 0, 1);
     p.songAt = () => t + Math.max(0, ctx.currentTime - now);
     tape.current.pos = null;
-    tape.current.on = !!(lis && mic.current.an && !check);
+    tape.current.on = !!(lis && mic.current.an && !check && !battleOn.current);
     setPlaying(true);
     const an = lis ? mic.current.an : null,
       buf = an ? new Float32Array(an.fftSize) : null;
@@ -1201,7 +1206,24 @@ export function Karaoke({
 
   return (
     <div className="flex flex-col gap-4">
-      {final ? (
+      {final && battle && battle.started ? (
+        <BattleResults
+          myName={(battleCtl.myName || "").trim() || "You"}
+          rivalName={rivalName}
+          mine={lineScores}
+          theirs={battle.lines}
+          myCombo={final.bestCombo ?? run.current.bestCombo ?? null}
+          theirCombo={battle.peerFinal ? battle.peerFinal.bestCombo : null}
+          again={battle.again}
+          rivalHere={!!battle.peer}
+          onRematch={battleCtl.rematch}
+          onNewSong={battleCtl.newSong}
+          onLeave={() => {
+            stopAll();
+            battleCtl.leave();
+          }}
+        />
+      ) : final ? (
         <React.Fragment>
           <section className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-3">

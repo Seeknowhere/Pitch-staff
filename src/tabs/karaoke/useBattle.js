@@ -7,7 +7,8 @@ import { loadJSON, saveJSON } from "../../lib/storage.js";
 // state: { code, host, status, peer: { name, host, song, dur, ready } | null, lastName,
 //          started, round, synced, lines: { lineIndex: friend's score },
 //          paused: { by: "me" | "peer", pos } | null,
-//          stopReq: { by: "me" | "peer", pos, until } | null } | null
+//          stopReq: { by: "me" | "peer", pos, until } | null,
+//          peerFinal: { bestCombo } | null, again: { me, peer } | null } | null
 export function useBattle() {
   const [state, setState] = useState(null);
   const [myName, setMyName] = useState(() => loadJSON("tono.battle.name", ""));
@@ -20,6 +21,7 @@ export function useBattle() {
   const offset = useRef(0);
   const bestRtt = useRef(Infinity);
   const stopTimer = useRef(null);
+  const again = useRef({ me: false, peer: false }); // who's tapped Rematch since the last start
   useEffect(() => () => net.current && net.current.leave(), []);
   // times sent between phones are on the host's clock
   const toHost = (local) => local + offset.current;
@@ -49,6 +51,24 @@ export function useBattle() {
     send({ type: "resume", at: toHost(at), pos });
     doResume(at, pos);
   };
+  // host: start both phones 3.5 s from now (time enough for the message to arrive)
+  const startAll = () => {
+    const at = Date.now() + 3500;
+    send({ type: "start", at: toHost(at) });
+    begin(at);
+  };
+  // rematch starts (from the host's phone) once both have tapped it
+  const checkAgain = (host) => {
+    const a = again.current;
+    setState((b) => b && { ...b, again: { ...a } });
+    if (host && a.me && a.peer) startAll();
+  };
+  // back to the lobby on both phones to pick another song (everyone gets ready again)
+  const doLobby = () => {
+    me.current = { ...me.current, ready: false };
+    announce();
+    setState((b) => b && { ...b, started: false, paused: null, stopReq: null, peerFinal: null, again: null, lines: {} });
+  };
   // ending needs the other singer's OK; no answer in 20 s ends it anyway
   const STOP_WAIT = 20000;
   const answerStop = (end, pos) => {
@@ -63,7 +83,8 @@ export function useBattle() {
 
   // atLocal: the moment (this phone's clock, ms) the countdown should end and the music start
   const begin = useCallback((atLocal) => {
-    setState((b) => b && { ...b, started: true, paused: null, stopReq: null, lines: {}, round: (b.round || 0) + 1 });
+    again.current = { me: false, peer: false };
+    setState((b) => b && { ...b, started: true, paused: null, stopReq: null, peerFinal: null, again: null, lines: {}, round: (b.round || 0) + 1 });
     if (player.current) player.current.start(atLocal);
   }, []);
 
@@ -106,6 +127,11 @@ export function useBattle() {
           clearStopTimer();
           setState((b) => b && { ...b, stopReq: null });
         }
+        else if (m.type === "final") setState((b) => b && { ...b, peerFinal: m.stats });
+        else if (m.type === "again") {
+          again.current = { ...again.current, peer: true };
+          checkAgain(host);
+        } else if (m.type === "lobby") doLobby();
         else if (m.type === "line")
           setState((b) => b && { ...b, lines: { ...b.lines, [m.i]: m.score } });
       },
@@ -153,10 +179,17 @@ export function useBattle() {
     },
     isReady: () => me.current.ready,
     // host: start both phones 3.5 s from now (time enough for the message to arrive)
-    start: () => {
-      const at = Date.now() + 3500;
-      if (net.current) net.current.send({ type: "start", at });
-      begin(at);
+    start: startAll,
+    // your end-of-song stats the other phone can't work out itself (line scores it already has)
+    sendFinal: (stats) => send({ type: "final", stats }),
+    rematch: () => {
+      again.current = { ...again.current, me: true };
+      send({ type: "again" });
+      checkAgain(me.current.host);
+    },
+    newSong: () => {
+      send({ type: "lobby" });
+      doLobby();
     },
     pause: (pos) => {
       send({ type: "pause", pos });
