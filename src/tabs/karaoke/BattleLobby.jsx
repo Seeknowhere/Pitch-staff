@@ -5,7 +5,7 @@ import { Icon } from "../../components/Icon.jsx";
 import { fmt } from "../../lib/music.js";
 import { songsMatch } from "./useBattle.js";
 
-export function KaraokeModePick({ onSolo, onBattle }) {
+export function KaraokeModePick({ onSolo, onBattle, onAlbum }) {
   return (
     <section className="flex flex-col gap-4">
       <div className="empty-hero">
@@ -36,6 +36,13 @@ export function KaraokeModePick({ onSolo, onBattle }) {
           </span>
         </button>
       </div>
+      <button
+        className="btn btn-ghost"
+        style={{ alignSelf: "center", minHeight: 44 }}
+        onClick={onAlbum}
+      >
+        Battle album
+      </button>
     </section>
   );
 }
@@ -175,7 +182,7 @@ export function BattleLobby({
           <span className="text-xs muted">
             Tono snaps 3 surprise photos of you while you sing and shows them on
             the results. Only {peer ? peer.name : "your friend"} sees them, and
-            they're never saved.
+            they're only kept if you both save the battle.
             {ctl.sharePhotos &&
               b.cam === "denied" &&
               " The camera isn't allowed, so no photos of you this time."}
@@ -193,7 +200,8 @@ export function BattleLobby({
           <span className="text-xs muted">
             Your voice is recorded so the results can play a part of the song
             with each line sung by whoever won it. Only{" "}
-            {peer ? peer.name : "your friend"} hears it, and it's never saved.
+            {peer ? peer.name : "your friend"} hears it, and it's only kept if
+            you both save the battle.
           </span>
         </span>
       </label>

@@ -49,6 +49,9 @@ export function useBattle() {
   const bestRtt = useRef(Infinity);
   const stopTimer = useRef(null);
   const again = useRef({ me: false, peer: false }); // who's tapped Rematch since the last start
+  // who's tapped "Save to album" for this round (it's only saved when both have)
+  const keep = useRef({ me: false, peer: false });
+  const theirPhotoBlobs = useRef([]);
   // song sharing: App tells us what this phone can share, and takes a song that arrives
   const shareSource = useRef(null); // () => { title, vocal: File, music: File | null, notes, lyrics, sync } | null
   const onReceived = useRef(null);
@@ -59,6 +62,7 @@ export function useBattle() {
   const dropPhotos = () => {
     photoUrls.current.forEach((u) => URL.revokeObjectURL(u));
     photoUrls.current = [];
+    theirPhotoBlobs.current = [];
   };
   useEffect(() => () => net.current && net.current.leave(), []);
   // times sent between phones are on the host's clock
@@ -117,6 +121,7 @@ export function useBattle() {
           lines: {},
           theirClips: {},
           theirPhotos: [],
+          keep: null,
         },
     );
   };
@@ -282,8 +287,10 @@ export function useBattle() {
       o += p.length;
     });
     if (b.kind === "photo") {
-      const url = URL.createObjectURL(new Blob([all], { type: "image/jpeg" }));
+      const blob = new Blob([all], { type: "image/jpeg" });
+      const url = URL.createObjectURL(blob);
       photoUrls.current.push(url);
+      theirPhotoBlobs.current.push(blob);
       setState(
         (s) => s && { ...s, theirPhotos: [...(s.theirPhotos || []), url] },
       );
@@ -305,6 +312,8 @@ export function useBattle() {
   // atLocal: the moment (this phone's clock, ms) the countdown should end and the music start
   const begin = useCallback((atLocal) => {
     again.current = { me: false, peer: false };
+    keep.current = { me: false, peer: false };
+    theirPhotoBlobs.current = [];
     blobs.current = {};
     dropPhotos();
     setState(
@@ -319,6 +328,7 @@ export function useBattle() {
           lines: {},
           theirClips: {},
           theirPhotos: [],
+          keep: null,
           round: (b.round || 0) + 1,
         },
     );
@@ -395,7 +405,10 @@ export function useBattle() {
           setState((b) => b && { ...b, stopReq: null });
         } else if (m.type === "final")
           setState((b) => b && { ...b, peerFinal: m.stats });
-        else if (m.type === "again") {
+        else if (m.type === "keep") {
+          keep.current = { ...keep.current, peer: true };
+          setState((b) => b && { ...b, keep: { ...keep.current } });
+        } else if (m.type === "again") {
           again.current = { ...again.current, peer: true };
           checkAgain(host);
         } else if (m.type === "lobby") doLobby();
@@ -465,6 +478,13 @@ export function useBattle() {
     start: startAll,
     // your end-of-song stats the other phone can't work out itself (line scores it already has)
     sendFinal: (stats) => send({ type: "final", stats }),
+    // "Save to album": each phone saves its own copy once both have tapped it
+    keepBattle: () => {
+      keep.current = { ...keep.current, me: true };
+      send({ type: "keep" });
+      setState((b) => b && { ...b, keep: { ...keep.current } });
+    },
+    theirPhotoBlobs: () => theirPhotoBlobs.current.slice(),
     rematch: () => {
       again.current = { ...again.current, me: true };
       send({ type: "again" });

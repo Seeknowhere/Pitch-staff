@@ -18,6 +18,9 @@ export function BattleResults({
   again,
   rivalHere,
   highlights,
+  keep,
+  albumState,
+  onKeep,
   myPhotos = [],
   theirPhotos = [],
   hlNow,
@@ -155,6 +158,47 @@ export function BattleResults({
         </div>
       )}
 
+      <div className="battle-keep">
+        {albumState === "saved" ? (
+          <span
+            className="text-sm font-semibold"
+            style={{ color: "var(--good)" }}
+          >
+            Saved to your battle album ✓
+          </span>
+        ) : albumState === "saving" ? (
+          <span className="text-sm muted">Saving to your album…</span>
+        ) : albumState === "failed" ? (
+          <span className="text-sm" style={{ color: "var(--warn)" }}>
+            Couldn't save it. This phone may be out of space.
+          </span>
+        ) : (
+          <>
+            <button
+              className="btn"
+              style={{
+                justifyContent: "center",
+                minHeight: 48,
+                alignSelf: "stretch",
+              }}
+              disabled={!rivalHere || (keep && keep.me)}
+              onClick={onKeep}
+            >
+              {keep && keep.me && keep.peer
+                ? "Saving…"
+                : keep && keep.me
+                  ? "Waiting for " + rivalName + " to say yes…"
+                  : keep && keep.peer
+                    ? rivalName + " wants to keep this battle. Save it?"
+                    : "Save to album"}
+            </button>
+            <span className="text-xs muted">
+              Saved only if you both tap it: the photos, the remix and the
+              score, on each of your phones.
+            </span>
+          </>
+        )}
+      </div>
       <div className="flex flex-col gap-2">
         <button
           className="btn btn-primary"

@@ -42,6 +42,7 @@ import {
   BattleLobby,
 } from "./tabs/karaoke/BattleLobby.jsx";
 import { useBattle } from "./tabs/karaoke/useBattle.js";
+import { BattleAlbum } from "./tabs/karaoke/BattleAlbum.jsx";
 import { Lessons } from "./tabs/lessons/Lessons.jsx";
 import { Learn } from "./tabs/practice/Learn.jsx";
 import { MatchTrainer } from "./tabs/tuner/MatchTrainer.jsx";
@@ -1106,11 +1107,13 @@ export function App() {
       ? null
       : !karaMode
         ? "mode"
-        : karaMode === "battle" && !battleCtl.state
-          ? "join"
-          : karaMode === "battle" && !battleCtl.state.started
-            ? "lobby"
-            : null;
+        : karaMode === "album"
+          ? "album"
+          : karaMode === "battle" && !battleCtl.state
+            ? "join"
+            : karaMode === "battle" && !battleCtl.state.started
+              ? "lobby"
+              : null;
   return (
     <div className="wrap app-wrap flex flex-col gap-5">
       <header
@@ -1232,7 +1235,11 @@ export function App() {
         <KaraokeModePick
           onSolo={() => setKaraMode("solo")}
           onBattle={() => setKaraMode("battle")}
+          onAlbum={() => setKaraMode("album")}
         />
+      )}
+      {karaScreen === "album" && (
+        <BattleAlbum onBack={() => setKaraMode(null)} />
       )}
       {karaScreen === "join" && (
         <BattleJoin ctl={battleCtl} onBack={() => setKaraMode(null)} />

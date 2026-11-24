@@ -269,6 +269,49 @@ select.btn { appearance: auto; }
 .candid-big { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.85); border: none; cursor: zoom-out; }
 .candid-big img { max-width: 100%; max-height: 100%; border-radius: 12px; }
 .text-xs.you { color: #f3d18c; } .text-xs.opp { color: #9cc4ff; }
+/* Battle album: a scrapbook of saved battles */
+.album-record { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.album-record > div { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.album-record b { font-family: var(--font-display); font-size: 24px; }
+.album-record span { font-size: 12px; color: var(--muted); }
+.album-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; }
+.album-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0; text-align: left; background: none; border: none; color: var(--fg); cursor: pointer; }
+.album-tile-board { position: relative; width: 100%; aspect-ratio: 1 / 1.03; margin-bottom: 6px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }
+.album-tile-song { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center; font-family: var(--font-display); font-weight: 700; color: var(--muted); }
+.album-board { position: relative; width: 100%; aspect-ratio: 350 / 470; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }
+.pola { position: absolute; box-sizing: border-box; background: #f4efe4; padding: 3.5% 3.5% 12%; border-radius: 2px; box-shadow: 0 8px 20px rgba(0,0,0,.5); }
+.pola img { display: block; width: 100%; aspect-ratio: 1 / 0.94; object-fit: cover; }
+.pola img.me { background: #b8862f; } .pola img.them { background: #4f7fd0; }
+.pola-cap { position: absolute; left: 0; right: 0; bottom: 3%; text-align: center; font-family: var(--font-mono); font-size: 10px; color: #3a3450; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; }
+.tape { position: absolute; width: 22%; height: 7%; background: rgba(244,239,228,.38); border-left: 1px dashed rgba(10,9,16,.25); border-right: 1px dashed rgba(10,9,16,.25); }
+.tape.big { width: 15%; height: 3.4%; }
+.album-sticker { position: absolute; width: 33%; aspect-ratio: 1; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,.4); }
+.album-sticker .mono { font-size: 9px; font-weight: 600; letter-spacing: .08em; }
+.album-sticker b { font-family: var(--font-display); font-size: 16px; line-height: 1; }
+.album-sticker.win, .album-winner.win { background: #e2b65c; color: #1a1408; }
+.album-sticker.loss, .album-winner.loss { background: #7fb2ff; color: #0a0910; }
+.album-sticker.draw, .album-winner.draw { background: #c4b5fd; color: #0a0910; }
+.album-winner { position: absolute; left: 36%; top: 62%; width: 26%; aspect-ratio: 1; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; transform: rotate(-10deg); box-shadow: 0 8px 20px rgba(0,0,0,.5); border: 3px dashed rgba(26,20,8,.35); text-align: center; }
+.album-winner .mono { font-size: 9px; font-weight: 600; letter-spacing: .1em; }
+.album-winner b { font-family: var(--font-display); font-size: 16px; line-height: 1.05; padding: 0 6px; overflow-wrap: anywhere; }
+.album-stub { position: absolute; right: 4%; bottom: 3%; max-width: 46%; display: flex; flex-direction: column; gap: 1px; padding: 8px 12px; background: #f4efe4; color: #1a1408; border-radius: 6px; transform: rotate(4deg); box-shadow: 0 6px 14px rgba(0,0,0,.45); border-left: 2px dashed #a59fbd; }
+.album-stub .mono { font-size: 10px; letter-spacing: .08em; color: #5b5470; }
+.album-stub b { font-family: var(--font-display); font-size: 15px; overflow-wrap: anywhere; }
+.album-remix { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 18px; background: var(--surface-2); border: 1px solid var(--line); }
+.album-play { flex: none; width: 52px; height: 52px; border-radius: 50%; border: none; background: var(--accent); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.album-bars { display: flex; align-items: center; gap: 3px; height: 44px; }
+.album-bars span { flex: 1; border-radius: 2px; transition: opacity .2s; }
+.album-bars .you { background: #e2b65c; } .album-bars .opp { background: #7fb2ff; } .album-bars .both { background: #c4b5fd; }
+.album-bars .later { opacity: .35; }
+.album-key { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.album-key.you { background: #e2b65c; } .album-key.opp { background: #7fb2ff; }
+.album-stats { display: flex; flex-direction: column; border-radius: 16px; border: 1px solid var(--line); overflow: hidden; font-size: 14px; }
+.album-stats > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); }
+.album-stats > div:first-child { border-top: none; }
+.album-stats > div.head { background: var(--surface-2); font-size: 12px; font-weight: 600; }
+.album-stats [role="cell"], .album-stats [role="columnheader"] { text-align: center; font-weight: 600; overflow-wrap: anywhere; }
+.album-remove { align-self: center; color: var(--bad); }
+.battle-keep { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
 .battle-notice { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 14px 16px; border-radius: 16px; background: rgba(127,178,255,.10); border: 1px solid rgba(127,178,255,.35); }
 /* Battle results */
 .battle-win { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 24px 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); }

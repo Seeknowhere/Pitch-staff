@@ -23,6 +23,7 @@ import { loadJSON, saveJSON } from "../../lib/storage.js";
 import { KaraokeLine } from "./KaraokeLine.jsx";
 import { BattleResults } from "./BattleResults.jsx";
 import { pickRemix } from "./battleHighlights.js";
+import { saveBattle } from "../../lib/battleAlbum.js";
 
 const KARA_BEST_KEY = "pitchstaff.karabest.v1";
 
@@ -968,12 +969,8 @@ export function Karaoke({
     setHlNow(null);
   };
   // the remix: the music plays straight through, and the two voices hand over line by line
-  const playHighlights = () => {
-    if (!remix) return;
-    stopHighlights();
-    killSources();
-    setPlaying(false);
-    const ctx = ensureCtx();
+  // both singers' voices for the remix stretch (either can be missing)
+  const remixVoices = () => {
     const mine = myVoice(takeBuf, remix.t0, remix.t1, estimateLatency());
     let theirs = null;
     if (theirRemix) {
@@ -981,12 +978,13 @@ export function Karaoke({
       for (let i = 0; i < f.length; i++) f[i] = theirRemix.pcm[i] / 0x8000;
       theirs = { sr: theirRemix.sr, data: f };
     }
-    if (!mine && !theirs) return;
+    return { mine, theirs };
+  };
+  // the remix as audio nodes in any context (live to play it, offline to save it), starting at `at`
+  const buildRemix = (ctx, at, mine, theirs) => {
     const dur = remix.t1 - remix.t0,
-      at = ctx.currentTime + 0.15,
-      FADE = 0.08;
-    const nodes = [],
-      timers = [];
+      FADE = 0.08,
+      nodes = [];
     const out = ctx.createDynamicsCompressor();
     out.connect(ctx.destination);
     if (inst && inst.buffer) {
@@ -1036,6 +1034,31 @@ export function Karaoke({
     };
     voice(mine, 1);
     voice(theirs, -1);
+    return { nodes, dur };
+  };
+  // the remix rendered to finished audio (mono, 22 kHz WAV) for the battle album
+  const renderRemix = async () => {
+    if (!remix) return null;
+    const { mine, theirs } = remixVoices();
+    if (!mine && !theirs) return null;
+    const sr = 22050,
+      dur = remix.t1 - remix.t0;
+    const off = new OfflineAudioContext(1, Math.ceil(dur * sr), sr);
+    buildRemix(off, 0, mine, theirs);
+    const buf = await off.startRendering();
+    return { blob: encodeWav(buf), dur };
+  };
+  const playHighlights = () => {
+    if (!remix) return;
+    stopHighlights();
+    killSources();
+    setPlaying(false);
+    const ctx = ensureCtx();
+    const { mine, theirs } = remixVoices();
+    if (!mine && !theirs) return;
+    const at = ctx.currentTime + 0.15;
+    const { nodes, dur } = buildRemix(ctx, at, mine, theirs);
+    const timers = [];
     const myName = ((battleCtl && battleCtl.myName) || "").trim() || "You";
     remix.segs.forEach((sg) => {
       const who = !mine
@@ -1071,6 +1094,88 @@ export function Karaoke({
     };
   };
   useEffect(() => () => hl.current.stop && hl.current.stop(), []);
+  // ---- battle album: saved only when both singers tapped "Save to album" ----
+  const [albumState, setAlbumState] = useState(null); // null | "saving" | "saved" | "failed"
+  const savedRound = useRef(-1);
+  const keepBoth = !!(
+    battle &&
+    battle.keep &&
+    battle.keep.me &&
+    battle.keep.peer
+  );
+  const remixWaiting = !!(reel && reel.waiting);
+  useEffect(() => {
+    if (!battle || !battle.started) setAlbumState(null);
+  }, [battle && battle.round, !!(battle && battle.started)]);
+  useEffect(() => {
+    if (
+      !keepBoth ||
+      remixWaiting ||
+      !bothDone ||
+      savedRound.current === battle.round
+    )
+      return;
+    savedRound.current = battle.round;
+    setAlbumState("saving");
+    (async () => {
+      try {
+        const mine = lineScores,
+          theirs = battle.lines;
+        let you = 0,
+          opp = 0;
+        Object.keys(mine).forEach((i) => {
+          if (theirs[i] == null) return;
+          if (mine[i] > theirs[i]) you++;
+          else if (mine[i] < theirs[i]) opp++;
+        });
+        const avg = (o) => {
+          const v = Object.values(o);
+          return v.length
+            ? Math.round(v.reduce((a, b) => a + b, 0) / v.length)
+            : null;
+        };
+        const myAvg = avg(mine),
+          theirAvg = avg(theirs);
+        const result =
+          you !== opp
+            ? Math.sign(you - opp)
+            : myAvg != null && theirAvg != null
+              ? Math.sign(myAvg - theirAvg)
+              : 0;
+        const r = await renderRemix().catch(() => null);
+        await saveBattle({
+          id: Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+          at: Date.now(),
+          myName: (battleCtl.myName || "").trim() || "You",
+          rival: rivalName,
+          song: songName ? songName.replace(/\.[^.]+$/, "") : "",
+          result,
+          you,
+          opp,
+          myAvg,
+          theirAvg,
+          myPerfect: Object.values(mine).filter((x) => x >= 90).length,
+          theirPerfect: Object.values(theirs).filter((x) => x >= 90).length,
+          myCombo: final.bestCombo ?? null,
+          theirCombo: battle.peerFinal ? battle.peerFinal.bestCombo : null,
+          myPhotos: myPhotoBlobs.current.slice(),
+          theirPhotos: battleCtl.theirPhotoBlobs(),
+          remix: r ? r.blob : null,
+          remixDur: r ? r.dur : 0,
+          remixSegs: remix
+            ? remix.segs.map((sg) => ({
+                from: sg.from - remix.t0,
+                to: sg.to - remix.t0,
+                who: sg.who,
+              }))
+            : [],
+        });
+        setAlbumState("saved");
+      } catch (e) {
+        setAlbumState("failed");
+      }
+    })();
+  }, [keepBoth, remixWaiting, bothDone]);
 
   // ---- battle candid photos: a few surprise snaps of you while you sing ----
   // The camera is only on while the battle song plays; photos go to the other singer and the
@@ -1078,9 +1183,11 @@ export function Karaoke({
   const cam = useRef({ stream: null, video: null, targets: [], taken: 0 });
   const [myPhotos, setMyPhotos] = useState([]);
   const myPhotoUrls = useRef([]);
+  const myPhotoBlobs = useRef([]);
   const dropMyPhotos = () => {
     myPhotoUrls.current.forEach((u) => URL.revokeObjectURL(u));
     myPhotoUrls.current = [];
+    myPhotoBlobs.current = [];
     setMyPhotos([]);
   };
   const closeCamera = () => {
@@ -1153,6 +1260,7 @@ export function Karaoke({
         if (!blob) return;
         const url = URL.createObjectURL(blob);
         myPhotoUrls.current.push(url);
+        myPhotoBlobs.current.push(blob);
         setMyPhotos((p) => [...p, url]);
         if (battleCtl && battle && battle.peer) battleCtl.sendPhoto(blob);
       },
@@ -1533,6 +1641,9 @@ export function Karaoke({
           theirs={battle.lines}
           myCombo={final.bestCombo ?? run.current.bestCombo ?? null}
           highlights={reel}
+          keep={battle.keep}
+          albumState={albumState}
+          onKeep={battleCtl.keepBattle}
           myPhotos={myPhotos}
           theirPhotos={battle.theirPhotos || []}
           hlNow={hlNow}
