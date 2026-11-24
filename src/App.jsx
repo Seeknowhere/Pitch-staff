@@ -30,12 +30,17 @@ import { fmt, midiInfo, freqToMidi } from "./lib/music.js";
 import { detectPitch } from "./lib/pitch.js";
 import { SETTINGS, micGate, getMicStream } from "./lib/settings.js";
 import { cancelSplit, splitSong, canSplitSongs, wavFile } from "./lib/split.js";
+import { fileKey, findSplit, saveSong, touchSong } from "./lib/songLibrary.js";
 import { loadJSON, saveJSON } from "./lib/storage.js";
 import { usNotesFor } from "./lib/ultrastar.js";
 import { SongSetup } from "./song/SongSetup.jsx";
 import { Analyst } from "./tabs/analyze/Analyst.jsx";
 import { Karaoke } from "./tabs/karaoke/Karaoke.jsx";
-import { KaraokeModePick, BattleJoin, BattleLobby } from "./tabs/karaoke/BattleLobby.jsx";
+import {
+  KaraokeModePick,
+  BattleJoin,
+  BattleLobby,
+} from "./tabs/karaoke/BattleLobby.jsx";
 import { useBattle } from "./tabs/karaoke/useBattle.js";
 import { Lessons } from "./tabs/lessons/Lessons.jsx";
 import { Learn } from "./tabs/practice/Learn.jsx";
@@ -96,6 +101,9 @@ export function App() {
   // the original files, kept so a battle partner can be sent this song
   const vocalFile = useRef(null),
     musicFile = useRef(null);
+  // for My songs: which vocal the loaded music belongs with, and the file a split came from
+  const musicFor = useRef(null),
+    splitSrc = useRef(null);
   // a song received from a battle partner: { vocalName, lyrics, sync, from }, only for that battle
   const shared = useRef(null);
   const pickVocal = useCallback(async (file, preset) => {
@@ -123,7 +131,8 @@ export function App() {
     );
     if (!data || vocalJob.current !== job) return;
     // a shared song comes with the notes its owner's phone found, so both phones score alike
-    data.notes = preset && preset.notes ? preset.notes : snapToKey(data.notes, data.grid);
+    data.notes =
+      preset && preset.notes ? preset.notes : snapToKey(data.notes, data.grid);
     if (!SETTINGS.ai || (preset && preset.notes)) {
       setVocal({ name: file.name, buffer, data });
       return;
@@ -218,6 +227,7 @@ export function App() {
   const pickMusic = useCallback(async (file) => {
     const job = ++musicJob.current;
     musicFile.current = file;
+    musicFor.current = vocalFile.current ? fileKey(vocalFile.current) : null;
     setMusic({ name: file.name, busy: true });
     let buffer;
     try {
@@ -319,7 +329,11 @@ export function App() {
   // a song from your battle partner: load it like a picked song, but don't keep anything about it
   const applySharedSong = useCallback(
     async ({ title, vocal: vf, music: mf, notes, lyrics, sync }) => {
-      const from = (battleCtl.state && battleCtl.state.peer && battleCtl.state.peer.name) || "your friend";
+      const from =
+        (battleCtl.state &&
+          battleCtl.state.peer &&
+          battleCtl.state.peer.name) ||
+        "your friend";
       shared.current = { vocalName: vf.name, lyrics, sync, from };
       setPickStay(false);
       setSampleName(title || null);
@@ -344,6 +358,37 @@ export function App() {
     setMusic(null);
     setSampleName(null);
   }, [inBattleRoom]);
+  // load a song from My songs (its lyrics and timing come back from where they're saved)
+  const loadSaved = useCallback(
+    async (rec) => {
+      splitSrc.current = null;
+      setSampleName(null);
+      setPickStay(false);
+      touchSong(rec.id).catch(() => {});
+      if (!rec.music) setMusic(null);
+      const jobs = [pickVocal(rec.vocal)];
+      if (rec.music) jobs.push(pickMusic(rec.music));
+      await Promise.all(jobs);
+    },
+    [pickVocal, pickMusic],
+  );
+  // keep every loaded song in My songs, except samples (built in) and a battle partner's song
+  useEffect(() => {
+    const vf = vocalFile.current;
+    if (!vocal || !vocal.data || !vf || sampleName || shared.current) return;
+    const id = fileKey(vf);
+    const mf =
+      music && music.buffer && musicFor.current === id
+        ? musicFile.current
+        : null;
+    saveSong({
+      id,
+      title: songTitle(null, vocal),
+      vocal: vf,
+      music: mf,
+      src: splitSrc.current,
+    }).catch(() => {});
+  }, [vocal && vocal.data, music && music.buffer]);
   const [canSplit, setCanSplit] = useState(false);
   useEffect(() => {
     canSplitSongs().then(setCanSplit);
@@ -356,20 +401,29 @@ export function App() {
         base = file.name.replace(/\.[^.]+$/, "");
       setSplit({ name: file.name, stage: "decode", p: 0 });
       try {
-        const r = await splitSong(file, (st) => {
-          if (splitJob.current === job)
-            setSplit((x) => ({
-              ...x,
-              ...st,
-              t0:
-                st.stage === "split" && !(x && x.stage === "split")
-                  ? Date.now()
-                  : x && x.t0,
-            }));
-        });
+        // split this exact file before? then there's nothing to wait for
+        const saved = await findSplit(file).catch(() => null);
         if (splitJob.current !== job) return;
-        const vf = wavFile(r.vocals, r.sr, base + ".wav"),
+        let vf, mf;
+        if (saved) {
+          vf = saved.vocal;
+          mf = saved.music;
+        } else {
+          const r = await splitSong(file, (st) => {
+            if (splitJob.current === job)
+              setSplit((x) => ({
+                ...x,
+                ...st,
+                t0:
+                  st.stage === "split" && !(x && x.stage === "split")
+                    ? Date.now()
+                    : x && x.t0,
+              }));
+          });
+          if (splitJob.current !== job) return;
+          vf = wavFile(r.vocals, r.sr, base + ".wav");
           mf = wavFile(r.inst, r.sr, base + " (music).wav");
+        }
         // both halves come from the same file, so they are already in time
         const all = loadJSON(KARA_SYNC_KEY, {});
         all[vf.name] = { inst: mf.name, sync: 0, split: true };
@@ -377,11 +431,14 @@ export function App() {
         setSplit({
           name: file.name,
           done: true,
+          fromSaved: !!saved,
           base,
           files: { vocal: vf, music: mf },
         });
         setSampleName(null);
         setPickStay(true);
+        splitSrc.current = fileKey(file);
+        if (saved) touchSong(saved.id).catch(() => {});
         await Promise.all([pickVocal(vf), pickMusic(mf)]);
       } catch (e) {
         if (splitJob.current !== job) return;
@@ -995,8 +1052,13 @@ export function App() {
       onPickVocal={(f) => {
         setPickStay(true);
         setSampleName(null);
+        splitSrc.current = null;
         pickVocal(f);
       }}
+      onLoadSaved={loadSaved}
+      savedCurrent={
+        vocalFile.current && songReady ? fileKey(vocalFile.current) : null
+      }
       onPickMusic={pickMusic}
       onLoadSample={loadSample}
       canSplit={canSplit}
@@ -1013,10 +1075,10 @@ export function App() {
       onContinue={() => setPickStay(false)}
     />
   );
-  // tell a battle partner which song this phone has (once it's set up, not while still picking)
+  // tell a battle partner which song this phone has, as soon as it's loaded
   const battleSong = {
-    song: songReady && !pickStay ? songTitle(sampleName, vocal) : "",
-    dur: songReady && !pickStay ? Math.round(vocal.data.duration * 10) / 10 : 0,
+    song: songReady ? songTitle(sampleName, vocal) : "",
+    dur: songReady ? Math.round(vocal.data.duration * 10) / 10 : 0,
   };
   // what this phone can send a battle partner: the original files plus what it worked out
   battleCtl.setShareSource(() =>
@@ -1033,7 +1095,11 @@ export function App() {
   );
   useEffect(() => {
     battleCtl.setSong(battleSong.song, battleSong.dur);
-  }, [battleSong.song, battleSong.dur, battleCtl.state && battleCtl.state.code]);
+  }, [
+    battleSong.song,
+    battleSong.dur,
+    battleCtl.state && battleCtl.state.code,
+  ]);
   // Karaoke screens that come before the song: pick a mode, then (for a battle) the room and lobby
   const karaScreen =
     tab !== "karaoke"
@@ -1175,7 +1241,14 @@ export function App() {
         <BattleLobby
           ctl={battleCtl}
           mySong={battleSong}
-          preparing={!!(battleCtl.state && battleCtl.state.recv && battleCtl.state.recv.done && !songReady)}
+          preparing={
+            !!(
+              battleCtl.state &&
+              battleCtl.state.recv &&
+              battleCtl.state.recv.done &&
+              !songReady
+            )
+          }
           prepPct={vocal && vocal.busy ? vocal.progress : null}
           picker={pickSetup}
           onChangeSong={() => setPickStay(true)}

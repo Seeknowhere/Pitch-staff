@@ -4,6 +4,7 @@ import { Icon } from "../components/Icon.jsx";
 import { saveBlob } from "../lib/audio.js";
 import { lyricSpans } from "../lib/lyrics.js";
 import { hasWebGPU } from "../lib/split.js";
+import { MySongs } from "./MySongs.jsx";
 import { pianoKeys } from "../lib/wording.js";
 import { LyricsCard } from "./LyricsCard.jsx";
 import { SongLibrary } from "./SongLibrary.jsx";
@@ -75,7 +76,11 @@ function SplitRow({ split, onSplit, onCancel }) {
     : split.error
       ? split.error
       : split.done
-        ? "Split " + split.name + "."
+        ? split.fromSaved
+          ? "Split " + split.name + " before, so it's ready right away."
+          : "Split " +
+            split.name +
+            ". It's in My songs now, so next time it's instant."
         : split.stage === "decode"
           ? "Reading " + split.name + "…"
           : split.stage === "model"
@@ -214,12 +219,23 @@ export function SongSetup({
   split,
   onSplit,
   onCancelSplit,
+  onLoadSaved,
+  savedCurrent,
 }) {
   const ready = vocal && vocal.data;
   const spans = ready ? lyricSpans(lyricsEntry, vocal.data.duration) : [];
   const small = { padding: "5px 10px", fontSize: 13 };
   return (
     <div className="flex flex-col gap-5">
+      {onLoadSaved && (
+        <MySongs
+          current={savedCurrent}
+          onLoad={async (rec) => {
+            await onLoadSaved(rec);
+            onDone && onDone();
+          }}
+        />
+      )}
       {canSplit && (
         <section className="flex flex-col gap-2">
           <span className="label">Your song</span>
