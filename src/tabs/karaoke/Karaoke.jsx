@@ -96,6 +96,13 @@ export function Karaoke({
   const judgedLines = useRef(new Set());
   const battleLead = useRef(0); // 1 = you lead, -1 = rival leads, 0 = nobody yet
   const rivalName = battle ? (battle.peer && battle.peer.name) || battle.lastName || "Rival" : "";
+  const inBattle = !!(battle && battle.started && battle.peer);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!battle || !battle.stopReq) return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [battle && battle.stopReq]);
   // a new battle round starts with a clean slate
   useEffect(() => {
     sentLines.current = new Set();
@@ -1136,7 +1143,48 @@ export function Karaoke({
       countIn(() => startAt(0, true));
     } else startAt(t, false);
   };
-  if (battleCtl) battleCtl.setStarter(startPressed);
+  // battle: both phones end their countdown at the same shared moment (atLocal, this phone's clock)
+  const battleStart = (atLocal) => {
+    cancelCount();
+    stopAll();
+    setFinal(null);
+    ensureCtx();
+    const go = () => countIn(() => startAt(0, true));
+    const wait = atLocal - 2100 - Date.now(); // the 3-2-1 takes 2.1 s
+    if (wait > 0) countTimers.current.push(setTimeout(go, wait));
+    else go();
+  };
+  if (battleCtl)
+    battleCtl.setPlayer({
+      // called straight from the lobby's tap, so creating the audio context here unlocks sound
+      prepare: () => {
+        ensureCtx();
+        return runCheck();
+      },
+      setHpMode: (mode) => {
+        setHp(mode);
+        hpRef.current = mode;
+      },
+      start: battleStart,
+      // the other phone paused (or asked to end): stop here and line up on the same spot
+      pause: (pos) => {
+        cancelCount();
+        stopAll();
+        setCursor(pos);
+      },
+      // both phones count 3-2-1 to the same moment and carry on from pos
+      resume: (atLocal, pos) => {
+        cancelCount();
+        stopAll();
+        ensureCtx();
+        setCursor(pos);
+        const go = () => countIn(() => startAt(pos, false));
+        const wait = atLocal - 2100 - Date.now();
+        if (wait > 0) countTimers.current.push(setTimeout(go, wait));
+        else go();
+      },
+      finish: () => stopSession(),
+    });
   const checkThenSing = async () => {
     const st = await runCheck();
     if (st === "ok") {
@@ -1766,6 +1814,45 @@ export function Karaoke({
                   </div>
                 </div>
               )}
+              {inBattle && battle.stopReq ? (
+                <div className="battle-notice" role="alertdialog" aria-live="assertive">
+                  {battle.stopReq.by === "peer" ? (
+                    <>
+                      <b>{rivalName} wants to end the battle</b>
+                      <span className="text-xs muted">
+                        Ends by itself in {Math.max(0, Math.ceil((battle.stopReq.until - now) / 1000))}s
+                      </span>
+                      <div className="flex gap-2">
+                        <button className="btn btn-primary" onClick={() => battleCtl.answerStop(true)}>
+                          End battle
+                        </button>
+                        <button className="btn" onClick={() => battleCtl.answerStop(false, battle.stopReq.pos)}>
+                          Keep singing
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <b>Waiting for {rivalName} to confirm…</b>
+                      <span className="text-xs muted">
+                        The battle ends in {Math.max(0, Math.ceil((battle.stopReq.until - now) / 1000))}s if they don't answer
+                      </span>
+                    </>
+                  )}
+                </div>
+              ) : (
+                inBattle &&
+                battle.paused &&
+                !playing &&
+                count == null && (
+                  <div className="battle-notice" aria-live="polite">
+                    <b>⏸ {battle.paused.by === "peer" ? rivalName + " paused" : "You paused"}</b>
+                    <button className="btn btn-primary" onClick={() => battleCtl.resume(cursor)}>
+                      Resume for both
+                    </button>
+                  </div>
+                )
+              )}
               <div className="stage stage-big">
                 <KaraokeLine
                   line={prevIdx >= 0 ? lines[prevIdx] : null}
@@ -1870,7 +1957,11 @@ export function Karaoke({
                   <span className="mic-ring" ref={ringRef}>
                     <button
                       className="round-btn primary big"
-                      onClick={() => startPressed(false)}
+                      onClick={() => {
+                        if (!inBattle) return startPressed(false);
+                        if (playing || count != null) battleCtl.pause(cursor);
+                        else battleCtl.resume(cursor);
+                      }}
                       aria-label={
                         playing
                           ? "Pause"
@@ -1884,7 +1975,9 @@ export function Karaoke({
                   </span>
                   <button
                     className="round-btn"
-                    onClick={stopSession}
+                    onClick={() =>
+                      inBattle ? battleCtl.requestStop(cursor) : stopSession()
+                    }
                     aria-label="Stop and see results"
                     disabled={
                       !(playing || (cursor > 0.05 && cursor < songEnd - 0.2))
