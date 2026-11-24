@@ -79,7 +79,7 @@ export function BattleJoin({ ctl, onBack }) {
 // mySong: { song, dur } for the song loaded on this phone (song "" when none)
 // picker: the song picker to show while you still need a song
 // onChangeSong: open the song sheet to swap songs
-export function BattleLobby({ ctl, mySong, picker, onChangeSong }) {
+export function BattleLobby({ ctl, mySong, picker, onChangeSong, preparing, prepPct }) {
   const b = ctl.state;
   const peer = b.peer;
   const hostSong = b.host ? mySong : peer && peer.host ? peer : null;
@@ -114,8 +114,18 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong }) {
         </div>
       </div>
 
-      {!haveSong ? (
+      {b.sending && peer && (
+        <p className="text-sm muted" style={{ textAlign: "center" }}>
+          Sending your song to {peer.name}… {b.sending.pct}%
+        </p>
+      )}
+      {!haveSong && (preparing || (b.recv && !b.recv.error)) ? (
+        <ShareProgress recv={b.recv} preparing={preparing} prepPct={prepPct} from={peer ? peer.name : "your friend"} />
+      ) : !haveSong ? (
         <>
+          {peer && peer.song && (
+            <UseTheirSong ctl={ctl} peer={peer} failed={b.recv && b.recv.error} />
+          )}
           <div>
             <h3 className="display text-xl font-bold">
               {b.host ? "Pick the battle song" : "Load the battle song"}
@@ -135,9 +145,10 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong }) {
           {peer && peer.song && !match && (
             <p className="text-sm" style={{ color: "var(--warn)" }}>
               Your songs look like different versions ({fmt(mySong.dur)} vs {fmt(peer.dur)}), so
-              your scores won't line up. Load the same file as {peer.name}.
+              your scores won't line up. Load the same file as {peer.name}, or use theirs.
             </p>
           )}
+          {peer && peer.song && !match && <UseTheirSong ctl={ctl} peer={peer} failed={b.recv && b.recv.error} />}
           <button className="btn" style={{ alignSelf: "flex-start" }} onClick={onChangeSong}>
             Change song
           </button>
@@ -171,6 +182,40 @@ export function BattleLobby({ ctl, mySong, picker, onChangeSong }) {
         )
       )}
     </section>
+  );
+}
+
+// get the song straight from the friend's phone: kept in memory for this battle only
+function UseTheirSong({ ctl, peer, failed }) {
+  return (
+    <div className="share-song">
+      <button className="btn btn-primary" style={{ justifyContent: "center", minHeight: 48 }} onClick={ctl.requestSong}>
+        Use {peer.name}'s song
+      </button>
+      <span className="text-xs muted">
+        “{peer.song}” is sent to your phone for this battle only. It isn't saved, and it's gone when the
+        battle ends.
+      </span>
+      {failed && (
+        <span className="text-xs" style={{ color: "var(--warn)" }}>
+          That didn't come through. Try again, or load the song yourself.
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ShareProgress({ recv, preparing, prepPct, from }) {
+  const getting = !preparing;
+  const pct = getting ? (recv && recv.pct) || 0 : Math.round(100 * (prepPct || 0));
+  return (
+    <div className="share-song" aria-live="polite">
+      <b>{getting ? (pct ? "Receiving " + from + "'s song…" : "Asking " + from + " for the song…") : "Getting the song ready…"}</b>
+      <div className="share-track">
+        <span className="share-fill" style={{ width: pct + "%" }} />
+      </div>
+      <span className="text-xs muted">{pct}%</span>
+    </div>
   );
 }
 

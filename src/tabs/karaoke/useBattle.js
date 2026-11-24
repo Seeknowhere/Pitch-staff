@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { joinRoom, makeCode } from "../../lib/battleNet.js";
 import { loadJSON, saveJSON } from "../../lib/storage.js";
+import { CHUNK, CHUNK_GAP_MS, chunkCount, fromB64, packFile, toB64 } from "../../lib/songShare.js";
 
 // state: { code, host, status, peer: { name, host, song, dur, ready } | null, lastName,
 //          started, round, synced, lines: { lineIndex: friend's score },
 //          paused: { by: "me" | "peer", pos } | null,
 //          stopReq: { by: "me" | "peer", pos, until } | null,
-//          peerFinal: { bestCombo } | null, again: { me, peer } | null } | null
+//          peerFinal: { bestCombo } | null, again: { me, peer } | null,
+//          sending: { pct } | null (sharing your song), recv: { pct, done, error } | null } | null
 export function useBattle() {
   const [state, setState] = useState(null);
   const [myName, setMyName] = useState(() => loadJSON("tono.battle.name", ""));
@@ -22,6 +24,11 @@ export function useBattle() {
   const bestRtt = useRef(Infinity);
   const stopTimer = useRef(null);
   const again = useRef({ me: false, peer: false }); // who's tapped Rematch since the last start
+  // song sharing: App tells us what this phone can share, and takes a song that arrives
+  const shareSource = useRef(null); // () => { title, vocal: File, music: File | null, notes, lyrics, sync } | null
+  const onReceived = useRef(null);
+  const recv = useRef(null);
+  const sendJob = useRef(0);
   useEffect(() => () => net.current && net.current.leave(), []);
   // times sent between phones are on the host's clock
   const toHost = (local) => local + offset.current;
@@ -81,6 +88,76 @@ export function useBattle() {
     }
   };
 
+  // send your loaded song (files in chunks, plus the notes, lyrics and timing your phone worked out)
+  const sendSong = async () => {
+    const src = shareSource.current && shareSource.current();
+    if (!src) return send({ type: "songNone" });
+    const job = ++sendJob.current;
+    setState((b) => b && { ...b, sending: { pct: 0 } });
+    try {
+      const files = [{ role: "vocal", ...(await packFile(src.vocal)) }];
+      if (src.music) files.push({ role: "music", ...(await packFile(src.music)) });
+      const total = files.reduce((a, f) => a + f.bytes.length, 0);
+      let meta = {
+        type: "songMeta",
+        id: job,
+        title: src.title,
+        notes: src.notes,
+        lyrics: src.lyrics,
+        sync: src.sync,
+        files: files.map((f) => ({ role: f.role, name: f.name, type: f.type, size: f.bytes.length, n: chunkCount(f.bytes.length) })),
+      };
+      // keep the first message under the size limit: the other phone can work these out itself
+      if (JSON.stringify(meta).length > 200000) meta = { ...meta, notes: null };
+      if (JSON.stringify(meta).length > 200000) meta = { ...meta, lyrics: null };
+      await send(meta);
+      let sent = 0;
+      for (const f of files)
+        for (let i = 0; i < chunkCount(f.bytes.length); i++) {
+          if (sendJob.current !== job || !net.current) return;
+          const part = f.bytes.subarray(i * CHUNK, (i + 1) * CHUNK);
+          await send({ type: "chunk", id: job, role: f.role, i, d: toB64(part) });
+          sent += part.length;
+          setState((b) => b && { ...b, sending: { pct: Math.round((100 * sent) / total) } });
+          await new Promise((r) => setTimeout(r, CHUNK_GAP_MS));
+        }
+    } catch (e) {
+      send({ type: "songFail" });
+    }
+    if (sendJob.current === job) setState((b) => b && { ...b, sending: null });
+  };
+  const gotMeta = (m) => {
+    const parts = {};
+    m.files.forEach((f) => (parts[f.role] = new Array(f.n)));
+    recv.current = {
+      id: m.id,
+      meta: m,
+      parts,
+      got: 0,
+      total: m.files.reduce((a, f) => a + f.size, 0),
+      left: m.files.reduce((a, f) => a + f.n, 0), // chunks still to come
+    };
+    setState((b) => b && { ...b, recv: { pct: 0 } });
+  };
+  const gotChunk = (m) => {
+    const r = recv.current;
+    if (!r || r.id !== m.id || !r.parts[m.role] || r.parts[m.role][m.i]) return;
+    const u = fromB64(m.d);
+    r.parts[m.role][m.i] = u;
+    r.got += u.length;
+    r.left--;
+    const done = r.left === 0;
+    setState((b) => b && { ...b, recv: { pct: Math.min(100, Math.round((100 * r.got) / r.total)), done } });
+    if (!done) return;
+    const file = (role) => {
+      const f = r.meta.files.find((x) => x.role === role);
+      return f ? new File(r.parts[role], f.name, { type: f.type }) : null;
+    };
+    recv.current = null;
+    const { title, notes, lyrics, sync } = r.meta;
+    if (onReceived.current) onReceived.current({ title, vocal: file("vocal"), music: file("music"), notes, lyrics, sync });
+  };
+
   // atLocal: the moment (this phone's clock, ms) the countdown should end and the music start
   const begin = useCallback((atLocal) => {
     again.current = { me: false, peer: false };
@@ -134,6 +211,13 @@ export function useBattle() {
         } else if (m.type === "lobby") doLobby();
         else if (m.type === "line")
           setState((b) => b && { ...b, lines: { ...b.lines, [m.i]: m.score } });
+        else if (m.type === "songReq") sendSong();
+        else if (m.type === "songMeta") gotMeta(m);
+        else if (m.type === "chunk") gotChunk(m);
+        else if (m.type === "songNone" || m.type === "songFail") {
+          recv.current = null;
+          setState((b) => b && { ...b, recv: { error: true } });
+        }
       },
     });
   };
@@ -156,6 +240,8 @@ export function useBattle() {
     join: (code) => open(code, false),
     leave: () => {
       clearStopTimer();
+      sendJob.current++;
+      recv.current = null;
       me.current = { ...me.current, ready: false };
       if (net.current) net.current.leave();
       net.current = null;
@@ -212,6 +298,18 @@ export function useBattle() {
       setState((b) => (b && Object.keys(b.lines).length ? { ...b, lines: {} } : b)),
     setPlayer: (p) => {
       player.current = p;
+    },
+    // ask the other phone for its song (it only lives in this phone's memory for this battle)
+    requestSong: () => {
+      recv.current = null;
+      setState((b) => b && { ...b, recv: { pct: 0 } });
+      send({ type: "songReq" });
+    },
+    setShareSource: (fn) => {
+      shareSource.current = fn;
+    },
+    setOnSongReceived: (fn) => {
+      onReceived.current = fn;
     },
   };
 }

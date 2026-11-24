@@ -249,6 +249,9 @@ select.btn { appearance: auto; }
 .lobby-players { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
 .lobby-player { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border-left: 4px solid var(--you); }
 .lobby-player.you { border-left-color: var(--accent); }
+.share-song { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.share-track { position: relative; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.share-fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--accent); transition: width .3s; }
 .battle-notice { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 14px 16px; border-radius: 16px; background: rgba(127,178,255,.10); border: 1px solid rgba(127,178,255,.35); }
 /* Battle results */
 .battle-win { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 24px 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); }
