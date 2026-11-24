@@ -227,6 +227,17 @@ select.btn { appearance: auto; }
 .kara-lane { position: relative; }
 .kara-pop { position: absolute; left: 50%; top: 12px; z-index: 3; padding: 4px 14px; border-radius: 999px; font-family: var(--font-display); font-weight: 700; font-size: 16px; color: #1a1408; background: linear-gradient(90deg, #f3d18c, #e2b65c); box-shadow: 0 6px 20px rgba(226,182,92,.45); pointer-events: none; white-space: nowrap; animation: kpop .95s ease-out forwards; }
 .kara-pop.great { background: linear-gradient(90deg, #c4b5fd, #8b5cf6); color: #fff; box-shadow: 0 6px 20px rgba(139,92,246,.45); }
+.kara-pop.lose { background: linear-gradient(90deg, #9cc4ff, #5b8fe8); color: #fff; box-shadow: 0 6px 20px rgba(91,143,232,.45); }
+/* Battle: tug-of-war bar, gold (you) pushes in from the left, blue (rival) from the right */
+.battle-bar { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border-radius: 14px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+.battle-names { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-family: var(--font-display); font-weight: 700; font-size: 14px; }
+.battle-names b { font-size: 20px; }
+.battle-names .you { color: #f3d18c; }
+.battle-names .opp { color: #9cc4ff; text-align: right; }
+.battle-names .tally { font-size: 13px; color: var(--muted); }
+.battle-track { position: relative; height: 12px; border-radius: 999px; overflow: hidden; background: linear-gradient(90deg, #5b8fe8, #9cc4ff); }
+.battle-fill { position: absolute; top: 0; bottom: 0; left: 0; background: linear-gradient(90deg, #e2b65c, #f3d18c); transition: width .6s cubic-bezier(.2,.8,.2,1); }
+.battle-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,.55); }
 @keyframes kpop { 0% { opacity: 0; transform: translateX(-50%) translateY(8px) scale(.8) rotate(-4deg); } 20% { opacity: 1; transform: translateX(-50%) scale(1.08) rotate(-4deg); } 70% { opacity: 1; transform: translateX(-50%) scale(1) rotate(-4deg); } 100% { opacity: 0; transform: translateX(-50%) translateY(-10px) rotate(-4deg); } }
 .combo-chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 4px 10px; border-radius: 999px; background: rgba(139,92,246,.18); border: 1px solid rgba(139,92,246,.42); color: #c4b5fd; font-size: 12px; font-weight: 700; }
 .score-chip { display: inline-flex; flex-direction: column; align-items: flex-end; padding: 3px 12px; border-radius: 14px; background: rgba(226,182,92,.12); border: 1px solid rgba(226,182,92,.35); }

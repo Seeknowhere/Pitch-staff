@@ -44,6 +44,18 @@ const CONFETTI = Array.from({ length: 36 }, (_, i) => ({
   h: i % 2 ? 12 : 8,
 }));
 
+// lines won by each side in a battle (a line counts once both of you have a score for it)
+function battleTally(mine, theirs) {
+  let you = 0,
+    opp = 0;
+  for (const i in theirs) {
+    if (mine[i] == null) continue;
+    if (mine[i] > theirs[i]) you++;
+    else if (mine[i] < theirs[i]) opp++;
+  }
+  return { you, opp };
+}
+
 export function Karaoke({
   themeKey,
   active,
@@ -76,10 +88,13 @@ export function Karaoke({
   const [lineScores, setLineScores] = useState({});
   const [final, setFinal] = useState(null);
   const [battle, setBattle] = useState(null); // { name, lines: { lineIndex: score } }
-  // fake rival for now: each time one of your lines is scored, the rival gets a random score for it
+  const battleLead = useRef(0); // 1 = you lead, -1 = rival leads, 0 = nobody yet
+  // fake rival for now: each time one of your lines is scored, the rival gets a random score for it.
+  // Every line is a round: the latest one gets a win/lose pop-up, or a lead-change one if the lead flipped.
   useEffect(() => {
     if (!battle) return;
     if (!Object.keys(lineScores).length) {
+      battleLead.current = 0;
       setBattle((b) =>
         b && Object.keys(b.lines).length ? { ...b, lines: {} } : b,
       );
@@ -89,8 +104,30 @@ export function Karaoke({
     Object.keys(lineScores).forEach((i) => {
       if (battle.lines[i] == null) add[i] = 50 + Math.floor(Math.random() * 46);
     });
-    if (Object.keys(add).length)
-      setBattle((b) => b && { ...b, lines: { ...b.lines, ...add } });
+    const fresh = Object.keys(add);
+    if (!fresh.length) return;
+    setBattle((b) => b && { ...b, lines: { ...b.lines, ...add } });
+    const i = fresh[fresh.length - 1];
+    const me = lineScores[i],
+      them = add[i];
+    const t = battleTally(lineScores, { ...battle.lines, ...add });
+    const lead = Math.sign(t.you - t.opp);
+    let text, kind;
+    if (lead && battleLead.current && lead !== battleLead.current) {
+      text = lead > 0 ? "You took the lead! 🚀" : battle.name + " takes the lead! 😱";
+      kind = lead > 0 ? "perfect" : "lose";
+    } else if (me > them) {
+      text = "You win this line! 🔥";
+      kind = "perfect";
+    } else if (me < them) {
+      text = battle.name + " takes it 😤";
+      kind = "lose";
+    } else {
+      text = "Tie line!";
+      kind = "great";
+    }
+    if (lead) battleLead.current = lead;
+    setPop({ id: Date.now() + Math.random(), kind, text });
   }, [lineScores]);
   const [takeBuf, setTakeBuf] = useState(null);
   const [hearing, setHearing] = useState(false);
@@ -1038,6 +1075,12 @@ export function Karaoke({
       ? Math.round(v.reduce((a, b) => a + b, 0) / v.length)
       : null;
   })();
+  const tally = battle ? battleTally(lineScores, battle.lines) : null;
+  // tug-of-war: each point you're ahead pushes the middle 2.5% toward the rival
+  const push =
+    liveScore == null || oppScore == null
+      ? 50
+      : Math.max(8, Math.min(92, 50 + (liveScore - oppScore) * 2.5));
   // 3-2-1 before a fresh start, so it feels like stepping on stage
   const countIn = (fn) => {
     cancelCount();
@@ -1664,7 +1707,7 @@ export function Karaoke({
                       </span>
                     </span>
                   )}
-                  {listening && (
+                  {listening && !battle && (
                     <span className="score-chip">
                       <span
                         className="label"
@@ -1675,27 +1718,32 @@ export function Karaoke({
                       <b>{liveScore != null ? liveScore + "%" : "—"}</b>
                     </span>
                   )}
-                  {listening && battle && (
-                    <span
-                      className="score-chip"
-                      style={{
-                        background: "rgba(127,178,255,.12)",
-                        borderColor: "rgba(127,178,255,.35)",
-                      }}
-                    >
-                      <span
-                        className="label"
-                        style={{ fontSize: 9, color: "var(--you)" }}
-                      >
-                        {battle.name}
-                      </span>
-                      <b style={{ color: "var(--you)" }}>
-                        {oppScore != null ? oppScore + "%" : "—"}
-                      </b>
-                    </span>
-                  )}
                 </span>
               </div>
+              {listening && battle && (
+                <div
+                  className="battle-bar"
+                  role="img"
+                  aria-label={`You ${liveScore ?? 0}%, ${battle.name} ${oppScore ?? 0}%. Lines won ${tally.you} to ${tally.opp}`}
+                >
+                  <div className="battle-names">
+                    <span className="you">
+                      You <b>{liveScore != null ? liveScore + "%" : "—"}</b>
+                    </span>
+                    <span className="tally mono">
+                      {tally.you} – {tally.opp}
+                    </span>
+                    <span className="opp">
+                      <b>{oppScore != null ? oppScore + "%" : "—"}</b>{" "}
+                      {battle.name}
+                    </span>
+                  </div>
+                  <div className="battle-track">
+                    <span className="battle-fill" style={{ width: push + "%" }} />
+                    <span className="battle-mid" />
+                  </div>
+                </div>
+              )}
               <div className="stage stage-big">
                 <KaraokeLine
                   line={prevIdx >= 0 ? lines[prevIdx] : null}
@@ -1727,7 +1775,12 @@ export function Karaoke({
                   <span
                     key={pop.id}
                     className={
-                      "kara-pop" + (pop.kind === "great" ? " great" : "")
+                      "kara-pop" +
+                      (pop.kind === "great"
+                        ? " great"
+                        : pop.kind === "lose"
+                          ? " lose"
+                          : "")
                     }
                     aria-hidden="true"
                   >
