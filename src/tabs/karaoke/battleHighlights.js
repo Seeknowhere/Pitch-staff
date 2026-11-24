@@ -2,7 +2,7 @@
 // it. Both phones run this on the same numbers (just swapped), so they agree on the stretch
 // without asking each other.
 
-export const REMIX_MAX = 35; // seconds of song, at most
+export const REMIX_MAX = 60; // seconds of song, at most
 const PAD = 0.6; // lead-in before the first line and tail after the last
 
 // mine/theirs: { lineIndex: score }; lines: [{ start, end, text }] in song time
