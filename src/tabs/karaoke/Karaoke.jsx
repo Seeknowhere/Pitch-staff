@@ -20,6 +20,7 @@ import { buildPhrases } from "../../lib/phrases.js";
 import { detectPitch } from "../../lib/pitch.js";
 import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
 import { loadJSON, saveJSON } from "../../lib/storage.js";
+import { joinRoom, makeCode } from "../../lib/battleNet.js";
 import { KaraokeLine } from "./KaraokeLine.jsx";
 
 const KARA_BEST_KEY = "pitchstaff.karabest.v1";
@@ -87,40 +88,92 @@ export function Karaoke({
   const [marks, setMarks] = useState([]);
   const [lineScores, setLineScores] = useState({});
   const [final, setFinal] = useState(null);
-  const [battle, setBattle] = useState(null); // { name, lines: { lineIndex: score } }
+  // Live battle with a friend on another phone (see lib/battleNet.js).
+  // battle: { code, host, status, peer: { name, dur } | null, lastName, started, lines: { lineIndex: their score } }
+  const [battle, setBattle] = useState(null);
+  const [battleOpen, setBattleOpen] = useState(false);
+  const [myName, setMyName] = useState(() => loadJSON("tono.battle.name", ""));
+  const [joinCode, setJoinCode] = useState("");
+  const net = useRef(null);
+  const startRef = useRef(null); // latest startPressed, for messages that arrive later
+  const sentLines = useRef(new Set());
+  const judgedLines = useRef(new Set());
   const battleLead = useRef(0); // 1 = you lead, -1 = rival leads, 0 = nobody yet
-  // fake rival for now: each time one of your lines is scored, the rival gets a random score for it.
-  // Every line is a round: the latest one gets a win/lose pop-up, or a lead-change one if the lead flipped.
-  useEffect(() => {
-    if (!battle) return;
-    if (!Object.keys(lineScores).length) {
-      battleLead.current = 0;
-      setBattle((b) =>
-        b && Object.keys(b.lines).length ? { ...b, lines: {} } : b,
-      );
-      return;
-    }
-    const add = {};
-    Object.keys(lineScores).forEach((i) => {
-      if (battle.lines[i] == null) add[i] = 50 + Math.floor(Math.random() * 46);
+  const rivalName = battle ? (battle.peer && battle.peer.name) || battle.lastName || "Rival" : "";
+  const leaveBattle = () => {
+    if (net.current) net.current.leave();
+    net.current = null;
+    setBattle(null);
+  };
+  useEffect(() => () => net.current && net.current.leave(), []);
+  const openRoom = (code, host) => {
+    if (net.current) net.current.leave();
+    const name = myName.trim() || "Singer";
+    saveJSON("tono.battle.name", name);
+    setBattle({ code, host, status: "connecting", peer: null, lastName: "", started: false, lines: {} });
+    net.current = joinRoom(code, { name, dur: data ? Math.round(data.duration * 10) / 10 : 0, host }, {
+      onStatus: (status) => setBattle((b) => b && { ...b, status }),
+      onPeer: (peer) =>
+        setBattle((b) => b && { ...b, peer, lastName: peer ? peer.name : b.lastName }),
+      onMessage: (m) => {
+        if (m.type === "start") beginBattle();
+        else if (m.type === "line")
+          setBattle((b) => b && { ...b, lines: { ...b.lines, [m.i]: m.score } });
+      },
     });
-    const fresh = Object.keys(add);
-    if (!fresh.length) return;
-    setBattle((b) => b && { ...b, lines: { ...b.lines, ...add } });
-    const i = fresh[fresh.length - 1];
+  };
+  const beginBattle = () => {
+    sentLines.current = new Set();
+    judgedLines.current = new Set();
+    battleLead.current = 0;
+    setBattle((b) => b && { ...b, started: true, lines: {} });
+    setBattleOpen(false);
+    if (startRef.current) startRef.current(true);
+  };
+  const hostStart = () => {
+    if (net.current) net.current.send({ type: "start" });
+    beginBattle();
+  };
+  // a restart clears your scores: clear the battle's too
+  useEffect(() => {
+    if (!battle || Object.keys(lineScores).length) return;
+    sentLines.current = new Set();
+    judgedLines.current = new Set();
+    battleLead.current = 0;
+    setBattle((b) => (b && Object.keys(b.lines).length ? { ...b, lines: {} } : b));
+  }, [lineScores]);
+  // send each of your line scores to the other phone once
+  useEffect(() => {
+    if (!battle || !battle.started || !net.current) return;
+    Object.keys(lineScores).forEach((i) => {
+      if (sentLines.current.has(i)) return;
+      sentLines.current.add(i);
+      net.current.send({ type: "line", i, score: lineScores[i] });
+    });
+  }, [lineScores, battle && battle.started]);
+  // every line is a round: once both of you have a score for it, pop up who won it
+  // (or who took the lead, if the lead just flipped)
+  useEffect(() => {
+    if (!battle || !battle.started) return;
+    const ready = Object.keys(lineScores).filter(
+      (i) => battle.lines[i] != null && !judgedLines.current.has(i),
+    );
+    if (!ready.length) return;
+    ready.forEach((i) => judgedLines.current.add(i));
+    const i = ready[ready.length - 1];
     const me = lineScores[i],
-      them = add[i];
-    const t = battleTally(lineScores, { ...battle.lines, ...add });
+      them = battle.lines[i];
+    const t = battleTally(lineScores, battle.lines);
     const lead = Math.sign(t.you - t.opp);
     let text, kind;
     if (lead && battleLead.current && lead !== battleLead.current) {
-      text = lead > 0 ? "You took the lead! 🚀" : battle.name + " takes the lead! 😱";
+      text = lead > 0 ? "You took the lead! 🚀" : rivalName + " takes the lead! 😱";
       kind = lead > 0 ? "perfect" : "lose";
     } else if (me > them) {
       text = "You win this line! 🔥";
       kind = "perfect";
     } else if (me < them) {
-      text = battle.name + " takes it 😤";
+      text = rivalName + " takes it 😤";
       kind = "lose";
     } else {
       text = "Tie line!";
@@ -128,7 +181,7 @@ export function Karaoke({
     }
     if (lead) battleLead.current = lead;
     setPop({ id: Date.now() + Math.random(), kind, text });
-  }, [lineScores]);
+  }, [lineScores, battle && battle.lines]);
   const [takeBuf, setTakeBuf] = useState(null);
   const [hearing, setHearing] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
@@ -1115,6 +1168,7 @@ export function Karaoke({
       countIn(() => startAt(0, true));
     } else startAt(t, false);
   };
+  startRef.current = startPressed;
   const checkThenSing = async () => {
     const st = await runCheck();
     if (st === "ok") {
@@ -1670,12 +1724,14 @@ export function Karaoke({
                   <button
                     className="k-chip"
                     aria-pressed={battle ? "true" : "false"}
-                    onClick={() =>
-                      setBattle((b) => (b ? null : { name: "Rival", lines: {} }))
-                    }
+                    onClick={() => setBattleOpen(true)}
                   >
                     <Icon name="mic" size={16} />
-                    {battle ? "Battle on" : "Battle"}
+                    {battle
+                      ? battle.peer
+                        ? "Battle: " + battle.peer.name
+                        : "Battle " + battle.code
+                      : "Battle"}
                   </button>
                 </div>
               </div>
@@ -1720,11 +1776,11 @@ export function Karaoke({
                   )}
                 </span>
               </div>
-              {listening && battle && (
+              {listening && battle && battle.started && (
                 <div
                   className="battle-bar"
                   role="img"
-                  aria-label={`You ${liveScore ?? 0}%, ${battle.name} ${oppScore ?? 0}%. Lines won ${tally.you} to ${tally.opp}`}
+                  aria-label={`You ${liveScore ?? 0}%, ${rivalName} ${oppScore ?? 0}%. Lines won ${tally.you} to ${tally.opp}`}
                 >
                   <div className="battle-names">
                     <span className="you">
@@ -1735,7 +1791,7 @@ export function Karaoke({
                     </span>
                     <span className="opp">
                       <b>{oppScore != null ? oppScore + "%" : "—"}</b>{" "}
-                      {battle.name}
+                      {battle.peer ? rivalName : rivalName + " left"}
                     </span>
                   </div>
                   <div className="battle-track">
@@ -1901,6 +1957,112 @@ export function Karaoke({
           </span>
         </button>
       )}
+      <Sheet
+        open={battleOpen}
+        title="Battle a friend"
+        onClose={() => setBattleOpen(false)}
+      >
+        {!battle ? (
+          <div className="opt-group">
+            <label className="flex flex-col gap-1" htmlFor="battle-name">
+              <span className="label">Your name</span>
+              <input
+                id="battle-name"
+                className="battle-input"
+                value={myName}
+                maxLength={16}
+                onChange={(e) => setMyName(e.target.value)}
+              />
+            </label>
+            <button
+              className="btn btn-primary"
+              style={{ justifyContent: "center", minHeight: 48 }}
+              onClick={() => openRoom(makeCode(), true)}
+            >
+              Create battle
+            </button>
+            <span className="text-xs muted" style={{ textAlign: "center" }}>
+              or join a friend's battle
+            </span>
+            <div className="flex gap-2">
+              <input
+                className="battle-input mono"
+                aria-label="Battle code"
+                inputMode="numeric"
+                maxLength={4}
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, ""))}
+                style={{ flex: 1, letterSpacing: "0.3em", textAlign: "center" }}
+              />
+              <button
+                className="btn"
+                disabled={joinCode.length !== 4}
+                onClick={() => openRoom(joinCode, false)}
+              >
+                Join
+              </button>
+            </div>
+            <p className="text-xs muted">
+              You both need this same song loaded in Karaoke. Only your names and
+              line scores are shared, never your voice.
+            </p>
+          </div>
+        ) : (
+          <div className="opt-group" style={{ alignItems: "center", textAlign: "center" }}>
+            <span className="label">Battle code</span>
+            <span className="display font-bold mono" style={{ fontSize: 40, letterSpacing: "0.15em" }}>
+              {battle.code}
+            </span>
+            {battle.status === "error" ? (
+              <p className="text-sm" style={{ color: "var(--bad)" }}>
+                Couldn't connect. Check your internet and try again.
+              </p>
+            ) : battle.status === "connecting" ? (
+              <p className="text-sm muted">Connecting…</p>
+            ) : battle.peer ? (
+              <p className="text-sm" style={{ color: "var(--good)" }}>
+                {battle.peer.name} joined ✓
+              </p>
+            ) : (
+              <p className="text-sm muted">
+                {battle.lastName
+                  ? battle.lastName + " left. Waiting for them to come back…"
+                  : "Waiting for a friend to join with this code…"}
+              </p>
+            )}
+            {battle.peer && data && Math.abs(battle.peer.dur - data.duration) > 2 && (
+              <p className="text-xs" style={{ color: "var(--warn)" }}>
+                Your songs look like different versions ({fmt(data.duration)} vs{" "}
+                {fmt(battle.peer.dur)}), so scores may not line up.
+              </p>
+            )}
+            {!listening && (
+              <p className="text-xs" style={{ color: "var(--warn)" }}>
+                Do the headphone check first, or your singing won't be scored.
+              </p>
+            )}
+            {battle.host ? (
+              <button
+                className="btn btn-primary"
+                style={{ justifyContent: "center", minHeight: 48, alignSelf: "stretch" }}
+                disabled={!battle.peer}
+                onClick={hostStart}
+              >
+                Start battle
+              </button>
+            ) : (
+              battle.peer && (
+                <p className="text-sm muted">
+                  Waiting for {battle.peer.name} to start…
+                </p>
+              )
+            )}
+            <button className="btn btn-ghost" onClick={leaveBattle}>
+              Leave battle
+            </button>
+          </div>
+        )}
+      </Sheet>
       <Sheet
         open={optOpen}
         title="Karaoke options"
