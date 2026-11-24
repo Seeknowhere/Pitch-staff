@@ -26,12 +26,23 @@ export function saveSettings() {
 }
 
 // loudness below this is treated as silence for live listening (sensitivity 1 = least, 10 = most)
-  export const micGate = () => 0.04 * Math.pow(0.6, SETTINGS.sens - 1);
-  export async function getMicStream() {
-    const base = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
-    if (SETTINGS.micId) {
-      try { return await navigator.mediaDevices.getUserMedia({ audio: { ...base, deviceId: { exact: SETTINGS.micId } } }); }
-      catch (e) { if (e && e.name === "NotAllowedError") throw e; SETTINGS.micId = ""; saveSettings(); }
+export const micGate = () => 0.04 * Math.pow(0.6, SETTINGS.sens - 1);
+export async function getMicStream() {
+  const base = {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+  };
+  if (SETTINGS.micId) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: { ...base, deviceId: { exact: SETTINGS.micId } },
+      });
+    } catch (e) {
+      if (e && e.name === "NotAllowedError") throw e;
+      SETTINGS.micId = "";
+      saveSettings();
     }
-    return navigator.mediaDevices.getUserMedia({ audio: base });
   }
+  return navigator.mediaDevices.getUserMedia({ audio: base });
+}

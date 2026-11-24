@@ -6,9 +6,7 @@ export const RANGE_KEY = "pitchstaff.range.v1";
 export const loadRanges = () => {
   const v = loadJSON(RANGE_KEY, []);
   return Array.isArray(v)
-    ? v.filter(
-        (r) => r && typeof r.lo === "number" && typeof r.hi === "number",
-      )
+    ? v.filter((r) => r && typeof r.lo === "number" && typeof r.hi === "number")
     : [];
 };
 

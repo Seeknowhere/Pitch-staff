@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Icon } from "../../components/Icon.jsx";
 import { Ring } from "../../components/Ring.jsx";
-import { html } from "../../html.js";
 import { playPiano, playChime } from "../../lib/audio.js";
 import { median } from "../../lib/math.js";
 import { pretty, midiInfo } from "../../lib/music.js";
@@ -10,36 +9,39 @@ import { useTimers } from "./hooks.js";
 
 export const nm = (m) => pretty(midiInfo(Math.round(m)).label);
 
-const TryDots = ({ n, results, cur }) =>
-  html`<span
-    class="flex gap-1"
+const TryDots = ({ n, results, cur }) => (
+  <span
+    className="flex gap-1"
     role="img"
-    aria-label=${"Try " + Math.min(n, cur + 1) + " of " + n}
+    aria-label={"Try " + Math.min(n, cur + 1) + " of " + n}
   >
-    ${Array.from(
-      { length: n },
-      (_, k) =>
-        html`<span
-          key=${k}
-          style=${{
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background:
-              k < results.length
-                ? results[k]
-                  ? "var(--good)"
-                  : "var(--bad)"
-                : k === cur
-                  ? "var(--accent)"
-                  : "var(--line)",
-          }}
-        ></span>`,
-    )}
-  </span>`;
+    {Array.from({ length: n }, (_, k) => (
+      <span
+        key={k}
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: "50%",
+          background:
+            k < results.length
+              ? results[k]
+                ? "var(--good)"
+                : "var(--bad)"
+              : k === cur
+                ? "var(--accent)"
+                : "var(--line)",
+        }}
+      />
+    ))}
+  </span>
+);
 
 const MicNote = ({ mic }) =>
-  mic.err ? html`<div class="notice" role="alert">${mic.err}</div>` : null;
+  mic.err ? (
+    <div className="notice" role="alert">
+      {mic.err}
+    </div>
+  ) : null;
 
 // ---- hold a note (match, slide, hum, sustain) ----
 function HoldEx({ spec, range, mic, onDone }) {
@@ -124,17 +126,14 @@ function HoldEx({ spec, range, mic, onDone }) {
     const n = list.length,
       hits = list.filter((x) => x.ok);
     const score = Math.round(
-      list.reduce((a, x) => a + (x.ok ? 100 : Math.round(x.best * 70)), 0) /
-        n,
+      list.reduce((a, x) => a + (x.ok ? 100 : Math.round(x.best * 70)), 0) / n,
     );
     const locks = hits.map((x) => x.lock).filter((x) => x != null);
     const lock = locks.length
       ? locks.reduce((a, b) => a + b, 0) / locks.length
       : null;
     const sds = hits.map((x) => x.sd).filter((x) => x != null);
-    const sd = sds.length
-      ? sds.reduce((a, b) => a + b, 0) / sds.length
-      : null;
+    const sd = sds.length ? sds.reduce((a, b) => a + b, 0) / sds.length : null;
     const leans = list.map((x) => x.lean).filter((x) => x != null);
     const lean = leans.length ? median(leans) : 0;
     const over = list.reduce((a, x) => a + x.over, 0);
@@ -268,8 +267,7 @@ function HoldEx({ spec, range, mic, onDone }) {
   } else if (phase === "miss") {
     hint = "Let's try the next one.";
     tone = "warn";
-  } else if (!cur)
-    hint = "Your turn. " + (spec.verb || "Sing") + " the note.";
+  } else if (!cur) hint = "Your turn. " + (spec.verb || "Sing") + " the note.";
   else if (inZone) {
     hint = spec.hold > 1.5 ? "Locked in, hold it!" : "That's it, hold…";
     tone = "good";
@@ -296,134 +294,145 @@ function HoldEx({ spec, range, mic, onDone }) {
     )
     .join(" ");
   const band = (tol * (mid - 10)) / 300;
-  return html`<div class="flex flex-col gap-3">
-    <section class="tuner-card" style=${{ alignItems: "stretch", gap: 12 }}>
-      <div class="flex items-center justify-between gap-2">
-        <span class="display font-bold" style=${{ fontSize: 20 }}
-          >${spec.verb || "Sing"}
-          ${target != null ? nm(target) : "the note"}</span
-        >
-        <${TryDots}
-          n=${spec.tries}
-          results=${res.map((x) => x.ok)}
-          cur=${k}
-        />
-      </div>
-      <svg
-        viewBox=${"0 0 " + W + " " + H}
-        style=${{ width: "100%", height: "auto", display: "block" }}
-        role="img"
-        aria-label=${cur
-          ? "You are " +
-            Math.abs(cur.c) +
-            " cents " +
-            (cur.c < 0 ? "below" : "above") +
-            " the target"
-          : "Waiting for your voice"}
+  return (
+    <div className="flex flex-col gap-3">
+      <section
+        className="tuner-card"
+        style={{ alignItems: "stretch", gap: 12 }}
       >
-        <rect
-          x="0"
-          y=${(mid - band).toFixed(1)}
-          width=${W}
-          height=${(2 * band).toFixed(1)}
-          rx="6"
-          fill="color-mix(in srgb, var(--good) 14%, transparent)"
-        ></rect>
-        <line
-          x1="0"
-          y1=${mid}
-          x2=${W}
-          y2=${mid}
-          stroke="var(--good)"
-          strokeWidth="2"
-          strokeDasharray="6 6"
-        ></line>
-        <text
-          x="6"
-          y=${(mid - band - 6).toFixed(1)}
-          fill="var(--good)"
-          fontSize="12"
-          fontFamily="JetBrains Mono, monospace"
+        <div className="flex items-center justify-between gap-2">
+          <span className="display font-bold" style={{ fontSize: 20 }}>
+            {spec.verb || "Sing"}
+            {target != null ? nm(target) : "the note"}
+          </span>
+          <TryDots n={spec.tries} results={res.map((x) => x.ok)} cur={k} />
+        </div>
+        <svg
+          viewBox={"0 0 " + W + " " + H}
+          style={{ width: "100%", height: "auto", display: "block" }}
+          role="img"
+          aria-label={
+            cur
+              ? "You are " +
+                Math.abs(cur.c) +
+                " cents " +
+                (cur.c < 0 ? "below" : "above") +
+                " the target"
+              : "Waiting for your voice"
+          }
         >
-          ${target != null ? nm(target) + " target" : "target"}
-        </text>
-        ${pts &&
-        html`<polyline
-          points=${pts}
-          fill="none"
-          stroke="var(--you)"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        ></polyline>`}
-        ${cur &&
-        phase === "sing" &&
-        html`<circle
-          cx=${W - 12}
-          cy=${sc(cur.c).toFixed(1)}
-          r="6"
-          fill="var(--fg)"
-        ></circle>`}
-      </svg>
-      <div class="flex items-center justify-center gap-5">
-        <${Ring}
-          p=${phase === "hit" ? 1 : prog}
-          label="Hold"
-          value=${(spec.hold * (phase === "hit" ? 1 : prog)).toFixed(1) + "s"}
-          tone=${phase === "hit" || inZone ? "good" : "warn"}
-        />
-        <span class="flex flex-col gap-1 min-w-0">
-          ${phase === "sing" &&
-          cur &&
-          html`<span class="text-xs muted">You're on</span
-            ><span
-              class="display font-bold"
-              style=${{ fontSize: 24, color: "var(--you)" }}
-              >${nm(cur.m)}</span
-            >`}
-          <span
-            class="display font-bold"
-            style=${{
-              fontSize: 19,
-              lineHeight: 1.2,
-              color: "var(--" + tone + ")",
-            }}
-            aria-live="polite"
-            >${hint}</span
+          <rect
+            x="0"
+            y={(mid - band).toFixed(1)}
+            width={W}
+            height={(2 * band).toFixed(1)}
+            rx="6"
+            fill="color-mix(in srgb, var(--good) 14%, transparent)"
+          />
+          <line
+            x1="0"
+            y1={mid}
+            x2={W}
+            y2={mid}
+            stroke="var(--good)"
+            strokeWidth="2"
+            strokeDasharray="6 6"
+          />
+          <text
+            x="6"
+            y={(mid - band - 6).toFixed(1)}
+            fill="var(--good)"
+            fontSize="12"
+            fontFamily="JetBrains Mono, monospace"
           >
-        </span>
-      </div>
-    </section>
-    <${MicNote} mic=${mic} />
-    ${phase === "ready"
-      ? html`<button
-          class="btn btn-primary"
-          style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
-          onClick=${() => begin(0)}
+            {target != null ? nm(target) + " target" : "target"}
+          </text>
+          {pts && (
+            <polyline
+              points={pts}
+              fill="none"
+              stroke="var(--you)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
+          {cur && phase === "sing" && (
+            <circle
+              cx={W - 12}
+              cy={sc(cur.c).toFixed(1)}
+              r="6"
+              fill="var(--fg)"
+            />
+          )}
+        </svg>
+        <div className="flex items-center justify-center gap-5">
+          <Ring
+            p={phase === "hit" ? 1 : prog}
+            label="Hold"
+            value={(spec.hold * (phase === "hit" ? 1 : prog)).toFixed(1) + "s"}
+            tone={phase === "hit" || inZone ? "good" : "warn"}
+          />
+          <span className="flex flex-col gap-1 min-w-0">
+            {phase === "sing" && cur && (
+              <>
+                <span className="text-xs muted">You're on</span>
+                <span
+                  className="display font-bold"
+                  style={{ fontSize: 24, color: "var(--you)" }}
+                >
+                  {nm(cur.m)}
+                </span>
+              </>
+            )}
+            <span
+              className="display font-bold"
+              style={{
+                fontSize: 19,
+                lineHeight: 1.2,
+                color: "var(--" + tone + ")",
+              }}
+              aria-live="polite"
+            >
+              {hint}
+            </span>
+          </span>
+        </div>
+      </section>
+      <MicNote mic={mic} />
+      {phase === "ready" ? (
+        <button
+          className="btn btn-primary"
+          style={{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+          onClick={() => begin(0)}
         >
-          <span class="flex items-center gap-2"
-            ><${Icon} name="mic" size=${18} />Start</span
-          >
-        </button>`
-      : html`<div class="grid grid-cols-2 gap-2">
+          <span className="flex items-center gap-2">
+            <Icon name="mic" size={18} />
+            Start
+          </span>
+        </button>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
           <button
-            class="btn"
-            style=${{ justifyContent: "center", minHeight: 46 }}
-            onClick=${replay}
-            disabled=${phase === "hit" || phase === "miss"}
+            className="btn"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={replay}
+            disabled={phase === "hit" || phase === "miss"}
           >
             ▶ Hear note
           </button>
           <button
-            class="btn"
-            style=${{ justifyContent: "center", minHeight: 46 }}
-            onClick=${() => endTry(false)}
-            disabled=${phase !== "sing"}
+            className="btn"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={() => endTry(false)}
+            disabled={phase !== "sing"}
           >
             Skip this one
           </button>
-        </div>`}
-  </div>`;
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---- long hiss: how long you can let air out evenly ----
@@ -533,70 +542,77 @@ function HissEx({ spec, mic, onDone }) {
     rest: "Nice. Breathe, then go again.",
     done: "Done!",
   }[phase];
-  return html`<div class="flex flex-col gap-3">
-    <section class="tuner-card" style=${{ gap: 14 }}>
-      <div
-        class="flex items-center justify-between gap-2"
-        style=${{ alignSelf: "stretch" }}
-      >
-        <span class="display font-bold" style=${{ fontSize: 20 }}
-          >Long, even hiss</span
+  return (
+    <div className="flex flex-col gap-3">
+      <section className="tuner-card" style={{ gap: 14 }}>
+        <div
+          className="flex items-center justify-between gap-2"
+          style={{ alignSelf: "stretch" }}
         >
-        ${spec.tries > 1 &&
-        html`<span class="text-xs muted"
-          >Try ${Math.min(spec.tries, list.length + 1)} of ${spec.tries}</span
-        >`}
-      </div>
-      <${Ring}
-        p=${secs / spec.target}
-        label=${"Goal " + spec.target + "s"}
-        value=${secs.toFixed(1) + "s"}
-        tone=${secs >= spec.target ? "good" : "accent"}
-        size=${150}
-      />
-      <span
-        class="display font-bold"
-        style=${{ fontSize: 19 }}
-        aria-live="polite"
-        >${msg}</span
-      >
-      ${list.length > 0 &&
-      html`<span class="text-sm muted"
-        >Best so far:
-        <b style=${{ color: "var(--fg)" }}>${best.toFixed(1)} s</b></span
-      >`}
-    </section>
-    <${MicNote} mic=${mic} />
-    ${phase === "ready" &&
-    html`<button
-      class="btn btn-primary"
-      style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
-      onClick=${start}
-    >
-      Start
-    </button>`}
-    ${phase === "rest" &&
-    html`<div class="grid grid-cols-2 gap-2">
-      <button
-        class="btn"
-        style=${{ justifyContent: "center", minHeight: 46 }}
-        onClick=${() => finish(listRef.current)}
-      >
-        Finish
-      </button>
-      <button
-        class="btn btn-primary"
-        style=${{ justifyContent: "center", minHeight: 46 }}
-        onClick=${() => {
-          r.current.shown = 0;
-          setSecs(0);
-          go("go");
-        }}
-      >
-        Go again
-      </button>
-    </div>`}
-  </div>`;
+          <span className="display font-bold" style={{ fontSize: 20 }}>
+            Long, even hiss
+          </span>
+          {spec.tries > 1 && (
+            <span className="text-xs muted">
+              Try {Math.min(spec.tries, list.length + 1)} of {spec.tries}
+            </span>
+          )}
+        </div>
+        <Ring
+          p={secs / spec.target}
+          label={"Goal " + spec.target + "s"}
+          value={secs.toFixed(1) + "s"}
+          tone={secs >= spec.target ? "good" : "accent"}
+          size={150}
+        />
+        <span
+          className="display font-bold"
+          style={{ fontSize: 19 }}
+          aria-live="polite"
+        >
+          {msg}
+        </span>
+        {list.length > 0 && (
+          <span className="text-sm muted">
+            Best so far:
+            <b style={{ color: "var(--fg)" }}>{best.toFixed(1)} s</b>
+          </span>
+        )}
+      </section>
+      <MicNote mic={mic} />
+      {phase === "ready" && (
+        <button
+          className="btn btn-primary"
+          style={{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+          onClick={start}
+        >
+          Start
+        </button>
+      )}
+      {phase === "rest" && (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="btn"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={() => finish(listRef.current)}
+          >
+            Finish
+          </button>
+          <button
+            className="btn btn-primary"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={() => {
+              r.current.shown = 0;
+              setSecs(0);
+              go("go");
+            }}
+          >
+            Go again
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---- siren: how far you can glide in one smooth slide ----
@@ -688,105 +704,120 @@ function SirenEx({ spec, range, mic, onDone }) {
     done: "Done!",
   }[phase];
   const best = list.length ? Math.max(...list.map((x) => x.hi - x.lo)) : 0;
-  return html`<div class="flex flex-col gap-3">
-    <section class="tuner-card" style=${{ alignItems: "stretch", gap: 12 }}>
-      <div class="flex items-center justify-between gap-2">
-        <span class="display font-bold" style=${{ fontSize: 20 }}
-          >Siren slide</span
-        >
-        ${spec.tries > 1 &&
-        html`<span class="text-xs muted"
-          >Try ${Math.min(spec.tries, list.length + 1)} of ${spec.tries}</span
-        >`}
-      </div>
-      <div class="flex items-center gap-4">
-        <svg
-          width="90"
-          height=${H}
-          viewBox=${"0 0 90 " + H}
-          role="img"
-          aria-label=${live
-            ? "Sliding from " + nm(live.lo) + " to " + nm(live.hi)
-            : "Waiting for your voice"}
-          style=${{ flexShrink: 0 }}
-        >
-          <rect
-            x="30"
-            y="10"
-            width="30"
-            height=${H - 20}
-            rx="15"
-            fill="var(--surface-2)"
-            stroke="var(--line)"
-          ></rect>
-          ${live &&
-          html`<rect
-            x="30"
-            y=${y(live.hi).toFixed(1)}
-            width="30"
-            height=${Math.max(6, y(live.lo) - y(live.hi)).toFixed(1)}
-            rx="15"
-            fill="color-mix(in srgb, var(--accent) 60%, transparent)"
-          ></rect>`}
-          ${live &&
-          html`<circle
-            cx="45"
-            cy=${y(live.v).toFixed(1)}
-            r="9"
-            fill="var(--you)"
-          ></circle>`}
-        </svg>
-        <div class="flex flex-col gap-2 min-w-0">
-          <span
-            class="display font-bold"
-            style=${{ fontSize: 19, lineHeight: 1.25 }}
-            aria-live="polite"
-            >${msg}</span
-          >
-          ${live &&
-          html`<span class="text-sm muted"
-            >${nm(live.lo)} →
-            <b style=${{ color: "var(--fg)" }}>${nm(live.hi)}</b> ·
-            ${Math.round(live.hi - live.lo)} notes</span
-          >`}
-          ${list.length > 0 &&
-          html`<span class="text-sm muted"
-            >Widest so far: ${Math.round(best)} notes (goal ${target})</span
-          >`}
+  return (
+    <div className="flex flex-col gap-3">
+      <section
+        className="tuner-card"
+        style={{ alignItems: "stretch", gap: 12 }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="display font-bold" style={{ fontSize: 20 }}>
+            Siren slide
+          </span>
+          {spec.tries > 1 && (
+            <span className="text-xs muted">
+              Try {Math.min(spec.tries, list.length + 1)} of {spec.tries}
+            </span>
+          )}
         </div>
-      </div>
-    </section>
-    <${MicNote} mic=${mic} />
-    ${phase === "ready" &&
-    html`<button
-      class="btn btn-primary"
-      style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
-      onClick=${start}
-    >
-      Start
-    </button>`}
-    ${phase === "rest" &&
-    html`<div class="grid grid-cols-2 gap-2">
-      <button
-        class="btn"
-        style=${{ justifyContent: "center", minHeight: 46 }}
-        onClick=${() => finish(listRef.current)}
-      >
-        Finish
-      </button>
-      <button
-        class="btn btn-primary"
-        style=${{ justifyContent: "center", minHeight: 46 }}
-        onClick=${() => {
-          r.current = { buf: [], lo: null, hi: null, lastOn: 0 };
-          setLive(null);
-          go("go");
-        }}
-      >
-        Go again
-      </button>
-    </div>`}
-  </div>`;
+        <div className="flex items-center gap-4">
+          <svg
+            width="90"
+            height={H}
+            viewBox={"0 0 90 " + H}
+            role="img"
+            aria-label={
+              live
+                ? "Sliding from " + nm(live.lo) + " to " + nm(live.hi)
+                : "Waiting for your voice"
+            }
+            style={{ flexShrink: 0 }}
+          >
+            <rect
+              x="30"
+              y="10"
+              width="30"
+              height={H - 20}
+              rx="15"
+              fill="var(--surface-2)"
+              stroke="var(--line)"
+            />
+            {live && (
+              <rect
+                x="30"
+                y={y(live.hi).toFixed(1)}
+                width="30"
+                height={Math.max(6, y(live.lo) - y(live.hi)).toFixed(1)}
+                rx="15"
+                fill="color-mix(in srgb, var(--accent) 60%, transparent)"
+              />
+            )}
+            {live && (
+              <circle
+                cx="45"
+                cy={y(live.v).toFixed(1)}
+                r="9"
+                fill="var(--you)"
+              />
+            )}
+          </svg>
+          <div className="flex flex-col gap-2 min-w-0">
+            <span
+              className="display font-bold"
+              style={{ fontSize: 19, lineHeight: 1.25 }}
+              aria-live="polite"
+            >
+              {msg}
+            </span>
+            {live && (
+              <span className="text-sm muted">
+                {nm(live.lo)} →
+                <b style={{ color: "var(--fg)" }}>{nm(live.hi)}</b> ·
+                {Math.round(live.hi - live.lo)} notes
+              </span>
+            )}
+            {list.length > 0 && (
+              <span className="text-sm muted">
+                Widest so far: {Math.round(best)} notes (goal {target})
+              </span>
+            )}
+          </div>
+        </div>
+      </section>
+      <MicNote mic={mic} />
+      {phase === "ready" && (
+        <button
+          className="btn btn-primary"
+          style={{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+          onClick={start}
+        >
+          Start
+        </button>
+      )}
+      {phase === "rest" && (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="btn"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={() => finish(listRef.current)}
+          >
+            Finish
+          </button>
+          <button
+            className="btn btn-primary"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={() => {
+              r.current = { buf: [], lo: null, hi: null, lastOn: 0 };
+              setLive(null);
+              go("go");
+            }}
+          >
+            Go again
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---- sing back a pattern (steps, jumps, scales, trills) ----
@@ -1038,8 +1069,7 @@ function PatternEx({ spec, range, mic, onDone }) {
       tip =
         "On the notes you missed you were a bit high. Relax and aim slightly lower.";
     else
-      tip =
-        "Close! Listen once more and picture each note before you sing it.";
+      tip = "Close! Listen once more and picture each note before you sing it.";
     onDone({ score, pass: score >= 70, stats, tip });
   };
   const lastRound = round + 1 >= spec.rounds;
@@ -1059,172 +1089,188 @@ function PatternEx({ spec, range, mic, onDone }) {
       : "Tap Start to hear the pattern.",
     play: "Listen…",
     sing:
-      "Your turn. " +
-      (spec.verb === "Trill" ? "Trill" : "Sing") +
-      " it back.",
+      "Your turn. " + (spec.verb === "Trill" ? "Trill" : "Sing") + " it back.",
     judged: judged
       ? judged.hits === judged.n
         ? "Perfect round!"
         : judged.hits + " of " + judged.n + " notes right"
       : "",
   }[phase];
-  return html`<div class="flex flex-col gap-3">
-    <section class="tuner-card" style=${{ alignItems: "stretch", gap: 14 }}>
-      <div class="flex items-center justify-between gap-2">
-        <span class="display font-bold" style=${{ fontSize: 20 }}
-          >${spec.verb === "Trill" ? "Trill it back" : "Sing it back"}</span
-        >
-        <span class="text-xs muted"
-          >${spec.stages
-            ? spec.stages[Math.min(round, spec.stages.length - 1)] + " · "
-            : ""}${spec.rounds > 1
-            ? "Round " + (round + 1) + " of " + spec.rounds
-            : ""}</span
-        >
-      </div>
-      <div
-        class="flex flex-wrap justify-center gap-2"
-        role="list"
-        aria-label="Pattern notes"
+  return (
+    <div className="flex flex-col gap-3">
+      <section
+        className="tuner-card"
+        style={{ alignItems: "stretch", gap: 14 }}
       >
-        ${targets.map((t, i) => {
-          const st = judged
-            ? judged.marks[i]
-              ? "ok"
-              : "bad"
-            : playIdx === i
-              ? "now"
-              : "";
-          return html`<span
-            key=${i}
-            role="listitem"
-            class="mono"
-            style=${{
-              minWidth: 44,
-              padding: "10px 8px",
-              textAlign: "center",
-              borderRadius: 12,
-              fontSize: 14,
-              fontWeight: 600,
-              border:
-                "1px solid " +
-                (st === "ok"
-                  ? "var(--good)"
-                  : st === "bad"
-                    ? "var(--bad)"
-                    : st === "now"
-                      ? "var(--accent)"
-                      : "var(--line)"),
-              background:
-                st === "ok"
-                  ? "color-mix(in srgb, var(--good) 14%, transparent)"
-                  : st === "bad"
-                    ? "color-mix(in srgb, var(--bad) 12%, transparent)"
-                    : st === "now"
-                      ? "color-mix(in srgb, var(--accent) 22%, transparent)"
-                      : "var(--surface-2)",
-              transform: "translateY(" + -pat[i] * 1.5 + "px)",
+        <div className="flex items-center justify-between gap-2">
+          <span className="display font-bold" style={{ fontSize: 20 }}>
+            {spec.verb === "Trill" ? "Trill it back" : "Sing it back"}
+          </span>
+          <span className="text-xs muted">
+            {spec.stages
+              ? spec.stages[Math.min(round, spec.stages.length - 1)] + " · "
+              : ""}
+            {spec.rounds > 1
+              ? "Round " + (round + 1) + " of " + spec.rounds
+              : ""}
+          </span>
+        </div>
+        <div
+          className="flex flex-wrap justify-center gap-2"
+          role="list"
+          aria-label="Pattern notes"
+        >
+          {targets.map((t, i) => {
+            const st = judged
+              ? judged.marks[i]
+                ? "ok"
+                : "bad"
+              : playIdx === i
+                ? "now"
+                : "";
+            return (
+              <span
+                key={i}
+                role="listitem"
+                className="mono"
+                style={{
+                  minWidth: 44,
+                  padding: "10px 8px",
+                  textAlign: "center",
+                  borderRadius: 12,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  border:
+                    "1px solid " +
+                    (st === "ok"
+                      ? "var(--good)"
+                      : st === "bad"
+                        ? "var(--bad)"
+                        : st === "now"
+                          ? "var(--accent)"
+                          : "var(--line)"),
+                  background:
+                    st === "ok"
+                      ? "color-mix(in srgb, var(--good) 14%, transparent)"
+                      : st === "bad"
+                        ? "color-mix(in srgb, var(--bad) 12%, transparent)"
+                        : st === "now"
+                          ? "color-mix(in srgb, var(--accent) 22%, transparent)"
+                          : "var(--surface-2)",
+                  transform: "translateY(" + -pat[i] * 1.5 + "px)",
+                }}
+              >
+                {nm(t)}
+                {st === "ok" ? " ✓" : st === "bad" ? " ✗" : ""}
+              </span>
+            );
+          })}
+        </div>
+        <div
+          className="flex items-center justify-between gap-3"
+          style={{ minHeight: 28 }}
+        >
+          <span
+            className="display font-bold"
+            style={{
+              fontSize: 19,
+              color:
+                phase === "judged"
+                  ? judged && judged.hits === judged.n
+                    ? "var(--good)"
+                    : "var(--warn)"
+                  : "var(--fg)",
             }}
-            >${nm(t)}${st === "ok" ? " ✓" : st === "bad" ? " ✗" : ""}</span
-          >`;
-        })}
-      </div>
-      <div
-        class="flex items-center justify-between gap-3"
-        style=${{ minHeight: 28 }}
-      >
-        <span
-          class="display font-bold"
-          style=${{
-            fontSize: 19,
-            color:
-              phase === "judged"
-                ? judged && judged.hits === judged.n
-                  ? "var(--good)"
-                  : "var(--warn)"
-                : "var(--fg)",
-          }}
-          aria-live="polite"
-          >${hint}</span
+            aria-live="polite"
+          >
+            {hint}
+          </span>
+          {phase === "sing" && (
+            <span className="text-sm muted mono">
+              {heard.length
+                ? heard
+                    .slice(-4)
+                    .map((v) => nm(v))
+                    .join(" ")
+                : "…"}
+            </span>
+          )}
+        </div>
+      </section>
+      <MicNote mic={mic} />
+      {phase === "ready" && (
+        <button
+          className="btn btn-primary"
+          style={{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+          onClick={() => play(0)}
         >
-        ${phase === "sing" &&
-        html`<span class="text-sm muted mono"
-          >${heard.length
-            ? heard
-                .slice(-4)
-                .map((v) => nm(v))
-                .join(" ")
-            : "…"}</span
-        >`}
-      </div>
-    </section>
-    <${MicNote} mic=${mic} />
-    ${phase === "ready" &&
-    html`<button
-      class="btn btn-primary"
-      style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
-      onClick=${() => play(0)}
-    >
-      Start
-    </button>`}
-    ${(phase === "sing" || phase === "play") &&
-    html`<div class="grid grid-cols-2 gap-2">
-      <button
-        class="btn"
-        style=${{ justifyContent: "center", minHeight: 46 }}
-        onClick=${() => play(round)}
-        disabled=${phase === "play"}
-      >
-        ▶ Hear again
-      </button>
-      <button
-        class="btn"
-        style=${{ justifyContent: "center", minHeight: 46 }}
-        onClick=${judge}
-        disabled=${phase !== "sing"}
-      >
-        I'm done
-      </button>
-    </div>`}
-    ${phase === "judged" &&
-    html`<div class="grid grid-cols-2 gap-2">
-      <button
-        class="btn"
-        style=${{ justifyContent: "center", minHeight: 46 }}
-        onClick=${() => {
-          roundsRef.current = roundsRef.current.slice(0, -1);
-          setRounds(roundsRef.current);
-          play(round);
-        }}
-      >
-        ↻ Redo round
-      </button>
-      <button
-        class="btn btn-primary"
-        style=${{ justifyContent: "center", minHeight: 46 }}
-        onClick=${() => (lastRound ? finish() : play(round + 1))}
-      >
-        ${lastRound ? "See result" : "Next round →"}
-      </button>
-    </div>`}
-  </div>`;
+          Start
+        </button>
+      )}
+      {(phase === "sing" || phase === "play") && (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="btn"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={() => play(round)}
+            disabled={phase === "play"}
+          >
+            ▶ Hear again
+          </button>
+          <button
+            className="btn"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={judge}
+            disabled={phase !== "sing"}
+          >
+            I'm done
+          </button>
+        </div>
+      )}
+      {phase === "judged" && (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="btn"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={() => {
+              roundsRef.current = roundsRef.current.slice(0, -1);
+              setRounds(roundsRef.current);
+              play(round);
+            }}
+          >
+            ↻ Redo round
+          </button>
+          <button
+            className="btn btn-primary"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={() => (lastRound ? finish() : play(round + 1))}
+          >
+            {lastRound ? "See result" : "Next round →"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---- posture checklist ----
 function CheckEx({ spec, onDone }) {
   const [on, setOn] = useState(spec.steps.map(() => false));
   const all = on.every(Boolean);
-  return html`<div class="flex flex-col gap-3">
-    <section class="tuner-card" style=${{ alignItems: "stretch", gap: 10 }}>
-      <span class="display font-bold" style=${{ fontSize: 20 }}
-        >Check each one</span
+  return (
+    <div className="flex flex-col gap-3">
+      <section
+        className="tuner-card"
+        style={{ alignItems: "stretch", gap: 10 }}
       >
-      ${spec.steps.map(
-        (t, i) =>
-          html`<button
-            key=${i}
-            class="flex items-center gap-3"
-            style=${{
+        <span className="display font-bold" style={{ fontSize: 20 }}>
+          Check each one
+        </span>
+        {spec.steps.map((t, i) => (
+          <button
+            key={i}
+            className="flex items-center gap-3"
+            style={{
               textAlign: "left",
               padding: "10px 12px",
               borderRadius: 12,
@@ -1237,11 +1283,11 @@ function CheckEx({ spec, onDone }) {
               cursor: "pointer",
             }}
             role="checkbox"
-            aria-checked=${on[i] ? "true" : "false"}
-            onClick=${() => setOn(on.map((v, j) => (j === i ? !v : v)))}
+            aria-checked={on[i] ? "true" : "false"}
+            onClick={() => setOn(on.map((v, j) => (j === i ? !v : v)))}
           >
             <span
-              style=${{
+              style={{
                 width: 24,
                 height: 24,
                 borderRadius: 7,
@@ -1253,28 +1299,31 @@ function CheckEx({ spec, onDone }) {
                 color: "var(--bg)",
                 fontWeight: 700,
               }}
-              >${on[i] ? "✓" : ""}</span
             >
-            <span class="text-sm">${t}</span>
-          </button>`,
-      )}
-    </section>
-    <button
-      class="btn btn-primary"
-      style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
-      disabled=${!all}
-      onClick=${() =>
-        onDone({
-          score: 100,
-          pass: true,
-          stats: [],
-          tip: spec.tip,
-          simple: true,
-        })}
-    >
-      ${all ? "Done" : "Tick all four to finish"}
-    </button>
-  </div>`;
+              {on[i] ? "✓" : ""}
+            </span>
+            <span className="text-sm">{t}</span>
+          </button>
+        ))}
+      </section>
+      <button
+        className="btn btn-primary"
+        style={{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+        disabled={!all}
+        onClick={() =>
+          onDone({
+            score: 100,
+            pass: true,
+            stats: [],
+            tip: spec.tip,
+            simple: true,
+          })
+        }
+      >
+        {all ? "Done" : "Tick all four to finish"}
+      </button>
+    </div>
+  );
 }
 
 // ---- guided belly breathing ----
@@ -1292,90 +1341,98 @@ function BreathEx({ spec, onDone }) {
     }, len * 1000);
   };
   const big = state.phase === "in";
-  return html`<div class="flex flex-col gap-3">
-    <section class="tuner-card" style=${{ gap: 16, minHeight: 320 }}>
-      <span class="text-xs muted"
-        >${state.phase === "ready"
-          ? spec.rounds + " slow breaths"
-          : state.phase === "done"
-            ? "All done"
-            : "Breath " + (state.round + 1) + " of " + spec.rounds}</span
-      >
-      <span
-        style=${{
-          width: 180,
-          height: 180,
-          display: "grid",
-          placeItems: "center",
-        }}
-      >
+  return (
+    <div className="flex flex-col gap-3">
+      <section className="tuner-card" style={{ gap: 16, minHeight: 320 }}>
+        <span className="text-xs muted">
+          {state.phase === "ready"
+            ? spec.rounds + " slow breaths"
+            : state.phase === "done"
+              ? "All done"
+              : "Breath " + (state.round + 1) + " of " + spec.rounds}
+        </span>
         <span
-          style=${{
+          style={{
             width: 180,
             height: 180,
-            borderRadius: "50%",
             display: "grid",
             placeItems: "center",
-            background:
-              "radial-gradient(circle, color-mix(in srgb, var(--accent) 45%, transparent), color-mix(in srgb, var(--accent) 10%, transparent))",
-            transform:
-              "scale(" + (big ? 1 : state.phase === "out" ? 0.55 : 0.7) + ")",
-            transition:
-              "transform " +
-              (big ? spec.inhale : spec.exhale) +
-              "s ease-in-out",
           }}
         >
-          <span class="display font-bold" style=${{ fontSize: 40 }}
-            >${state.left || ""}</span
+          <span
+            style={{
+              width: 180,
+              height: 180,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              background:
+                "radial-gradient(circle, color-mix(in srgb, var(--accent) 45%, transparent), color-mix(in srgb, var(--accent) 10%, transparent))",
+              transform:
+                "scale(" + (big ? 1 : state.phase === "out" ? 0.55 : 0.7) + ")",
+              transition:
+                "transform " +
+                (big ? spec.inhale : spec.exhale) +
+                "s ease-in-out",
+            }}
           >
+            <span className="display font-bold" style={{ fontSize: 40 }}>
+              {state.left || ""}
+            </span>
+          </span>
         </span>
-      </span>
-      <span
-        class="display font-bold"
-        style=${{ fontSize: 22 }}
-        aria-live="polite"
-        >${{
-          ready: "Hand on your belly",
-          in: "Breathe in…",
-          out: "Out on “sss”…",
-          done: "Nice and low!",
-        }[state.phase]}</span
-      >
-    </section>
-    ${state.phase === "ready" &&
-    html`<button
-      class="btn btn-primary"
-      style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
-      onClick=${() => run(0, "in")}
-    >
-      Start
-    </button>`}
-    ${state.phase === "done" &&
-    html`<button
-      class="btn btn-primary"
-      style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
-      onClick=${() =>
-        onDone({
-          score: 100,
-          pass: true,
-          stats: [],
-          tip: spec.tip,
-          simple: true,
-        })}
-    >
-      Done
-    </button>`}
-  </div>`;
+        <span
+          className="display font-bold"
+          style={{ fontSize: 22 }}
+          aria-live="polite"
+        >
+          {
+            {
+              ready: "Hand on your belly",
+              in: "Breathe in…",
+              out: "Out on “sss”…",
+              done: "Nice and low!",
+            }[state.phase]
+          }
+        </span>
+      </section>
+      {state.phase === "ready" && (
+        <button
+          className="btn btn-primary"
+          style={{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+          onClick={() => run(0, "in")}
+        >
+          Start
+        </button>
+      )}
+      {state.phase === "done" && (
+        <button
+          className="btn btn-primary"
+          style={{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+          onClick={() =>
+            onDone({
+              score: 100,
+              pass: true,
+              stats: [],
+              tip: spec.tip,
+              simple: true,
+            })
+          }
+        >
+          Done
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function Exercise({ spec, range, mic, onDone }) {
   const P = { spec, range, mic, onDone };
-  if (spec.type === "hold") return html`<${HoldEx} ...${P} />`;
-  if (spec.type === "hiss") return html`<${HissEx} ...${P} />`;
-  if (spec.type === "siren") return html`<${SirenEx} ...${P} />`;
-  if (spec.type === "pattern") return html`<${PatternEx} ...${P} />`;
-  if (spec.type === "check") return html`<${CheckEx} ...${P} />`;
-  if (spec.type === "breath") return html`<${BreathEx} ...${P} />`;
+  if (spec.type === "hold") return <HoldEx {...P} />;
+  if (spec.type === "hiss") return <HissEx {...P} />;
+  if (spec.type === "siren") return <SirenEx {...P} />;
+  if (spec.type === "pattern") return <PatternEx {...P} />;
+  if (spec.type === "check") return <CheckEx {...P} />;
+  if (spec.type === "breath") return <BreathEx {...P} />;
   return null;
 }

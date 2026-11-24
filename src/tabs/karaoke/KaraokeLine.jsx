@@ -1,5 +1,4 @@
 // One line of karaoke lyrics that fills in as you sing.
-import { html } from "../../html.js";
 
 // a line's words with start times; spreads them by length when the lyrics file has no word timing
 function lineWords(line) {
@@ -21,31 +20,34 @@ function lineWords(line) {
 
 export function KaraokeLine({ line, t, size, dim }) {
   if (!line)
-    return html`<p class="kline" style=${{ fontSize: size, opacity: 0.0 }}>
-      ·
-    </p>`;
+    return (
+      <p className="kline" style={{ fontSize: size, opacity: 0.0 }}>
+        ·
+      </p>
+    );
   const words = lineWords(line);
   // only fill word by word when the lyrics file has real word timing; otherwise light the whole line at its start
   const timed = !!(line.words && line.words.length);
-  return html`<p
-    class=${"kline" + (dim ? " dim" : "")}
-    style=${{ fontSize: size }}
-  >
-    ${words.map((w, i) => {
-      const p =
-        t == null
-          ? 0
-          : !timed
-            ? t >= line.start
-              ? 1
-              : 0
-            : Math.max(
-                0,
-                Math.min(1, (t - w.t) / Math.max(0.05, w.end - w.t)),
-              );
-      return html`<span key=${i} class="kw" style=${{ "--p": p * 100 + "%" }}
-        >${w.w}${" "}</span
-      >`;
-    })}
-  </p>`;
+  return (
+    <p className={"kline" + (dim ? " dim" : "")} style={{ fontSize: size }}>
+      {words.map((w, i) => {
+        const p =
+          t == null
+            ? 0
+            : !timed
+              ? t >= line.start
+                ? 1
+                : 0
+              : Math.max(
+                  0,
+                  Math.min(1, (t - w.t) / Math.max(0.05, w.end - w.t)),
+                );
+        return (
+          <span key={i} className="kw" style={{ "--p": p * 100 + "%" }}>
+            {w.w}{" "}
+          </span>
+        );
+      })}
+    </p>
+  );
 }

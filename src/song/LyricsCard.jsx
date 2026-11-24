@@ -1,12 +1,24 @@
 // Adding and syncing lyrics for the chosen song.
 import { useState, useRef, useEffect } from "react";
-import { html } from "../html.js";
 import { saveBlob } from "../lib/audio.js";
-import { bestLyricShift, findLyrics, cleanSongName, parseLrc, lyricSpans } from "../lib/lyrics.js";
+import {
+  bestLyricShift,
+  findLyrics,
+  cleanSongName,
+  parseLrc,
+  lyricSpans,
+} from "../lib/lyrics.js";
 import { fmt, signed } from "../lib/music.js";
 import { parseUltraStar, toUltraStar } from "../lib/ultrastar.js";
 
-export function LyricsCard({ orig, lyrics, updateLyrics, count, hint, musicName }) {
+export function LyricsCard({
+  orig,
+  lyrics,
+  updateLyrics,
+  count,
+  hint,
+  musicName,
+}) {
   const [find, setFind] = useState(null); // { q, busy, results, msg }
   const [lineMsg, setLineMsg] = useState("");
   const [err, setErr] = useState("");
@@ -44,7 +56,7 @@ export function LyricsCard({ orig, lyrics, updateLyrics, count, hint, musicName 
   useEffect(() => {
     if (origName && !lyrics) runFind(cleanSongName(origName));
   }, [origName]);
-  const useFound = (x) => {
+  const pickFound = (x) => {
     const lines = parseLrc(x.syncedLyrics || "");
     if (!lines.filter((l) => l.text).length) {
       setErr("Those lyrics couldn't be read.");
@@ -154,189 +166,208 @@ export function LyricsCard({ orig, lyrics, updateLyrics, count, hint, musicName 
     }
   };
   const btn = { padding: "5px 10px", fontSize: 13 };
-  return html`<div class="panel p-4 flex flex-wrap items-center gap-3">
-    <div class="flex-1 min-w-0" style=${{ minWidth: 200 }}>
-      <span class="label">Optional</span>
-      <h3 class="display text-lg font-bold">
-        Timed lyrics (.lrc or UltraStar .txt)
-      </h3>
-      ${lyrics
-        ? html`<p class="text-sm" style=${{ overflowWrap: "anywhere" }}>
-            <b>${lyrics.name}</b>
-            <span class="muted mono text-xs"
-              >· ${count}
-              lines${lyrics.us ? " · exact notes from the chart" : ""} · saved
-              for this song</span
-            >
-          </p>`
-        : html`<p class="muted text-sm">
-            ${origName
+  return (
+    <div className="panel p-4 flex flex-wrap items-center gap-3">
+      <div className="flex-1 min-w-0" style={{ minWidth: 200 }}>
+        <span className="label">Optional</span>
+        <h3 className="display text-lg font-bold">
+          Timed lyrics (.lrc or UltraStar .txt)
+        </h3>
+        {lyrics ? (
+          <p className="text-sm" style={{ overflowWrap: "anywhere" }}>
+            <b>{lyrics.name}</b>
+            <span className="muted mono text-xs">
+              · {count}lines{lyrics.us ? " · exact notes from the chart" : ""}
+              {" · saved\n              for this song"}
+            </span>
+          </p>
+        ) : (
+          <p className="muted text-sm">
+            {origName
               ? hint
               : "Upload the song first, then add its lyrics file."}
-          </p>`}
-      ${err &&
-      html`<p class="text-sm" style=${{ color: "var(--bad)" }}>${err}</p>`}
-      ${lyrics &&
-      orig &&
-      orig.data &&
-      html`<p class="text-xs muted" style=${{ marginTop: 4 }}>
-        <button class="link-btn" onClick=${exportUs}>
-          Save as UltraStar file</button
-        >${expMsg
-          ? " · " + expMsg
-          : " · plays in UltraStar and other karaoke games"}
-      </p>`}
-      ${lyrics &&
-      orig &&
-      orig.data &&
-      !lyrics.us &&
-      html`<p class="text-xs muted" style=${{ marginTop: 4 }}>
-        <button class="link-btn" onClick=${lineUp}>
-          Line up with the singing</button
-        >${lineMsg ? " · " + lineMsg : ""}
-      </p>`}
-    </div>
-    ${lyrics &&
-    html`<div class="flex items-center gap-2">
-      <button
-        class="btn"
-        style=${btn}
-        onClick=${() =>
-          updateLyrics({
-            ...lyrics,
-            offset: Math.round((lyrics.offset - 0.25) * 100) / 100,
-          })}
-      >
-        −0.25 s
-      </button>
-      <span
-        class="mono text-xs"
-        style=${{ minWidth: 92, textAlign: "center" }}
-        >${lyrics.offset === 0
-          ? "No shift"
-          : "Shift " + signed(lyrics.offset.toFixed(2)) + " s"}</span
-      >
-      <button
-        class="btn"
-        style=${btn}
-        onClick=${() =>
-          updateLyrics({
-            ...lyrics,
-            offset: Math.round((lyrics.offset + 0.25) * 100) / 100,
-          })}
-      >
-        +0.25 s
-      </button>
-      <button
-        class="btn btn-ghost"
-        style=${btn}
-        onClick=${() => updateLyrics(null)}
-      >
-        Remove
-      </button>
-    </div>`}
-    <button
-      class=${"btn" + (lyrics ? "" : " btn-primary")}
-      disabled=${!origName}
-      onClick=${() => runFind(find ? find.q : cleanSongName(origName))}
-    >
-      Find lyrics
-    </button>
-    <button
-      class="btn"
-      disabled=${!origName}
-      onClick=${() => ref.current && ref.current.click()}
-    >
-      ${lyrics ? "Replace with a file" : "Upload a file"}
-    </button>
-    ${find &&
-    html`<div class="flex flex-col gap-2" style=${{ flexBasis: "100%" }}>
-      <form
-        class="flex gap-2"
-        onSubmit=${(e) => {
-          e.preventDefault();
-          runFind(e.target.elements.q.value.trim());
-        }}
-      >
-        <input
-          name="q"
-          class="input"
-          aria-label="Search lyrics"
-          defaultValue=${find.q}
-          key=${find.q}
-          style=${{
-            flex: 1,
-            minWidth: 0,
-            padding: "8px 10px",
-            borderRadius: 10,
-            border: "1px solid var(--line)",
-            background: "var(--surface-2)",
-            color: "var(--fg)",
-          }}
-        />
-        <button class="btn" type="submit" disabled=${find.busy}>
-          ${find.busy ? "Searching…" : "Search"}
-        </button>
-      </form>
-      ${find.msg && html`<p class="text-xs muted">${find.msg}</p>`}
-      ${(find.results || []).map((x) => {
-        const d = dur && x.duration ? x.duration - dur : null;
-        return html`<div
-          key=${x.id}
-          class="file-row"
-          style=${{ padding: "8px 12px" }}
-        >
-          <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
-            <span
-              class="text-sm font-semibold"
-              style=${{ overflowWrap: "anywhere" }}
-              >${x.trackName}</span
-            >
-            <span class="text-xs muted" style=${{ overflowWrap: "anywhere" }}
-              >${x.artistName}${x.duration
-                ? " · " + fmt(x.duration)
-                : ""}${d == null
-                ? ""
-                : Math.abs(d) <= 3
-                  ? " · same length as your song"
-                  : " · " +
-                    Math.round(Math.abs(d)) +
-                    " s " +
-                    (d > 0 ? "longer" : "shorter")}</span
-            >
+          </p>
+        )}
+        {err && (
+          <p className="text-sm" style={{ color: "var(--bad)" }}>
+            {err}
+          </p>
+        )}
+        {lyrics && orig && orig.data && (
+          <p className="text-xs muted" style={{ marginTop: 4 }}>
+            <button className="link-btn" onClick={exportUs}>
+              Save as UltraStar file
+            </button>
+            {expMsg
+              ? " · " + expMsg
+              : " · plays in UltraStar and other karaoke games"}
+          </p>
+        )}
+        {lyrics && orig && orig.data && !lyrics.us && (
+          <p className="text-xs muted" style={{ marginTop: 4 }}>
+            <button className="link-btn" onClick={lineUp}>
+              Line up with the singing
+            </button>
+            {lineMsg ? " · " + lineMsg : ""}
+          </p>
+        )}
+      </div>
+      {lyrics && (
+        <div className="flex items-center gap-2">
+          <button
+            className="btn"
+            style={btn}
+            onClick={() =>
+              updateLyrics({
+                ...lyrics,
+                offset: Math.round((lyrics.offset - 0.25) * 100) / 100,
+              })
+            }
+          >
+            −0.25 s
+          </button>
+          <span
+            className="mono text-xs"
+            style={{ minWidth: 92, textAlign: "center" }}
+          >
+            {lyrics.offset === 0
+              ? "No shift"
+              : "Shift " + signed(lyrics.offset.toFixed(2)) + " s"}
           </span>
           <button
-            class="btn"
-            style=${{ padding: "5px 12px", fontSize: 13 }}
-            onClick=${() => useFound(x)}
+            className="btn"
+            style={btn}
+            onClick={() =>
+              updateLyrics({
+                ...lyrics,
+                offset: Math.round((lyrics.offset + 0.25) * 100) / 100,
+              })
+            }
           >
-            Use
+            +0.25 s
           </button>
-        </div>`;
-      })}
-      ${!find.busy &&
-      html`<p class="text-xs muted">
-        Timed lyrics from
-        <a
-          href="https://lrclib.net"
-          target="_blank"
-          rel="noopener"
-          style=${{ color: "var(--accent)" }}
-          >LRCLIB</a
-        >, a free community library.
-      </p>`}
-    </div>`}
-    <input
-      ref=${ref}
-      type="file"
-      class="hidden"
-      onChange=${(e) => {
-        const f = e.target.files && e.target.files[0];
-        e.target.value = "";
-        if (f) pickLyrics(f);
-      }}
-    />
-  </div>`;
+          <button
+            className="btn btn-ghost"
+            style={btn}
+            onClick={() => updateLyrics(null)}
+          >
+            Remove
+          </button>
+        </div>
+      )}
+      <button
+        className={"btn" + (lyrics ? "" : " btn-primary")}
+        disabled={!origName}
+        onClick={() => runFind(find ? find.q : cleanSongName(origName))}
+      >
+        Find lyrics
+      </button>
+      <button
+        className="btn"
+        disabled={!origName}
+        onClick={() => ref.current && ref.current.click()}
+      >
+        {lyrics ? "Replace with a file" : "Upload a file"}
+      </button>
+      {find && (
+        <div className="flex flex-col gap-2" style={{ flexBasis: "100%" }}>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              runFind(e.target.elements.q.value.trim());
+            }}
+          >
+            <input
+              name="q"
+              className="input"
+              aria-label="Search lyrics"
+              defaultValue={find.q}
+              key={find.q}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid var(--line)",
+                background: "var(--surface-2)",
+                color: "var(--fg)",
+              }}
+            />
+            <button className="btn" type="submit" disabled={find.busy}>
+              {find.busy ? "Searching…" : "Search"}
+            </button>
+          </form>
+          {find.msg && <p className="text-xs muted">{find.msg}</p>}
+          {(find.results || []).map((x) => {
+            const d = dur && x.duration ? x.duration - dur : null;
+            return (
+              <div
+                key={x.id}
+                className="file-row"
+                style={{ padding: "8px 12px" }}
+              >
+                <span className="flex flex-col min-w-0" style={{ flex: 1 }}>
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ overflowWrap: "anywhere" }}
+                  >
+                    {x.trackName}
+                  </span>
+                  <span
+                    className="text-xs muted"
+                    style={{ overflowWrap: "anywhere" }}
+                  >
+                    {x.artistName}
+                    {x.duration ? " · " + fmt(x.duration) : ""}
+                    {d == null
+                      ? ""
+                      : Math.abs(d) <= 3
+                        ? " · same length as your song"
+                        : " · " +
+                          Math.round(Math.abs(d)) +
+                          " s " +
+                          (d > 0 ? "longer" : "shorter")}
+                  </span>
+                </span>
+                <button
+                  className="btn"
+                  style={{ padding: "5px 12px", fontSize: 13 }}
+                  onClick={() => pickFound(x)}
+                >
+                  Use
+                </button>
+              </div>
+            );
+          })}
+          {!find.busy && (
+            <p className="text-xs muted">
+              Timed lyrics from
+              <a
+                href="https://lrclib.net"
+                target="_blank"
+                rel="noopener"
+                style={{ color: "var(--accent)" }}
+              >
+                LRCLIB
+              </a>
+              , a free community library.
+            </p>
+          )}
+        </div>
+      )}
+      <input
+        ref={ref}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files && e.target.files[0];
+          e.target.value = "";
+          if (f) pickLyrics(f);
+        }}
+      />
+    </div>
+  );
 }
 
 /* ---------- sing-back scoring (Learn) ---------- */

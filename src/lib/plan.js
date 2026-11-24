@@ -98,8 +98,7 @@ export function makePlan(rows, notes, spans, phrases, source) {
   for (let i = 1; i < rows.length; i++) {
     const a = rows[i - 1],
       b = rows[i];
-    if (b.n.pos - a.n.end > 0.4 || Math.abs(b.n.midi - a.n.midi) < 5)
-      continue;
+    if (b.n.pos - a.n.end > 0.4 || Math.abs(b.n.midi - a.n.midi) < 5) continue;
     const key = a.n.midi + ">" + b.n.midi;
     const j = (jumps[key] = jumps[key] || {
       a: a.n.midi,
@@ -233,8 +232,7 @@ export function makePlan(rows, notes, spans, phrases, source) {
       const ln = notes
         .filter(
           (n) =>
-            n.pos >= lines[cand.li].start - 0.05 &&
-            n.pos < lines[cand.li].end,
+            n.pos >= lines[cand.li].start - 0.05 && n.pos < lines[cand.li].end,
         )
         .slice(0, 6)
         .map((n) => n.midi);
@@ -273,9 +271,7 @@ export function makePlan(rows, notes, spans, phrases, source) {
       text: lines[li].text,
       before: lineScore(li),
       notes: notes
-        .filter(
-          (n) => n.pos >= lines[li].start - 0.05 && n.pos < lines[li].end,
-        )
+        .filter((n) => n.pos >= lines[li].start - 0.05 && n.pos < lines[li].end)
         .slice(0, 12)
         .map((n) => n.midi),
     }))

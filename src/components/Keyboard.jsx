@@ -1,5 +1,4 @@
-import {html} from "../html.js";
-import {midiInfo} from "../lib/music.js";
+import { midiInfo } from "../lib/music.js";
 
 export function Keyboard({ baseOct, target, matched, sung, onKey }) {
   const c = 12 * (baseOct + 1);
@@ -15,33 +14,36 @@ export function Keyboard({ baseOct, target, matched, sung, onKey }) {
   const state = (m) =>
     (m === target ? (matched ? " k-hit" : " k-target") : "") +
     (m === sung ? " k-sung" : "");
-  return html`<div class="keys" role="group" aria-label="Piano keyboard">
-    ${whites.map((m, i) => {
-      const info = midiInfo(m);
-      return html`<button
-        key=${m}
-        class=${"wkey" + state(m)}
-        style=${{ left: i * ww + "%", width: ww + "%" }}
-        onClick=${() => onKey(m)}
-        aria-label=${"Play " + info.label}
-      >
-        <span class="mono"
-          >${info.letter === "C" ? info.label : info.letter}</span
-        >
-      </button>`;
-    })}
-    ${blacks.map(
-      ({ m, after }) =>
-        html`<button
-          key=${m}
-          class=${"bkey" + state(m)}
-          style=${{
+  return (
+    <div className="keys" role="group" aria-label="Piano keyboard">
+      {whites.map((m, i) => {
+        const info = midiInfo(m);
+        return (
+          <button
+            key={m}
+            className={"wkey" + state(m)}
+            style={{ left: i * ww + "%", width: ww + "%" }}
+            onClick={() => onKey(m)}
+            aria-label={"Play " + info.label}
+          >
+            <span className="mono">
+              {info.letter === "C" ? info.label : info.letter}
+            </span>
+          </button>
+        );
+      })}
+      {blacks.map(({ m, after }) => (
+        <button
+          key={m}
+          className={"bkey" + state(m)}
+          style={{
             left: (after + 1) * ww - ww * 0.31 + "%",
             width: ww * 0.62 + "%",
           }}
-          onClick=${() => onKey(m)}
-          aria-label=${"Play " + midiInfo(m).label}
-        ></button>`,
-    )}
-  </div>`;
+          onClick={() => onKey(m)}
+          aria-label={"Play " + midiInfo(m).label}
+        />
+      ))}
+    </div>
+  );
 }

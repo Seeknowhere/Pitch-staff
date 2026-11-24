@@ -1,5 +1,4 @@
 // Voice types (soprano, tenor...) and range helpers shared by My range and Song fit.
-import { html } from "../../html.js";
 
 // typical ranges (MIDI) used to suggest a voice type
 const VOICES = [
@@ -41,13 +40,14 @@ export function spanWords(lo, hi) {
   return n + " notes" + (o ? ", " + o : "");
 }
 
-export const keyDot = (bg) =>
-  html`<span
-    style=${{
+export const keyDot = (bg) => (
+  <span
+    style={{
       width: 12,
       height: 12,
       borderRadius: 3,
       background: bg,
       flexShrink: 0,
     }}
-  ></span>`;
+  />
+);

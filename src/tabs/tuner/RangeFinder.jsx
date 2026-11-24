@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Icon } from "../../components/Icon.jsx";
 import { RangeKeys } from "../../components/RangeKeys.jsx";
-import { html } from "../../html.js";
 import { pretty, midiInfo } from "../../lib/music.js";
 import { loadRanges, RANGE_KEY, comfyOf } from "../../lib/range.js";
 import { saveJSON } from "../../lib/storage.js";
@@ -124,266 +123,295 @@ export function RangeFinder({ feedRef, listening, onStartMic, onStopMic }) {
       cur != null ? cur : best != null ? best : step === "low" ? 57 : 67;
     const rows = [];
     for (let m = center + 6; m >= center - 6; m--) rows.push(m);
-    return html`<${React.Fragment}>
-      <div class="flex items-center gap-3">
-        <span class="flex gap-1"
-          ><span
-            style=${{
-              width: 26,
-              height: 6,
-              borderRadius: 3,
-              background: step === "high" ? "var(--good)" : "var(--accent)",
-            }}
-          ></span
-          ><span
-            style=${{
-              width: 26,
-              height: 6,
-              borderRadius: 3,
-              background: step === "high" ? "var(--accent)" : "var(--line)",
-            }}
-          ></span
-        ></span>
-        <span class="text-sm muted">Step ${step === "low" ? 1 : 2} of 2</span>
-      </div>
-      <section
-        class="tuner-card"
-        style=${{
-          alignItems: "stretch",
-          justifyContent: "flex-start",
-          flex: 1,
-          gap: 14,
-        }}
-      >
-        <div class="flex flex-col gap-1">
-          <span class="display font-bold" style=${{ fontSize: 24 }}
-            >${step === "low" ? "Slide down" : "Now slide up"}</span
-          >
-          <span class="text-sm muted"
-            >${step === "low"
-              ? "Start on a comfy note and glide down slowly. Stop when your voice gets croaky or breathy."
-              : "Start on a comfy note and glide up slowly, like a siren. Stop when it strains. No need to push."}</span
-          >
+    return (
+      <React.Fragment>
+        <div className="flex items-center gap-3">
+          <span className="flex gap-1">
+            <span
+              style={{
+                width: 26,
+                height: 6,
+                borderRadius: 3,
+                background: step === "high" ? "var(--good)" : "var(--accent)",
+              }}
+            />
+            <span
+              style={{
+                width: 26,
+                height: 6,
+                borderRadius: 3,
+                background: step === "high" ? "var(--accent)" : "var(--line)",
+              }}
+            />
+          </span>
+          <span className="text-sm muted">
+            Step {step === "low" ? 1 : 2} of 2
+          </span>
         </div>
-        ${!listening
-          ? html`<div class="flex justify-center py-4">
-              <button
-                class="btn btn-primary"
-                style=${{ minHeight: 52, fontSize: 16, padding: "0 22px" }}
-                onClick=${onStartMic}
-              >
-                <span class="flex items-center gap-2"
-                  ><${Icon} name="mic" size=${20} />Tap to start
-                  listening</span
-                >
-              </button>
-            </div>`
-          : html` <div class="flex gap-3" style=${{ flex: 1, minHeight: 0 }}>
-              <div
-                class="flex flex-col"
-                style=${{ flex: 1, gap: 3, minWidth: 0 }}
-                aria-hidden="true"
-              >
-                ${rows.map((m) => {
-                  const isCur = m === cur,
-                    isBest = m === best;
-                  const reached =
-                    best != null && (step === "low" ? m >= best : m <= best);
-                  return html`<div
-                    key=${m}
-                    class="mono flex items-center justify-between"
-                    style=${{
-                      height: 22,
-                      padding: "0 10px",
-                      borderRadius: 6,
-                      fontSize: 11,
-                      background: isCur
-                        ? "var(--you)"
-                        : reached
-                          ? "color-mix(in srgb, var(--you) 14%, transparent)"
-                          : "var(--surface-2)",
-                      color: isCur
-                        ? "var(--bg)"
-                        : reached
-                          ? "var(--fg)"
-                          : "var(--muted)",
-                      fontWeight: isCur ? 700 : 500,
-                    }}
-                  >
-                    <span>${pretty(midiInfo(m).label)}</span
-                    ><span
-                      >${isCur
-                        ? "you"
-                        : isBest
-                          ? step === "low"
-                            ? "lowest"
-                            : "highest"
-                          : ""}</span
-                    >
-                  </div>`;
-                })}
-              </div>
-              <div
-                class="flex flex-col items-center justify-center gap-2"
-                style=${{ width: 118, flexShrink: 0 }}
-              >
-                <span
-                  style=${{ position: "relative", width: 108, height: 108 }}
-                >
-                  <svg
-                    width="108"
-                    height="108"
-                    viewBox="0 0 108 108"
-                    role="img"
-                    aria-label=${cur != null
-                      ? "Holding " + pretty(midiInfo(cur).label)
-                      : "Waiting for your voice"}
-                  >
-                    <circle
-                      cx="54"
-                      cy="54"
-                      r="48"
-                      fill="none"
-                      stroke="var(--line)"
-                      strokeWidth="6"
-                    ></circle>
-                    <circle
-                      cx="54"
-                      cy="54"
-                      r="48"
-                      fill="none"
-                      stroke="var(--you)"
-                      strokeWidth="6"
-                      strokeLinecap="round"
-                      strokeDasharray=${(ringC * hold).toFixed(1) +
-                      " " +
-                      ringC.toFixed(1)}
-                      transform="rotate(-90 54 54)"
-                    ></circle>
-                  </svg>
-                  <span
-                    style=${{
-                      position: "absolute",
-                      inset: 0,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <span class="label" style=${{ fontSize: 10 }}>Hold</span>
-                    <span
-                      class="display font-bold"
-                      style=${{
-                        fontSize: 32,
-                        lineHeight: 1,
-                        color: cur != null ? "var(--you)" : "var(--muted)",
-                      }}
-                      aria-live="polite"
-                      >${cur != null
-                        ? pretty(midiInfo(cur).label)
-                        : "—"}</span
-                    >
-                  </span>
-                </span>
-                <span class="text-xs muted" style=${{ textAlign: "center" }}
-                  >Hold a note steady for half a second to count it</span
-                >
-              </div>
-            </div>`}
-        <div class="grid grid-cols-2 gap-2">
-          <div
-            style=${{
-              padding: "10px 12px",
-              borderRadius: 12,
-              background: "var(--surface-2)",
-            }}
-          >
-            <div class="label">Lowest</div>
-            <div class="display font-bold" style=${{ fontSize: 20 }}>
-              ${found.low != null
-                ? pretty(midiInfo(found.low).label)
-                : "—"}${found.low != null && step === "high"
-                ? html` <span style=${{ fontSize: 13, color: "var(--good)" }}
-                    >✓</span
-                  >`
-                : ""}
-            </div>
-          </div>
-          <div
-            style=${{
-              padding: "10px 12px",
-              borderRadius: 12,
-              background: "var(--surface-2)",
-            }}
-          >
-            <div class="label">Highest</div>
-            <div class="display font-bold" style=${{ fontSize: 20 }}>
-              ${found.high != null ? pretty(midiInfo(found.high).label) : "—"}
-            </div>
-          </div>
-        </div>
-      </section>
-      <div class="grid grid-cols-2 gap-2">
-        <button
-          class="btn"
-          style=${{ justifyContent: "center", minHeight: 46 }}
-          onClick=${step === "low" ? cancel : begin}
+        <section
+          className="tuner-card"
+          style={{
+            alignItems: "stretch",
+            justifyContent: "flex-start",
+            flex: 1,
+            gap: 14,
+          }}
         >
-          ${step === "low" ? "Cancel" : "Start over"}
-        </button>
-        ${step === "low"
-          ? html`<button
-              class="btn btn-primary"
-              style=${{ justifyContent: "center", minHeight: 46 }}
-              onClick=${goHigh}
-              disabled=${found.low == null}
+          <div className="flex flex-col gap-1">
+            <span className="display font-bold" style={{ fontSize: 24 }}>
+              {step === "low" ? "Slide down" : "Now slide up"}
+            </span>
+            <span className="text-sm muted">
+              {step === "low"
+                ? "Start on a comfy note and glide down slowly. Stop when your voice gets croaky or breathy."
+                : "Start on a comfy note and glide up slowly, like a siren. Stop when it strains. No need to push."}
+            </span>
+          </div>
+          {!listening ? (
+            <div className="flex justify-center py-4">
+              <button
+                className="btn btn-primary"
+                style={{ minHeight: 52, fontSize: 16, padding: "0 22px" }}
+                onClick={onStartMic}
+              >
+                <span className="flex items-center gap-2">
+                  <Icon name="mic" size={20} />
+                  {"Tap to start\n                  listening"}
+                </span>
+              </button>
+            </div>
+          ) : (
+            <>
+              {" "}
+              <div className="flex gap-3" style={{ flex: 1, minHeight: 0 }}>
+                <div
+                  className="flex flex-col"
+                  style={{ flex: 1, gap: 3, minWidth: 0 }}
+                  aria-hidden="true"
+                >
+                  {rows.map((m) => {
+                    const isCur = m === cur,
+                      isBest = m === best;
+                    const reached =
+                      best != null && (step === "low" ? m >= best : m <= best);
+                    return (
+                      <div
+                        key={m}
+                        className="mono flex items-center justify-between"
+                        style={{
+                          height: 22,
+                          padding: "0 10px",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          background: isCur
+                            ? "var(--you)"
+                            : reached
+                              ? "color-mix(in srgb, var(--you) 14%, transparent)"
+                              : "var(--surface-2)",
+                          color: isCur
+                            ? "var(--bg)"
+                            : reached
+                              ? "var(--fg)"
+                              : "var(--muted)",
+                          fontWeight: isCur ? 700 : 500,
+                        }}
+                      >
+                        <span>{pretty(midiInfo(m).label)}</span>
+                        <span>
+                          {isCur
+                            ? "you"
+                            : isBest
+                              ? step === "low"
+                                ? "lowest"
+                                : "highest"
+                              : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div
+                  className="flex flex-col items-center justify-center gap-2"
+                  style={{ width: 118, flexShrink: 0 }}
+                >
+                  <span
+                    style={{ position: "relative", width: 108, height: 108 }}
+                  >
+                    <svg
+                      width="108"
+                      height="108"
+                      viewBox="0 0 108 108"
+                      role="img"
+                      aria-label={
+                        cur != null
+                          ? "Holding " + pretty(midiInfo(cur).label)
+                          : "Waiting for your voice"
+                      }
+                    >
+                      <circle
+                        cx="54"
+                        cy="54"
+                        r="48"
+                        fill="none"
+                        stroke="var(--line)"
+                        strokeWidth="6"
+                      />
+                      <circle
+                        cx="54"
+                        cy="54"
+                        r="48"
+                        fill="none"
+                        stroke="var(--you)"
+                        strokeWidth="6"
+                        strokeLinecap="round"
+                        strokeDasharray={
+                          (ringC * hold).toFixed(1) + " " + ringC.toFixed(1)
+                        }
+                        transform="rotate(-90 54 54)"
+                      />
+                    </svg>
+                    <span
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <span className="label" style={{ fontSize: 10 }}>
+                        Hold
+                      </span>
+                      <span
+                        className="display font-bold"
+                        style={{
+                          fontSize: 32,
+                          lineHeight: 1,
+                          color: cur != null ? "var(--you)" : "var(--muted)",
+                        }}
+                        aria-live="polite"
+                      >
+                        {cur != null ? pretty(midiInfo(cur).label) : "—"}
+                      </span>
+                    </span>
+                  </span>
+                  <span
+                    className="text-xs muted"
+                    style={{ textAlign: "center" }}
+                  >
+                    Hold a note steady for half a second to count it
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "var(--surface-2)",
+              }}
+            >
+              <div className="label">Lowest</div>
+              <div className="display font-bold" style={{ fontSize: 20 }}>
+                {found.low != null ? pretty(midiInfo(found.low).label) : "—"}
+                {found.low != null && step === "high" ? (
+                  <>
+                    {" "}
+                    <span style={{ fontSize: 13, color: "var(--good)" }}>
+                      ✓
+                    </span>
+                  </>
+                ) : (
+                  ""
+                )}
+              </div>
+            </div>
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "var(--surface-2)",
+              }}
+            >
+              <div className="label">Highest</div>
+              <div className="display font-bold" style={{ fontSize: 20 }}>
+                {found.high != null ? pretty(midiInfo(found.high).label) : "—"}
+              </div>
+            </div>
+          </div>
+        </section>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className="btn"
+            style={{ justifyContent: "center", minHeight: 46 }}
+            onClick={step === "low" ? cancel : begin}
+          >
+            {step === "low" ? "Cancel" : "Start over"}
+          </button>
+          {step === "low" ? (
+            <button
+              className="btn btn-primary"
+              style={{ justifyContent: "center", minHeight: 46 }}
+              onClick={goHigh}
+              disabled={found.low == null}
             >
               Next: slide up
-            </button>`
-          : html`<button
-              class="btn btn-primary"
-              style=${{ justifyContent: "center", minHeight: 46 }}
-              onClick=${finish}
-              disabled=${found.high == null}
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary"
+              style={{ justifyContent: "center", minHeight: 46 }}
+              onClick={finish}
+              disabled={found.high == null}
             >
               See my range
-            </button>`}
-      </div>
-    <//>`;
+            </button>
+          )}
+        </div>
+      </React.Fragment>
+    );
   }
 
   if (!history.length)
-    return html`<${React.Fragment}>
-      <section class="tuner-card" style=${{ alignItems: "stretch", gap: 12 }}>
-        <span class="display font-bold" style=${{ fontSize: 24 }}
-          >Find your range</span
+    return (
+      <React.Fragment>
+        <section
+          className="tuner-card"
+          style={{ alignItems: "stretch", gap: 12 }}
         >
-        <p class="text-sm muted" style=${{ margin: 0 }}>
-          A 1-minute test to find your lowest and highest notes. You'll slide
-          down, then slide up, and Tono notes where your voice stays steady.
-        </p>
-        <ul
-          class="text-sm flex flex-col gap-1"
-          style=${{ margin: 0, paddingLeft: 18 }}
-        >
-          <li>Warm up a little first. Hum or sing something easy.</li>
-          <li>
-            Go slowly, and stop before it hurts. Straining doesn't count.
-          </li>
-          <li>A quiet room helps the mic hear you clearly.</li>
-        </ul>
-      </section>
-      <div style=${{ marginTop: "auto" }}>
-        <button
-          class="btn btn-primary w-full"
-          style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
-          onClick=${begin}
-        >
-          Start the test
-        </button>
-      </div>
-    <//>`;
+          <span className="display font-bold" style={{ fontSize: 24 }}>
+            Find your range
+          </span>
+          <p className="text-sm muted" style={{ margin: 0 }}>
+            {
+              "A 1-minute test to find your lowest and highest notes. You'll slide\n          down, then slide up, and Tono notes where your voice stays steady."
+            }
+          </p>
+          <ul
+            className="text-sm flex flex-col gap-1"
+            style={{ margin: 0, paddingLeft: 18 }}
+          >
+            <li>Warm up a little first. Hum or sing something easy.</li>
+            <li>
+              Go slowly, and stop before it hurts. Straining doesn't count.
+            </li>
+            <li>A quiet room helps the mic hear you clearly.</li>
+          </ul>
+        </section>
+        <div style={{ marginTop: "auto" }}>
+          <button
+            className="btn btn-primary w-full"
+            style={{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+            onClick={begin}
+          >
+            Start the test
+          </button>
+        </div>
+      </React.Fragment>
+    );
 
   const r = history[0],
     comfy = comfyOf(r);
@@ -406,85 +434,90 @@ export function RangeFinder({ feedRef, listening, onStartMic, onStopMic }) {
     if (down) parts.push((down > 0 ? "+" : "−") + Math.abs(down) + " low");
     return parts.length ? parts.join(", ") : "Same";
   };
-  return html`<${React.Fragment}>
-    <section class="tuner-card" style=${{ alignItems: "stretch", gap: 14 }}>
-      <div class="flex items-start justify-between gap-3">
-        <div class="flex flex-col min-w-0">
-          <span class="label">Your range</span>
-          <span
-            class="display font-bold"
-            style=${{ fontSize: 40, lineHeight: 1.05 }}
-            >${pretty(midiInfo(r.lo).label)} –
-            ${pretty(midiInfo(r.hi).label)}</span
-          >
-          <span class="text-sm muted">${spanWords(r.lo, r.hi)}</span>
-        </div>
-        <span
-          class="tag"
-          style=${{
-            background: "color-mix(in srgb, var(--accent) 16%, transparent)",
-            color: "var(--accent)",
-            fontSize: 13,
-            padding: "5px 10px",
-            whiteSpace: "nowrap",
-          }}
-          >${voiceType(r.lo, r.hi)}</span
-        >
-      </div>
-      <${RangeKeys} lo=${r.lo} hi=${r.hi} comfy=${comfy} />
-      <div class="flex flex-wrap gap-3 text-xs muted">
-        <span class="flex items-center gap-2"
-          >${keyDot("var(--accent)")}Comfortable
-          ${pretty(midiInfo(comfy[0]).label)}–${pretty(
-            midiInfo(comfy[1]).label,
-          )}</span
-        >
-        <span class="flex items-center gap-2"
-          >${keyDot(
-            "color-mix(in srgb, var(--accent) 42%, #f7f7f4)",
-          )}Reachable</span
-        >
-      </div>
-      <p class="text-xs muted" style=${{ margin: 0 }}>
-        Voice type is a rough guide from your range. Tone and where your voice
-        feels easy matter too, and your range can grow as you practise.
-      </p>
-    </section>
-    ${history.length > 1 &&
-    html`<section class="panel p-4 flex flex-col gap-2">
-      <span class="label">Past results</span>
-      ${history.slice(0, 4).map(
-        (h, i) =>
-          html`<div
-            key=${h.at}
-            class="flex items-center justify-between gap-2 text-sm"
-            style=${{ color: i ? "var(--muted)" : "var(--fg)" }}
-          >
-            <span style=${{ width: 64 }}>${day(h.at)}</span
-            ><span class="mono" style=${{ fontSize: 13 }}
-              >${pretty(midiInfo(h.lo).label)} –
-              ${pretty(midiInfo(h.hi).label)}</span
-            ><span
-              class="text-xs"
-              style=${{
-                width: 92,
-                textAlign: "right",
-                color:
-                  i === 0 && /\+/.test(change(0)) ? "var(--good)" : undefined,
-              }}
-              >${change(i)}</span
-            >
-          </div>`,
-      )}
-    </section>`}
-    <div style=${{ marginTop: "auto" }}>
-      <button
-        class="btn btn-primary w-full"
-        style=${{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
-        onClick=${begin}
+  return (
+    <React.Fragment>
+      <section
+        className="tuner-card"
+        style={{ alignItems: "stretch", gap: 14 }}
       >
-        Test again
-      </button>
-    </div>
-  <//>`;
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col min-w-0">
+            <span className="label">Your range</span>
+            <span
+              className="display font-bold"
+              style={{ fontSize: 40, lineHeight: 1.05 }}
+            >
+              {pretty(midiInfo(r.lo).label)} –{pretty(midiInfo(r.hi).label)}
+            </span>
+            <span className="text-sm muted">{spanWords(r.lo, r.hi)}</span>
+          </div>
+          <span
+            className="tag"
+            style={{
+              background: "color-mix(in srgb, var(--accent) 16%, transparent)",
+              color: "var(--accent)",
+              fontSize: 13,
+              padding: "5px 10px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {voiceType(r.lo, r.hi)}
+          </span>
+        </div>
+        <RangeKeys lo={r.lo} hi={r.hi} comfy={comfy} />
+        <div className="flex flex-wrap gap-3 text-xs muted">
+          <span className="flex items-center gap-2">
+            {keyDot("var(--accent)")}Comfortable
+            {pretty(midiInfo(comfy[0]).label)}–
+            {pretty(midiInfo(comfy[1]).label)}
+          </span>
+          <span className="flex items-center gap-2">
+            {keyDot("color-mix(in srgb, var(--accent) 42%, #f7f7f4)")}Reachable
+          </span>
+        </div>
+        <p className="text-xs muted" style={{ margin: 0 }}>
+          {
+            "Voice type is a rough guide from your range. Tone and where your voice\n        feels easy matter too, and your range can grow as you practise."
+          }
+        </p>
+      </section>
+      {history.length > 1 && (
+        <section className="panel p-4 flex flex-col gap-2">
+          <span className="label">Past results</span>
+          {history.slice(0, 4).map((h, i) => (
+            <div
+              key={h.at}
+              className="flex items-center justify-between gap-2 text-sm"
+              style={{ color: i ? "var(--muted)" : "var(--fg)" }}
+            >
+              <span style={{ width: 64 }}>{day(h.at)}</span>
+              <span className="mono" style={{ fontSize: 13 }}>
+                {pretty(midiInfo(h.lo).label)} –{pretty(midiInfo(h.hi).label)}
+              </span>
+              <span
+                className="text-xs"
+                style={{
+                  width: 92,
+                  textAlign: "right",
+                  color:
+                    i === 0 && /\+/.test(change(0)) ? "var(--good)" : undefined,
+                }}
+              >
+                {change(i)}
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+      <div style={{ marginTop: "auto" }}>
+        <button
+          className="btn btn-primary w-full"
+          style={{ justifyContent: "center", minHeight: 48, fontSize: 16 }}
+          onClick={begin}
+        >
+          Test again
+        </button>
+      </div>
+    </React.Fragment>
+  );
 }

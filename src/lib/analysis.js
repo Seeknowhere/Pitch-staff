@@ -57,12 +57,7 @@ export async function trackPitch(audio, onProgress, isCancelled) {
     if (isCancelled()) return null;
     const t = (f * hop) / sr;
     // songs are a little less strict than the live mic: breathy, echoey singing still counts
-    const r = detectPitch(
-      data.subarray(f * hop, f * hop + N),
-      sr,
-      0.01,
-      0.55,
-    );
+    const r = detectPitch(data.subarray(f * hop, f * hop + N), sr, 0.01, 0.55);
     rawL[f] = 20 * Math.log10(r.rms + 1e-5);
     // weaker pitch (clarity 0.55–0.75) is kept aside: lyric lines that are short of notes can look here later
     if (r.freq > 0 && r.clarity < 0.75) {
@@ -192,8 +187,7 @@ export function guideBySyllables(notes, data, spans, tl) {
     grid = data.grid,
     loud = data.loud,
     loose = data.loose || new Float32Array(0);
-  const kOf = (t) =>
-    Math.max(0, Math.min(grid.length - 1, Math.round(t / G)));
+  const kOf = (t) => Math.max(0, Math.min(grid.length - 1, Math.round(t / G)));
   const med = (a) => {
     if (!a.length) return NaN;
     const s = [...a].sort((x, y) => x - y);
@@ -283,8 +277,7 @@ export function guideBySyllables(notes, data, spans, tl) {
       const adds = runs
         .filter(
           (r) =>
-            r.k1 - r.k0 + 1 >= 5 &&
-            loudOf(r.k0 * G, r.k1 * G) > lineLoud - 10,
+            r.k1 - r.k0 + 1 >= 5 && loudOf(r.k0 * G, r.k1 * G) > lineLoud - 10,
         )
         .sort((x, y) => y.k1 - y.k0 - (x.k1 - x.k0))
         .slice(0, want - ln.length);
@@ -323,9 +316,7 @@ export function guideBySyllables(notes, data, spans, tl) {
           for (let j = k; j < k + 5; j++)
             if (grid[j] === grid[j]) pb.push(grid[j]);
           const step =
-            pa.length >= 3 && pb.length >= 3
-              ? Math.abs(med(pa) - med(pb))
-              : 0;
+            pa.length >= 3 && pb.length >= 3 ? Math.abs(med(pa) - med(pb)) : 0;
           const sc = Math.max(dip / 3, step / 0.8);
           if (sc >= 1 && (!best || sc > best.sc))
             best = {
@@ -381,8 +372,7 @@ function splitOnConsonants(notes, raw, rawL, hop, sr) {
       else {
         let a = -200,
           b = -200;
-        for (let q = Math.max(f0, f - W); q < f; q++)
-          a = Math.max(a, rawL[q]);
+        for (let q = Math.max(f0, f - W); q < f; q++) a = Math.max(a, rawL[q]);
         for (let q = f + 1; q <= Math.min(f1 - 1, f + W); q++)
           b = Math.max(b, rawL[q]);
         if (
@@ -392,11 +382,7 @@ function splitOnConsonants(notes, raw, rawL, hop, sr) {
         )
           cut = f;
       }
-      if (
-        cut >= 0 &&
-        tm(cut) - tm(last) >= 0.12 &&
-        tm(f1) - tm(cut) >= 0.12
-      ) {
+      if (cut >= 0 && tm(cut) - tm(last) >= 0.12 && tm(f1) - tm(cut) >= 0.12) {
         cuts.push(cut);
         last = cut;
         f = cut + 3;
@@ -417,7 +403,16 @@ function splitOnConsonants(notes, raw, rawL, hop, sr) {
 }
 
 // simple piano-like guide tones for the original's notes, shifted into the singer's key
-export function scheduleGuide(ctx, dest, notes, from, to, when, semis, speed = 1) {
+export function scheduleGuide(
+  ctx,
+  dest,
+  notes,
+  from,
+  to,
+  when,
+  semis,
+  speed = 1,
+) {
   const out = [];
   notes.forEach((n) => {
     const s = Math.max(n.pos, from),
@@ -712,8 +707,7 @@ export function mapTime(map, tO) {
 export function invTime(map, tT) {
   const n = map.length;
   if (tT <= map[0] * GRID) return tT - map[0] * GRID;
-  if (tT >= map[n - 1] * GRID)
-    return (n - 1) * GRID + (tT - map[n - 1] * GRID);
+  if (tT >= map[n - 1] * GRID) return (n - 1) * GRID + (tT - map[n - 1] * GRID);
   let lo = 0,
     hi = n - 1;
   while (lo < hi) {
@@ -836,8 +830,7 @@ export function compare(o, t, map, octaveFree, warped, off, ks = 0) {
     drift = null;
   if (warped) {
     const offs = [];
-    for (let k = lo; k <= hi; k += 2)
-      if (a[k] === a[k]) offs.push(map[k] - k);
+    for (let k = lo; k <= hi; k += 2) if (a[k] === a[k]) offs.push(map[k] - k);
     const base = offs.length ? median(offs) : 0;
     dev = new Float32Array(a.length);
     const absd = [];

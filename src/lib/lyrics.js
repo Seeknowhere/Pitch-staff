@@ -15,9 +15,7 @@ export function parseLrc(text) {
     let rest = rawLine,
       mm;
     while ((mm = rest.match(re))) {
-      tags.push(
-        parseInt(mm[1], 10) * 60 + parseFloat(mm[2].replace(":", ".")),
-      );
+      tags.push(parseInt(mm[1], 10) * 60 + parseFloat(mm[2].replace(":", ".")));
       rest = rest.slice(mm[0].length);
     }
     if (!tags.length) return;
@@ -264,8 +262,7 @@ export function syllableCount(word, tl) {
   let c = m ? m.length : 1;
   if (c > 1 && /[^aeiou]e$/.test(w) && !/[^aeiou]le$/.test(w)) c--; // silent e
   if (c > 1 && /[^aeioudt]ed$/.test(w)) c--;
-  if (c > 1 && /[^aeiou]es$/.test(w) && !/(s|x|z|ch|sh|ce|ge)es$/.test(w))
-    c--; // times, eyes
+  if (c > 1 && /[^aeiou]es$/.test(w) && !/(s|x|z|ch|sh|ce|ge)es$/.test(w)) c--; // times, eyes
   if (/[aeiouy]ing$/.test(w) && !/[aeiou]ying$/.test(w)) c++; // ly-ing, be-ing
   return Math.max(1, c);
 }

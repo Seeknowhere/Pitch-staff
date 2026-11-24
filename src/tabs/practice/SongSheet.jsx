@@ -1,6 +1,5 @@
 // The song sheet: every lyric line with its notes.
 import React, { useMemo, useState, useRef, useEffect } from "react";
-import { html } from "../../html.js";
 import { looksTagalog, wordsToNotes } from "../../lib/lyrics.js";
 import { fmt, pretty, midiInfo } from "../../lib/music.js";
 
@@ -131,17 +130,18 @@ export function SongSheet({
   const youChip = (i) => {
     const r = you && you[i];
     if (!r)
-      return html`<span
-        class="mono"
-        style=${{
-          fontSize: 12,
-          padding: "3px 6px",
-          color: "var(--muted)",
-          minWidth: 18,
-          textAlign: "center",
-        }}
-      >
-      </span>`;
+      return (
+        <span
+          className="mono"
+          style={{
+            fontSize: 12,
+            padding: "3px 6px",
+            color: "var(--muted)",
+            minWidth: 18,
+            textAlign: "center",
+          }}
+        />
+      );
     const st =
       r.c == null
         ? "miss"
@@ -171,31 +171,34 @@ export function SongSheet({
           ". The song has " +
           pretty(midiInfo(r.m).label) +
           ".";
-    return html`<span
-      class="mono"
-      title=${tip}
-      aria-label=${tip}
-      style=${{
-        fontSize: 12,
-        fontWeight: 700,
-        padding: "3px 6px",
-        borderRadius: 6,
-        minWidth: 18,
-        textAlign: "center",
-        whiteSpace: "nowrap",
-        color: col,
-        background:
-          st === "miss"
-            ? "var(--surface-2)"
-            : "color-mix(in srgb, " + col + " 15%, transparent)",
-      }}
-      >${label}</span
-    >`;
+    return (
+      <span
+        className="mono"
+        title={tip}
+        aria-label={tip}
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          padding: "3px 6px",
+          borderRadius: 6,
+          minWidth: 18,
+          textAlign: "center",
+          whiteSpace: "nowrap",
+          color: col,
+          background:
+            st === "miss"
+              ? "var(--surface-2)"
+              : "color-mix(in srgb, " + col + " 15%, transparent)",
+        }}
+      >
+        {label}
+      </span>
+    );
   };
-  const chip = (i, label) =>
-    html`<span
-      class="mono"
-      style=${{
+  const chip = (i, label) => (
+    <span
+      className="mono"
+      style={{
         fontSize: 12,
         fontWeight: 600,
         padding: "3px 6px",
@@ -207,177 +210,184 @@ export function SongSheet({
         color: i === curIdx ? "var(--accent-ink)" : "var(--accent)",
         whiteSpace: "nowrap",
       }}
-      >${label}</span
-    >`;
+    >
+      {label}
+    </span>
+  );
   if (!notes.length)
-    return html`<p class="muted text-sm">
-      No melody found in this vocal yet.
-    </p>`;
-  return html`<div class="flex flex-col gap-3">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <div class="seg" role="group" aria-label="Note names">
-        <button
-          aria-pressed=${names !== "solfege" ? "true" : "false"}
-          onClick=${() => onNames("letters")}
-        >
-          Letters
-        </button>
-        <button
-          aria-pressed=${names === "solfege" ? "true" : "false"}
-          onClick=${() => onNames("solfege")}
-        >
-          Do re mi
-        </button>
-      </div>
-    </div>
-    ${!spans.length &&
-    html`<p class="text-xs muted" style=${{ margin: 0 }}>
-      No lyrics for this song yet, so lines follow the melody's phrases. Add
-      an .lrc file under Change to see the words.
-    </p>`}
-    ${lines.map((l, k) => {
-      const isCur = k === cur,
-        isOpen = k === open,
-        tags = lineTags(l, songLo, songHi);
-      const info = lineInfo ? lineInfo(l) : {};
-      const hasYou = !!(you && l.idx.some((i) => you[i]));
-      const scoreTag = (lbl, v) =>
-        v == null
-          ? null
-          : html`<span
-              class=${"tag tag-" +
-              (v >= 80 ? "good" : v >= 50 ? "warn" : "bad")}
-              >${lbl} ${v}%</span
-            >`;
-      const looping = loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05;
-      let lo = 999,
-        hi = 0,
-        jump = 0;
-      l.notes.forEach((n, j) => {
-        lo = Math.min(lo, n.midi);
-        hi = Math.max(hi, n.midi);
-        if (j) jump = Math.max(jump, Math.abs(n.midi - l.notes[j - 1].midi));
-      });
-      return html`<section
-        key=${k}
-        ref=${(el) => {
-          refs.current[k] = el;
-        }}
-        class="panel"
-        style=${{
-          padding: "12px 14px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          borderColor: isCur
-            ? "color-mix(in srgb, var(--accent) 55%, transparent)"
-            : undefined,
-          borderRadius: 16,
-        }}
-      >
-        <div class="flex items-center gap-2">
+    return <p className="muted text-sm">No melody found in this vocal yet.</p>;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="seg" role="group" aria-label="Note names">
           <button
-            class="flex items-center gap-2 min-w-0"
-            style=${{
-              flex: 1,
-              background: "none",
-              border: 0,
-              padding: 0,
-              color: "inherit",
-              font: "inherit",
-              cursor: "pointer",
-              textAlign: "left",
-            }}
-            onClick=${() => setOpen(isOpen ? -1 : k)}
-            aria-expanded=${isOpen ? "true" : "false"}
+            aria-pressed={names !== "solfege" ? "true" : "false"}
+            onClick={() => onNames("letters")}
           >
-            ${info.learned &&
-            html`<span
-              title="Learned: 85% or more twice in a row"
-              aria-label="Learned"
-              style=${{
-                width: 20,
-                height: 20,
-                borderRadius: "50%",
-                flexShrink: 0,
-                display: "grid",
-                placeItems: "center",
-                background: "var(--good)",
-                color: "var(--bg)",
-                fontSize: 11,
-                fontWeight: 800,
-              }}
-              >✓</span
-            >`}
-            <span class="mono text-xs muted"
-              >${String(k + 1).padStart(2, "0")} ·
-              ${fmt(Math.max(0, l.start))}</span
-            >
-            <span class="flex flex-wrap gap-1"
-              >${tags.map(
-                (t) =>
-                  html`<span
-                    key=${t}
-                    class="tag"
-                    style=${{
-                      color: "var(--muted)",
-                      background: "var(--surface-2)",
-                    }}
-                    >${t}</span
-                  >`,
-              )}${scoreTag("Last", info.last)}${scoreTag(
-                "Best",
-                info.best,
-              )}</span
-            >
+            Letters
+          </button>
+          <button
+            aria-pressed={names === "solfege" ? "true" : "false"}
+            onClick={() => onNames("solfege")}
+          >
+            Do re mi
           </button>
         </div>
-        ${l.wordNotes
-          ? html`<div
-              class="flex flex-wrap"
-              style=${{ gap: "10px 8px" }}
-              onClick=${() => setOpen(isOpen ? -1 : k)}
+      </div>
+      {!spans.length && (
+        <p className="text-xs muted" style={{ margin: 0 }}>
+          {
+            "No lyrics for this song yet, so lines follow the melody's phrases. Add\n      an .lrc file under Change to see the words."
+          }
+        </p>
+      )}
+      {lines.map((l, k) => {
+        const isCur = k === cur,
+          isOpen = k === open,
+          tags = lineTags(l, songLo, songHi);
+        const info = lineInfo ? lineInfo(l) : {};
+        const hasYou = !!(you && l.idx.some((i) => you[i]));
+        const scoreTag = (lbl, v) =>
+          v == null ? null : (
+            <span
+              className={
+                "tag tag-" + (v >= 80 ? "good" : v >= 50 ? "warn" : "bad")
+              }
             >
-              ${l.wordNotes.map(
-                (w, j) =>
-                  html`<span
-                    key=${j}
-                    class="flex flex-col items-center"
-                    style=${{ gap: 3 }}
+              {lbl} {v}%
+            </span>
+          );
+        const looping = loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05;
+        let lo = 999,
+          hi = 0,
+          jump = 0;
+        l.notes.forEach((n, j) => {
+          lo = Math.min(lo, n.midi);
+          hi = Math.max(hi, n.midi);
+          if (j) jump = Math.max(jump, Math.abs(n.midi - l.notes[j - 1].midi));
+        });
+        return (
+          <section
+            key={k}
+            ref={(el) => {
+              refs.current[k] = el;
+            }}
+            className="panel"
+            style={{
+              padding: "12px 14px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              borderColor: isCur
+                ? "color-mix(in srgb, var(--accent) 55%, transparent)"
+                : undefined,
+              borderRadius: 16,
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <button
+                className="flex items-center gap-2 min-w-0"
+                style={{
+                  flex: 1,
+                  background: "none",
+                  border: 0,
+                  padding: 0,
+                  color: "inherit",
+                  font: "inherit",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+                onClick={() => setOpen(isOpen ? -1 : k)}
+                aria-expanded={isOpen ? "true" : "false"}
+              >
+                {info.learned && (
+                  <span
+                    title="Learned: 85% or more twice in a row"
+                    aria-label="Learned"
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      display: "grid",
+                      placeItems: "center",
+                      background: "var(--good)",
+                      color: "var(--bg)",
+                      fontSize: 11,
+                      fontWeight: 800,
+                    }}
                   >
-                    <span class="flex gap-1" style=${{ minHeight: 22 }}
-                      >${w.idx.length
-                        ? w.idx
-                            .slice(0, 3)
-                            .map((i) => chip(i, short(notes[i].midi)))
-                        : html`<span class="mono text-xs muted">·</span>`}${w
-                        .idx.length > 3
-                        ? html`<span class="text-xs muted">…</span>`
-                        : ""}</span
-                    >
-                    ${hasYou &&
-                    html`<span class="flex gap-1" style=${{ minHeight: 22 }}
-                      >${w.idx
-                        .slice(0, 3)
-                        .map(
-                          (i) => html`<span key=${i}>${youChip(i)}</span>`,
-                        )}</span
-                    >`}
-                    <span style=${{ fontSize: 15, fontWeight: 600 }}
-                      >${w.w}</span
-                    >
-                  </span>`,
-              )}
-            </div>`
-          : html`<div
-              class="flex flex-col gap-2"
-              onClick=${() => setOpen(isOpen ? -1 : k)}
-            >
-              ${hasYou
-                ? html`<div class="flex gap-2 items-start">
+                    ✓
+                  </span>
+                )}
+                <span className="mono text-xs muted">
+                  {String(k + 1).padStart(2, "0")} ·{fmt(Math.max(0, l.start))}
+                </span>
+                <span className="flex flex-wrap gap-1">
+                  {tags.map((t) => (
                     <span
-                      class="flex flex-col"
-                      style=${{
+                      key={t}
+                      className="tag"
+                      style={{
+                        color: "var(--muted)",
+                        background: "var(--surface-2)",
+                      }}
+                    >
+                      {t}
+                    </span>
+                  ))}
+                  {scoreTag("Last", info.last)}
+                  {scoreTag("Best", info.best)}
+                </span>
+              </button>
+            </div>
+            {l.wordNotes ? (
+              <div
+                className="flex flex-wrap"
+                style={{ gap: "10px 8px" }}
+                onClick={() => setOpen(isOpen ? -1 : k)}
+              >
+                {l.wordNotes.map((w, j) => (
+                  <span
+                    key={j}
+                    className="flex flex-col items-center"
+                    style={{ gap: 3 }}
+                  >
+                    <span className="flex gap-1" style={{ minHeight: 22 }}>
+                      {w.idx.length ? (
+                        w.idx
+                          .slice(0, 3)
+                          .map((i) => chip(i, short(notes[i].midi)))
+                      ) : (
+                        <span className="mono text-xs muted">·</span>
+                      )}
+                      {w.idx.length > 3 ? (
+                        <span className="text-xs muted">…</span>
+                      ) : (
+                        ""
+                      )}
+                    </span>
+                    {hasYou && (
+                      <span className="flex gap-1" style={{ minHeight: 22 }}>
+                        {w.idx.slice(0, 3).map((i) => (
+                          <span key={i}>{youChip(i)}</span>
+                        ))}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 15, fontWeight: 600 }}>{w.w}</span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div
+                className="flex flex-col gap-2"
+                onClick={() => setOpen(isOpen ? -1 : k)}
+              >
+                {hasYou ? (
+                  <div className="flex gap-2 items-start">
+                    <span
+                      className="flex flex-col"
+                      style={{
                         gap: 4,
                         fontSize: 10,
                         fontWeight: 600,
@@ -386,136 +396,139 @@ export function SongSheet({
                         color: "var(--muted)",
                         paddingTop: 3,
                       }}
-                      ><span style=${{ height: 20 }}>Song</span
-                      ><span style=${{ height: 20, color: "var(--you)" }}
-                        >You</span
-                      ></span
                     >
-                    <div class="flex flex-wrap" style=${{ gap: "6px 4px" }}>
-                      ${l.idx.map(
-                        (i) =>
-                          html`<span
-                            key=${i}
-                            class="flex flex-col items-center"
-                            style=${{ gap: 4 }}
-                            >${chip(i, short(notes[i].midi))}${youChip(
-                              i,
-                            )}</span
-                          >`,
-                      )}
+                      <span style={{ height: 20 }}>Song</span>
+                      <span style={{ height: 20, color: "var(--you)" }}>
+                        You
+                      </span>
+                    </span>
+                    <div className="flex flex-wrap" style={{ gap: "6px 4px" }}>
+                      {l.idx.map((i) => (
+                        <span
+                          key={i}
+                          className="flex flex-col items-center"
+                          style={{ gap: 4 }}
+                        >
+                          {chip(i, short(notes[i].midi))}
+                          {youChip(i)}
+                        </span>
+                      ))}
                     </div>
-                  </div>`
-                : html`<div class="flex flex-wrap gap-1">
-                    ${l.idx.map(
-                      (i) =>
-                        html`<span key=${i}
-                          >${chip(i, short(notes[i].midi))}</span
-                        >`,
-                    )}
-                  </div>`}
-              ${l.text &&
-              html`<span
-                style=${{ fontSize: 16, fontWeight: 600, lineHeight: 1.35 }}
-                >${l.text}</span
-              >`}
-            </div>`}
-        <div class="flex flex-wrap gap-2">
-          <button
-            class="btn"
-            style=${{ padding: "5px 10px", fontSize: 12 }}
-            onClick=${() => onPlayLine(l)}
-            aria-label=${"Play line " + (k + 1)}
-          >
-            ▶ Play
-          </button>
-          ${info.me &&
-          html`<button
-            class="btn"
-            style=${{
-              padding: "5px 10px",
-              fontSize: 12,
-              color: "var(--you)",
-            }}
-            onClick=${() => onMe && onMe(l)}
-            aria-label=${"Hear your last try at line " + (k + 1)}
-          >
-            ▶ Me
-          </button>`}
-          <button
-            class="btn"
-            style=${{
-              padding: "5px 10px",
-              fontSize: 12,
-              color: looping ? "var(--accent)" : undefined,
-              borderColor: looping ? "var(--accent)" : undefined,
-            }}
-            onClick=${() => onLoop(l)}
-            aria-label=${"Loop line " + (k + 1)}
-          >
-            ↻ ${looping ? "Looping" : "Loop"}
-          </button>
-          ${info.analyze &&
-          html`<button
-            class="btn"
-            style=${{
-              padding: "5px 10px",
-              fontSize: 12,
-              color: "var(--accent)",
-              borderColor:
-                "color-mix(in srgb, var(--accent) 45%, transparent)",
-            }}
-            onClick=${() => onAnalyze && onAnalyze(l)}
-            aria-label=${"Analyze your try at line " + (k + 1)}
-          >
-            Analyze
-          </button>`}
-        </div>
-        ${isOpen &&
-        l.notes.length > 0 &&
-        html`<${React.Fragment}>
-          <svg
-            viewBox="0 0 300 50"
-            preserveAspectRatio="none"
-            style=${{ width: "100%", height: 50, display: "block" }}
-            aria-hidden="true"
-          >
-            ${(() => {
-              const a = l.notes[0].pos,
-                b = Math.max(a + 0.5, l.notes[l.notes.length - 1].end),
-                L = lo - 1,
-                H = hi + 1;
-              return l.notes.map(
-                (n, j) =>
-                  html`<rect
-                    key=${j}
-                    x=${((300 * (n.pos - a)) / (b - a)).toFixed(1)}
-                    y=${(44 - ((n.midi - L) / (H - L)) * 38).toFixed(1)}
-                    width=${Math.max(
-                      4,
-                      (300 * (n.end - n.pos)) / (b - a) - 2,
-                    ).toFixed(1)}
-                    height="6"
-                    rx="3"
-                    fill=${l.idx[j] === curIdx
-                      ? "var(--fg)"
-                      : "var(--accent)"}
-                  ></rect>`,
-              );
-            })()}
-          </svg>
-          <div
-            class="flex flex-wrap items-center justify-between gap-2 text-xs muted"
-          >
-            <span
-              >Range
-              ${pretty(midiInfo(lo + tr).label)}–${pretty(
-                midiInfo(hi + tr).label,
-              )}</span
-            >
-            <span>Biggest jump ${jump} key${jump === 1 ? "" : "s"}</span>
-          </div>
-        <//>`}
-      </section>`;
-    })}
-  </div>`;
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {l.idx.map((i) => (
+                      <span key={i}>{chip(i, short(notes[i].midi))}</span>
+                    ))}
+                  </div>
+                )}
+                {l.text && (
+                  <span
+                    style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.35 }}
+                  >
+                    {l.text}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="btn"
+                style={{ padding: "5px 10px", fontSize: 12 }}
+                onClick={() => onPlayLine(l)}
+                aria-label={"Play line " + (k + 1)}
+              >
+                ▶ Play
+              </button>
+              {info.me && (
+                <button
+                  className="btn"
+                  style={{
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    color: "var(--you)",
+                  }}
+                  onClick={() => onMe && onMe(l)}
+                  aria-label={"Hear your last try at line " + (k + 1)}
+                >
+                  ▶ Me
+                </button>
+              )}
+              <button
+                className="btn"
+                style={{
+                  padding: "5px 10px",
+                  fontSize: 12,
+                  color: looping ? "var(--accent)" : undefined,
+                  borderColor: looping ? "var(--accent)" : undefined,
+                }}
+                onClick={() => onLoop(l)}
+                aria-label={"Loop line " + (k + 1)}
+              >
+                ↻ {looping ? "Looping" : "Loop"}
+              </button>
+              {info.analyze && (
+                <button
+                  className="btn"
+                  style={{
+                    padding: "5px 10px",
+                    fontSize: 12,
+                    color: "var(--accent)",
+                    borderColor:
+                      "color-mix(in srgb, var(--accent) 45%, transparent)",
+                  }}
+                  onClick={() => onAnalyze && onAnalyze(l)}
+                  aria-label={"Analyze your try at line " + (k + 1)}
+                >
+                  Analyze
+                </button>
+              )}
+            </div>
+            {isOpen && l.notes.length > 0 && (
+              <React.Fragment>
+                <svg
+                  viewBox="0 0 300 50"
+                  preserveAspectRatio="none"
+                  style={{ width: "100%", height: 50, display: "block" }}
+                  aria-hidden="true"
+                >
+                  {(() => {
+                    const a = l.notes[0].pos,
+                      b = Math.max(a + 0.5, l.notes[l.notes.length - 1].end),
+                      L = lo - 1,
+                      H = hi + 1;
+                    return l.notes.map((n, j) => (
+                      <rect
+                        key={j}
+                        x={((300 * (n.pos - a)) / (b - a)).toFixed(1)}
+                        y={(44 - ((n.midi - L) / (H - L)) * 38).toFixed(1)}
+                        width={Math.max(
+                          4,
+                          (300 * (n.end - n.pos)) / (b - a) - 2,
+                        ).toFixed(1)}
+                        height="6"
+                        rx="3"
+                        fill={
+                          l.idx[j] === curIdx ? "var(--fg)" : "var(--accent)"
+                        }
+                      />
+                    ));
+                  })()}
+                </svg>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs muted">
+                  <span>
+                    Range{pretty(midiInfo(lo + tr).label)}–
+                    {pretty(midiInfo(hi + tr).label)}
+                  </span>
+                  <span>
+                    Biggest jump {jump} key{jump === 1 ? "" : "s"}
+                  </span>
+                </div>
+              </React.Fragment>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
 }

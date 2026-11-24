@@ -1,7 +1,6 @@
 // Song fit: does this song suit your range, and which key to sing it in.
 import { useMemo } from "react";
 import { RangeKeys } from "../../components/RangeKeys.jsx";
-import { html } from "../../html.js";
 import { fmt, pretty, midiInfo } from "../../lib/music.js";
 import { loadRanges, comfyOf } from "../../lib/range.js";
 import { keyDot } from "./voice.jsx";
@@ -20,22 +19,25 @@ export function SongFit({
   const mine = useMemo(() => loadRanges()[0] || null, [active]);
   if (!notes.length) return null;
   if (!mine)
-    return html`<section
-      class="panel p-4 flex items-center gap-3"
-      style=${{ borderStyle: "dashed" }}
-    >
-      <span class="text-sm muted" style=${{ flex: 1 }}
-        >No range yet? Take the 1-minute test in Tuner to see how songs fit
-        you.</span
+    return (
+      <section
+        className="panel p-4 flex items-center gap-3"
+        style={{ borderStyle: "dashed" }}
       >
-      <button
-        class="link-btn text-sm"
-        style=${{ whiteSpace: "nowrap" }}
-        onClick=${onFind}
-      >
-        Find my range
-      </button>
-    </section>`;
+        <span className="text-sm muted" style={{ flex: 1 }}>
+          {
+            "No range yet? Take the 1-minute test in Tuner to see how songs fit\n        you."
+          }
+        </span>
+        <button
+          className="link-btn text-sm"
+          style={{ whiteSpace: "nowrap" }}
+          onClick={onFind}
+        >
+          Find my range
+        </button>
+      </section>
+    );
   let slo = 999,
     shi = 0;
   notes.forEach((n) => {
@@ -72,114 +74,127 @@ export function SongFit({
     })
     .filter(Boolean);
   const outNames = [...highs, ...lows];
-  return html`<section class="panel p-4 flex flex-col gap-3">
-    <div class="flex items-center justify-between gap-2">
-      <h3 class="display text-lg font-bold">Song vs your range</h3>
-      <span class=${"tag tag-" + status[1]}>${status[0]}</span>
-    </div>
-    <${RangeKeys}
-      lo=${mine.lo}
-      hi=${mine.hi}
-      comfy=${comfyOf(mine)}
-      song=${[slo, shi]}
-    />
-    <div class="flex flex-wrap gap-3 text-xs muted">
-      <span class="flex items-center gap-2"
-        ><span
-          style=${{
-            width: 14,
-            height: 5,
-            borderRadius: 3,
-            background: "var(--you)",
-          }}
-        ></span
-        >Song
-        ${pretty(midiInfo(slo).label)}–${pretty(midiInfo(shi).label)}</span
-      >
-      <span class="flex items-center gap-2"
-        >${keyDot("var(--accent)")}You
-        ${pretty(midiInfo(mine.lo).label)}–${pretty(
-          midiInfo(mine.hi).label,
-        )}</span
-      >
-      ${out > 0 &&
-      html`<span class="flex items-center gap-2"
-        ><span
-          style=${{
-            width: 14,
-            height: 5,
-            borderRadius: 3,
-            background: "var(--bad)",
-          }}
-        ></span
-        >Outside your range</span
-      >`}
-    </div>
-    ${!out
-      ? html`<p class="text-sm" style=${{ margin: 0 }}>
+  return (
+    <section className="panel p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="display text-lg font-bold">Song vs your range</h3>
+        <span className={"tag tag-" + status[1]}>{status[0]}</span>
+      </div>
+      <RangeKeys
+        lo={mine.lo}
+        hi={mine.hi}
+        comfy={comfyOf(mine)}
+        song={[slo, shi]}
+      />
+      <div className="flex flex-wrap gap-3 text-xs muted">
+        <span className="flex items-center gap-2">
+          <span
+            style={{
+              width: 14,
+              height: 5,
+              borderRadius: 3,
+              background: "var(--you)",
+            }}
+          />
+          Song{pretty(midiInfo(slo).label)}–{pretty(midiInfo(shi).label)}
+        </span>
+        <span className="flex items-center gap-2">
+          {keyDot("var(--accent)")}You{pretty(midiInfo(mine.lo).label)}–
+          {pretty(midiInfo(mine.hi).label)}
+        </span>
+        {out > 0 && (
+          <span className="flex items-center gap-2">
+            <span
+              style={{
+                width: 14,
+                height: 5,
+                borderRadius: 3,
+                background: "var(--bad)",
+              }}
+            />
+            Outside your range
+          </span>
+        )}
+      </div>
+      {!out ? (
+        <p className="text-sm" style={{ margin: 0 }}>
           Every note is inside your range. Nice pick!
-        </p>`
-      : html`<p class="text-sm" style=${{ margin: 0 }}>
-            <b>${out} note${out > 1 ? "s" : ""}</b> (${outNames
-              .map((m) => pretty(midiInfo(m).label))
-              .join(", ")})
-            ${(highs.size && lows.size
+        </p>
+      ) : (
+        <>
+          <p className="text-sm" style={{ margin: 0 }}>
+            <b>
+              {out} note{out > 1 ? "s" : ""}
+            </b>{" "}
+            ({outNames.map((m) => pretty(midiInfo(m).label)).join(", ")})
+            {(highs.size && lows.size
               ? "go outside"
               : highs.size
                 ? "go above"
                 : "go below"
             ).replace(/^go/, out > 1 ? "go" : "goes")}
             your range, in
-            <b>${hard.length} phrase${hard.length > 1 ? "s" : ""}</b>:
+            <b>
+              {hard.length} phrase{hard.length > 1 ? "s" : ""}
+            </b>
+            :
           </p>
-          <div class="flex flex-col gap-2">
-            ${hard.slice(0, 5).map(({ ph, m }) => {
+          <div className="flex flex-col gap-2">
+            {hard.slice(0, 5).map(({ ph, m }) => {
               const w = linesIn(ph.start, ph.end);
-              return html`<div
-                key=${ph.i}
-                class="flex items-center gap-3"
-                style=${{
-                  padding: "8px 12px",
-                  borderRadius: 12,
-                  background: "var(--surface-2)",
-                }}
-              >
-                <span class="mono text-xs muted">${fmt(ph.start)}</span>
-                <span
-                  class="text-sm"
-                  style=${{
-                    flex: 1,
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+              return (
+                <div
+                  key={ph.i}
+                  className="flex items-center gap-3"
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 12,
+                    background: "var(--surface-2)",
                   }}
-                  >${w.length ? w.join(" / ") : "Phrase " + (ph.i + 1)}</span
                 >
-                <span class="mono text-xs" style=${{ color: "var(--bad)" }}
-                  >${pretty(midiInfo(m).label)}</span
-                >
-                <button
-                  class="link-btn text-sm"
-                  onClick=${() => onPractice(ph)}
-                >
-                  Practise
-                </button>
-              </div>`;
+                  <span className="mono text-xs muted">{fmt(ph.start)}</span>
+                  <span
+                    className="text-sm"
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {w.length ? w.join(" / ") : "Phrase " + (ph.i + 1)}
+                  </span>
+                  <span
+                    className="mono text-xs"
+                    style={{ color: "var(--bad)" }}
+                  >
+                    {pretty(midiInfo(m).label)}
+                  </span>
+                  <button
+                    className="link-btn text-sm"
+                    onClick={() => onPractice(ph)}
+                  >
+                    Practise
+                  </button>
+                </div>
+              );
             })}
-            ${hard.length > 5 &&
-            html`<span class="text-xs muted"
-              >…and ${hard.length - 5} more in the phrase list.</span
-            >`}
+            {hard.length > 5 && (
+              <span className="text-xs muted">
+                …and {hard.length - 5} more in the phrase list.
+              </span>
+            )}
           </div>
-          <p class="text-xs muted" style=${{ margin: 0 }}>
+          <p className="text-xs muted" style={{ margin: 0 }}>
             Tip:
-            ${highs.size
+            {highs.size
               ? "sing the high notes lightly, or drop them an octave for now."
-              : "sing the low notes softly, or take them up an octave for now."}${highs.size &&
-            lows.size
-              ? " Low ones can go up an octave."
-              : ""}
-          </p>`}
-  </section>`;
+              : "sing the low notes softly, or take them up an octave for now."}
+            {highs.size && lows.size ? " Low ones can go up an octave." : ""}
+          </p>
+        </>
+      )}
+    </section>
+  );
 }

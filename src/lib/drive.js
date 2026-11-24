@@ -22,8 +22,7 @@ export async function driveList(parent) {
 
 export async function driveFile(f) {
   const url = DRIVE_API + "/" + f.id + "?alt=media&key=" + DRIVE_KEY;
-  const cacheKey =
-    "https://tono.cache/" + f.id + "/" + (f.modifiedTime || "");
+  const cacheKey = "https://tono.cache/" + f.id + "/" + (f.modifiedTime || "");
   let cache = null;
   try {
     cache = window.caches ? await caches.open("tono-songs-v1") : null;

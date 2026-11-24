@@ -1,6 +1,5 @@
 // The scrolling melody chart used in Practice and Karaoke.
 import { useRef, useMemo, useEffect } from "react";
-import { html } from "../html.js";
 import { GRID } from "../lib/analysis.js";
 import { cssVar } from "../lib/css.js";
 import { fmt } from "../lib/music.js";
@@ -176,162 +175,168 @@ export function MelodyMap({
     if (hit) onTapNote(hit);
     else onSeek(Math.max(0, t));
   };
-  return html`<div
-    ref=${boxRef}
-    style=${{
-      overflowX: "auto",
-      position: "relative",
-      borderRadius: 10,
-      background: "var(--surface-2)",
-      border: "1px solid var(--line)",
-    }}
-  >
-    <div style=${{ position: "relative", width: W }}>
-      ${lyrics.length > 0 &&
-      html`<div class="lyr-band">
-        ${lyrics.map(
-          (l, i) =>
-            html`<div
-              key=${i}
-              class=${"lyr" +
-              (cursor != null && cursor >= l.start && cursor < l.end
-                ? " on"
-                : "")}
-              style=${{
-                left: l.start * pps,
-                width: Math.max(8, (l.end - l.start) * pps - 2),
-              }}
-              title=${l.text}
-              onClick=${() => onSeek(l.start)}
-            >
-              ${l.text}
-            </div>`,
+  return (
+    <div
+      ref={boxRef}
+      style={{
+        overflowX: "auto",
+        position: "relative",
+        borderRadius: 10,
+        background: "var(--surface-2)",
+        border: "1px solid var(--line)",
+      }}
+    >
+      <div style={{ position: "relative", width: W }}>
+        {lyrics.length > 0 && (
+          <div className="lyr-band">
+            {lyrics.map((l, i) => (
+              <div
+                key={i}
+                className={
+                  "lyr" +
+                  (cursor != null && cursor >= l.start && cursor < l.end
+                    ? " on"
+                    : "")
+                }
+                style={{
+                  left: l.start * pps,
+                  width: Math.max(8, (l.end - l.start) * pps - 2),
+                }}
+                title={l.text}
+                onClick={() => onSeek(l.start)}
+              >
+                {l.text}
+              </div>
+            ))}
+          </div>
         )}
-      </div>`}
-      <div style=${{ position: "relative", height: H }}>
-        <canvas
-          ref=${canvasRef}
-          style=${{ display: "block", cursor: "pointer" }}
-          onClick=${tap}
-        ></canvas>
-        ${overlay &&
-        overlay.points.length > 1 &&
-        html`<svg
-          width=${W}
-          height=${H}
-          style=${{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            pointerEvents: "none",
-          }}
-          aria-hidden="true"
-        >
-          ${(() => {
-            const segs = [];
-            let cur = [];
-            overlay.points.forEach((pt) => {
-              if (pt.m !== pt.m) {
-                if (cur.length > 1) segs.push(cur);
-                cur = [];
-                return;
-              }
-              cur.push(
-                ((overlay.start + pt.t * overlay.speed) * pps).toFixed(1) +
-                  "," +
-                  yOf(pt.m - overlay.oct).toFixed(1),
-              );
-            });
-            if (cur.length > 1) segs.push(cur);
-            return segs.map(
-              (sg, i) =>
-                html`<polyline
-                  key=${i}
-                  points=${sg.join(" ")}
-                  fill="none"
-                  stroke="var(--you)"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />`,
-            );
-          })()}
-        </svg>`}
-        ${marks &&
-        marks.map(
-          (mk) =>
-            html`<div
-              key=${"mk" + mk.i}
-              style=${{
+        <div style={{ position: "relative", height: H }}>
+          <canvas
+            ref={canvasRef}
+            style={{ display: "block", cursor: "pointer" }}
+            onClick={tap}
+          />
+          {overlay && overlay.points.length > 1 && (
+            <svg
+              width={W}
+              height={H}
+              style={{
                 position: "absolute",
-                left: mk.pos * pps,
-                width: Math.max(3, (mk.end - mk.pos) * pps - 1.5),
-                top: yOf(mk.midi + tr) + bh / 2 + 1,
-                height: 3,
-                borderRadius: 2,
-                background: mk.ok ? "var(--good)" : "var(--bad)",
+                left: 0,
+                top: 0,
                 pointerEvents: "none",
               }}
-            ></div>`,
-        )}
-        ${cur &&
-        html`<div
-          style=${{
-            position: "absolute",
-            left: cur.pos * pps - 2,
-            top: yOf(cur.midi + tr) - bh / 2 - 2,
-            width: Math.max(3, (cur.end - cur.pos) * pps - 1.5) + 4,
-            height: bh + 4,
-            borderRadius: 6,
-            background: "var(--accent)",
-            boxShadow:
-              "0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent)",
-            pointerEvents: "none",
-            display: "flex",
-            alignItems: "center",
-            paddingLeft: 6,
-            overflow: "hidden",
-          }}
-        >
-          <span
-            class="mono"
-            style=${{
-              fontSize: 10,
-              fontWeight: 600,
-              color: "var(--accent-ink)",
-              whiteSpace: "nowrap",
+              aria-hidden="true"
+            >
+              {(() => {
+                const segs = [];
+                let cur = [];
+                overlay.points.forEach((pt) => {
+                  if (pt.m !== pt.m) {
+                    if (cur.length > 1) segs.push(cur);
+                    cur = [];
+                    return;
+                  }
+                  cur.push(
+                    ((overlay.start + pt.t * overlay.speed) * pps).toFixed(1) +
+                      "," +
+                      yOf(pt.m - overlay.oct).toFixed(1),
+                  );
+                });
+                if (cur.length > 1) segs.push(cur);
+                return segs.map((sg, i) => (
+                  <polyline
+                    key={i}
+                    points={sg.join(" ")}
+                    fill="none"
+                    stroke="var(--you)"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                ));
+              })()}
+            </svg>
+          )}
+          {marks &&
+            marks.map((mk) => (
+              <div
+                key={"mk" + mk.i}
+                style={{
+                  position: "absolute",
+                  left: mk.pos * pps,
+                  width: Math.max(3, (mk.end - mk.pos) * pps - 1.5),
+                  top: yOf(mk.midi + tr) + bh / 2 + 1,
+                  height: 3,
+                  borderRadius: 2,
+                  background: mk.ok ? "var(--good)" : "var(--bad)",
+                  pointerEvents: "none",
+                }}
+              />
+            ))}
+          {cur && (
+            <div
+              style={{
+                position: "absolute",
+                left: cur.pos * pps - 2,
+                top: yOf(cur.midi + tr) - bh / 2 - 2,
+                width: Math.max(3, (cur.end - cur.pos) * pps - 1.5) + 4,
+                height: bh + 4,
+                borderRadius: 6,
+                background: "var(--accent)",
+                boxShadow:
+                  "0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent)",
+                pointerEvents: "none",
+                display: "flex",
+                alignItems: "center",
+                paddingLeft: 6,
+                overflow: "hidden",
+              }}
+            >
+              <span
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: "var(--accent-ink)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {nameOf(cur.midi)}
+              </span>
+            </div>
+          )}
+        </div>
+        {loop && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: loop.a * pps,
+              width: (loop.b - loop.a) * pps,
+              background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+              borderLeft: "1px solid var(--accent)",
+              borderRight: "1px solid var(--accent)",
+              pointerEvents: "none",
             }}
-            >${nameOf(cur.midi)}</span
-          >
-        </div>`}
+          />
+        )}
+        {cursor != null && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: cursor * pps,
+              width: 2,
+              marginLeft: -1,
+              background: "var(--accent)",
+              pointerEvents: "none",
+            }}
+          />
+        )}
       </div>
-      ${loop &&
-      html`<div
-        style=${{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          left: loop.a * pps,
-          width: (loop.b - loop.a) * pps,
-          background: "color-mix(in srgb, var(--accent) 12%, transparent)",
-          borderLeft: "1px solid var(--accent)",
-          borderRight: "1px solid var(--accent)",
-          pointerEvents: "none",
-        }}
-      ></div>`}
-      ${cursor != null &&
-      html`<div
-        style=${{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          left: cursor * pps,
-          width: 2,
-          marginLeft: -1,
-          background: "var(--accent)",
-          pointerEvents: "none",
-        }}
-      ></div>`}
     </div>
-  </div>`;
+  );
 }

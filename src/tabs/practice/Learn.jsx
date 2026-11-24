@@ -1,15 +1,28 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+} from "react";
 import { Icon } from "../../components/Icon.jsx";
 import { MelodyMap } from "../../components/MelodyMap.jsx";
 import { Sheet } from "../../components/Sheet.jsx";
 import { TryPanel } from "../../components/TryPanel.jsx";
 import { UploadSlot } from "../../components/UploadSlot.jsx";
-import { html } from "../../html.js";
 import { trackPitch, scheduleGuide } from "../../lib/analysis.js";
 import { lyricSpans } from "../../lib/lyrics.js";
 import { median } from "../../lib/math.js";
 import { fmt, midiInfo, signed, pretty } from "../../lib/music.js";
-import { buildPhrases, keyName, KEY_MAJ, KEY_MIN, estimateKey, SOLFEGE, scorePhrase } from "../../lib/phrases.js";
+import {
+  buildPhrases,
+  keyName,
+  KEY_MAJ,
+  KEY_MIN,
+  estimateKey,
+  SOLFEGE,
+  scorePhrase,
+} from "../../lib/phrases.js";
 import { detectPitch } from "../../lib/pitch.js";
 import { savePlan, makePlan, loadPlan } from "../../lib/plan.js";
 import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
@@ -111,10 +124,7 @@ export function Learn({
         window.scrollBy(0, -12);
       } catch (e) {}
     }
-  }, [
-    turn ? turn.idx : -1,
-    attempt ? attempt.idx + ":" + attempt.score : "",
-  ]);
+  }, [turn ? turn.idx : -1, attempt ? attempt.idx + ":" + attempt.score : ""]);
   useEffect(() => setShowDetails(false), [attempt]);
   useEffect(() => {
     const p = loadPlan(orig && orig.data ? orig.name : null);
@@ -432,12 +442,7 @@ export function Learn({
     );
     setScoring(false);
     if (!her || flow.current !== token) return;
-    const res = scorePhrase(
-      phrases[idx],
-      her,
-      speedRef.current,
-      trRef.current,
-    );
+    const res = scorePhrase(phrases[idx], her, speedRef.current, trRef.current);
     setAttempt({ ...res, idx });
     attemptsRef.current[idx] = res.rows;
     {
@@ -460,10 +465,9 @@ export function Learn({
       };
       setTries((t) => {
         const cur = t[idx] || {};
-        const hist = [
-          ...(cur.hist || []),
-          { at: rec.at, s: rec.score },
-        ].slice(-30);
+        const hist = [...(cur.hist || []), { at: rec.at, s: rec.score }].slice(
+          -30,
+        );
         const next = {
           ...t,
           [idx]: {
@@ -487,8 +491,7 @@ export function Learn({
         setBest({ ...sb });
       }
     }
-    streak.current[idx] =
-      res.score >= 85 ? (streak.current[idx] || 0) + 1 : 0;
+    streak.current[idx] = res.score >= 85 ? (streak.current[idx] || 0) + 1 : 0;
     if (streak.current[idx] >= 2) {
       addLearned(idx);
       if (streak.current[idx] === 2)
@@ -580,11 +583,7 @@ export function Learn({
     if (!data) return;
     if (modeRef.current === "repeat") {
       runRepeat(
-        pending && pending.next >= 0
-          ? pending.next
-          : pending
-            ? 0
-            : phraseAt(t),
+        pending && pending.next >= 0 ? pending.next : pending ? 0 : phraseAt(t),
       );
       return;
     }
@@ -777,27 +776,26 @@ export function Learn({
   };
 
   if (!data) {
-    return html`<div class="grid gap-4 sm:grid-cols-2">
-      <${UploadSlot}
-        id="learn-file"
-        step="1"
-        title="Song to learn"
-        hint="Upload the acapella (vocal only) of the song you want to learn. It's shared with Karaoke and the Singing Analyst, so you only upload it once."
-        slot=${orig}
-        onPick=${onPickOrig}
-      />
-      <div class="panel p-5 flex flex-col gap-2">
-        <h3 class="display text-lg font-bold">How Practice works</h3>
-        <p class="muted text-sm" style=${{ maxWidth: "62ch" }}>
-          You'll see the melody as note bars with their names, split into
-          phrases. Play it through or use Repeat after me, which plays a line
-          and then leaves a gap for you to sing it back. Slow the guide notes
-          down, move them into your key, loop the hard parts, and tick off
-          phrases as you learn them. When you're ready, record yourself and
-          check it in the Singing Analyst.
-        </p>
+    return (
+      <div className="grid gap-4 sm:grid-cols-2">
+        <UploadSlot
+          id="learn-file"
+          step="1"
+          title="Song to learn"
+          hint="Upload the acapella (vocal only) of the song you want to learn. It's shared with Karaoke and the Singing Analyst, so you only upload it once."
+          slot={orig}
+          onPick={onPickOrig}
+        />
+        <div className="panel p-5 flex flex-col gap-2">
+          <h3 className="display text-lg font-bold">How Practice works</h3>
+          <p className="muted text-sm" style={{ maxWidth: "62ch" }}>
+            {
+              "You'll see the melody as note bars with their names, split into\n          phrases. Play it through or use Repeat after me, which plays a line\n          and then leaves a gap for you to sing it back. Slow the guide notes\n          down, move them into your key, loop the hard parts, and tick off\n          phrases as you learn them. When you're ready, record yourself and\n          check it in the Singing Analyst."
+            }
+          </p>
+        </div>
       </div>
-    </div>`;
+    );
   }
 
   const curIdx =
@@ -842,35 +840,39 @@ export function Learn({
     savePlan(songName, p);
   };
   if (planRun != null && tempPlan)
-    return html`<${PlanFlow}
-      plan=${tempPlan}
-      songTitle=${(songName || "").replace(/\.[^.]+$/, "")}
-      buffer=${orig && orig.buffer}
-      start=${planRun}
-      onClose=${() => {
-        setPlanRun(null);
-        setTempPlan(null);
-      }}
-      onUpdate=${setTempPlan}
-      onKaraoke=${() => {
-        setPlanRun(null);
-        setTempPlan(null);
-        onGo && onGo("karaoke");
-      }}
-    />`;
+    return (
+      <PlanFlow
+        plan={tempPlan}
+        songTitle={(songName || "").replace(/\.[^.]+$/, "")}
+        buffer={orig && orig.buffer}
+        start={planRun}
+        onClose={() => {
+          setPlanRun(null);
+          setTempPlan(null);
+        }}
+        onUpdate={setTempPlan}
+        onKaraoke={() => {
+          setPlanRun(null);
+          setTempPlan(null);
+          onGo && onGo("karaoke");
+        }}
+      />
+    );
   if (planRun != null && plan)
-    return html`<${PlanFlow}
-      plan=${plan}
-      songTitle=${(songName || "").replace(/\.[^.]+$/, "")}
-      buffer=${orig && orig.buffer}
-      start=${planRun}
-      onClose=${() => setPlanRun(null)}
-      onUpdate=${setPlan}
-      onKaraoke=${() => {
-        setPlanRun(null);
-        onGo && onGo("karaoke");
-      }}
-    />`;
+    return (
+      <PlanFlow
+        plan={plan}
+        songTitle={(songName || "").replace(/\.[^.]+$/, "")}
+        buffer={orig && orig.buffer}
+        start={planRun}
+        onClose={() => setPlanRun(null)}
+        onUpdate={setPlan}
+        onKaraoke={() => {
+          setPlanRun(null);
+          onGo && onGo("karaoke");
+        }}
+      />
+    );
   // each lyric line maps to the phrase it overlaps most (scores and takes are kept per phrase)
   const phraseFor = (l) => {
     let bi = 0,
@@ -937,9 +939,7 @@ export function Learn({
           : ln,
       ),
     });
-    flash(
-      words ? "Word timing saved for this line." : "Word timing cleared.",
-    );
+    flash(words ? "Word timing saved for this line." : "Word timing cleared.");
   };
   const drillLine = (l, pi, rec, info) => {
     const ms = rec.rows.map((r) => r.m),
@@ -994,196 +994,202 @@ export function Learn({
       ? notes.reduce((m, n) => Math.min(m, n.midi), 999)
       : 0,
     hi2 = notes.length ? notes.reduce((m, n) => Math.max(m, n.midi), 0) : 0;
-  return html`<div class="flex flex-col gap-4">
-    <div class="flex gap-2">
-      <div
-        class="mode-seg"
-        role="group"
-        aria-label="Practice mode"
-        style=${{ flex: 1 }}
-      >
-        <button
-          aria-pressed=${mode === "play" ? "true" : "false"}
-          onClick=${() => chooseMode("play")}
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex gap-2">
+        <div
+          className="mode-seg"
+          role="group"
+          aria-label="Practice mode"
+          style={{ flex: 1 }}
         >
-          Listen
-        </button>
-        <button
-          aria-pressed=${mode === "repeat" ? "true" : "false"}
-          onClick=${() => chooseMode("repeat")}
-        >
-          Repeat after me
-        </button>
+          <button
+            aria-pressed={mode === "play" ? "true" : "false"}
+            onClick={() => chooseMode("play")}
+          >
+            Listen
+          </button>
+          <button
+            aria-pressed={mode === "repeat" ? "true" : "false"}
+            onClick={() => chooseMode("repeat")}
+          >
+            Repeat after me
+          </button>
+        </div>
+        {mode === "repeat" && (
+          <button
+            className={"mic-btn" + (listen ? " on" : "")}
+            aria-pressed={listen ? "true" : "false"}
+            onClick={toggleListen}
+            aria-label={
+              listen
+                ? "Listen to me is on. Tap to practice without scoring"
+                : "Turn on Listen to me to get scored"
+            }
+          >
+            <Icon name="mic" size={22} />
+          </button>
+        )}
       </div>
-      ${mode === "repeat" &&
-      html`<button
-        class=${"mic-btn" + (listen ? " on" : "")}
-        aria-pressed=${listen ? "true" : "false"}
-        onClick=${toggleListen}
-        aria-label=${listen
-          ? "Listen to me is on. Tap to practice without scoring"
-          : "Turn on Listen to me to get scored"}
-      >
-        <${Icon} name="mic" size=${22} />
-      </button>`}
-    </div>
-    ${mode === "repeat" &&
-    html`<p class="text-xs muted">
-      ${listen
-        ? "Mic on: each try gets scored. Tap the mic to practice without scoring."
-        : "Plays a phrase, then gives you time to sing it back. Tap the mic to get scored."}
-    </p>`}
-    ${micMsg &&
-    mode === "repeat" &&
-    html`<div class="notice" role="alert">${micMsg}</div>`}
-    <div class="flex items-center justify-between gap-2">
-      <span class="text-xs muted"
-        >${key ? keyName(key, tr) : ""}${notes.length
-          ? " · " +
-            pretty(midiInfo(lo2 + tr).label) +
-            "–" +
-            pretty(midiInfo(hi2 + tr).label)
-          : ""}</span
-      >
-      <div class="seg" role="group" aria-label="View">
-        <button
-          aria-pressed=${view === "chart" ? "true" : "false"}
-          onClick=${() => chooseView("chart")}
-          aria-label="Chart view"
-          title="Chart"
-        >
-          <${Icon} name="bars" size=${18} />
-        </button>
-        <button
-          aria-pressed=${view === "sheet" ? "true" : "false"}
-          onClick=${() => chooseView("sheet")}
-          aria-label="Song sheet view"
-          title="Song sheet"
-        >
-          <${Icon} name="list" size=${18} />
-        </button>
+      {mode === "repeat" && (
+        <p className="text-xs muted">
+          {listen
+            ? "Mic on: each try gets scored. Tap the mic to practice without scoring."
+            : "Plays a phrase, then gives you time to sing it back. Tap the mic to get scored."}
+        </p>
+      )}
+      {micMsg && mode === "repeat" && (
+        <div className="notice" role="alert">
+          {micMsg}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs muted">
+          {key ? keyName(key, tr) : ""}
+          {notes.length
+            ? " · " +
+              pretty(midiInfo(lo2 + tr).label) +
+              "–" +
+              pretty(midiInfo(hi2 + tr).label)
+            : ""}
+        </span>
+        <div className="seg" role="group" aria-label="View">
+          <button
+            aria-pressed={view === "chart" ? "true" : "false"}
+            onClick={() => chooseView("chart")}
+            aria-label="Chart view"
+            title="Chart"
+          >
+            <Icon name="bars" size={18} />
+          </button>
+          <button
+            aria-pressed={view === "sheet" ? "true" : "false"}
+            onClick={() => chooseView("sheet")}
+            aria-label="Song sheet view"
+            title="Song sheet"
+          >
+            <Icon name="list" size={18} />
+          </button>
+        </div>
       </div>
-    </div>
-
-    ${view === "sheet" &&
-    toast &&
-    html`<div class="notice" role="status">${toast}</div>`}
-    ${mode === "play" &&
-    plan &&
-    !plan.hidden &&
-    html`<${PlanCard}
-      plan=${plan}
-      onStart=${(k) => {
-        stopAll();
-        setPlanRun(k);
-      }}
-      onHide=${() => setPlan({ ...plan, hidden: true })}
-      onClear=${() => setPlan(null)}
-    />`}
-    ${mode === "play" &&
-    plan &&
-    plan.hidden &&
-    html`<button
-      class="link-btn text-sm"
-      style=${{ alignSelf: "flex-start" }}
-      onClick=${() => setPlan({ ...plan, hidden: false })}
-    >
-      Show your plan
-      (${plan.drills.filter((d) => plan.done[d.id] != null).length} of
-      ${plan.drills.length} done)
-    </button>`}
-    ${mode === "play" &&
-    !plan &&
-    weakRepeat &&
-    html`<div
-      class="panel p-3 flex items-center gap-3"
-      style=${{ borderStyle: "dashed" }}
-    >
-      <span class="text-sm muted" style=${{ flex: 1 }}
-        >Make a practice plan from your Repeat after me tries.</span
-      >
-      <button
-        class="btn btn-primary"
-        style=${{ padding: "6px 12px", fontSize: 13, whiteSpace: "nowrap" }}
-        onClick=${() => {
-          const rows = Object.values(attemptsRef.current).flat();
-          const p = makePlan(rows, notes, spans, phrases, "repeat");
-          if (p) {
-            p.fresh = false;
-            setPlan(p);
-          } else flash("Nothing big to fix yet. Nice!");
-        }}
-      >
-        Make plan
-      </button>
-    </div>`}
-    ${view === "sheet" && mode === "play"
-      ? html`<${SongSheet}
-          scrollLine=${scrollLine}
-          notes=${notes}
-          spans=${spans}
-          phrases=${phrases}
-          tr=${tr}
-          nameOf=${nameOf}
-          names=${names}
-          onNames=${chooseNames}
-          cursor=${cursor}
-          curIdx=${curIdx}
-          playing=${playing}
-          loop=${loop}
-          lineInfo=${lineInfo}
-          onMe=${(l) => {
+      {view === "sheet" && toast && (
+        <div className="notice" role="status">
+          {toast}
+        </div>
+      )}
+      {mode === "play" && plan && !plan.hidden && (
+        <PlanCard
+          plan={plan}
+          onStart={(k) => {
+            stopAll();
+            setPlanRun(k);
+          }}
+          onHide={() => setPlan({ ...plan, hidden: true })}
+          onClear={() => setPlan(null)}
+        />
+      )}
+      {mode === "play" && plan && plan.hidden && (
+        <button
+          className="link-btn text-sm"
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => setPlan({ ...plan, hidden: false })}
+        >
+          {"Show your plan\n      ("}
+          {plan.drills.filter((d) => plan.done[d.id] != null).length} of
+          {plan.drills.length} done)
+        </button>
+      )}
+      {mode === "play" && !plan && weakRepeat && (
+        <div
+          className="panel p-3 flex items-center gap-3"
+          style={{ borderStyle: "dashed" }}
+        >
+          <span className="text-sm muted" style={{ flex: 1 }}>
+            Make a practice plan from your Repeat after me tries.
+          </span>
+          <button
+            className="btn btn-primary"
+            style={{ padding: "6px 12px", fontSize: 13, whiteSpace: "nowrap" }}
+            onClick={() => {
+              const rows = Object.values(attemptsRef.current).flat();
+              const p = makePlan(rows, notes, spans, phrases, "repeat");
+              if (p) {
+                p.fresh = false;
+                setPlan(p);
+              } else flash("Nothing big to fix yet. Nice!");
+            }}
+          >
+            Make plan
+          </button>
+        </div>
+      )}
+      {view === "sheet" && mode === "play" ? (
+        <SongSheet
+          scrollLine={scrollLine}
+          notes={notes}
+          spans={spans}
+          phrases={phrases}
+          tr={tr}
+          nameOf={nameOf}
+          names={names}
+          onNames={chooseNames}
+          cursor={cursor}
+          curIdx={curIdx}
+          playing={playing}
+          loop={loop}
+          lineInfo={lineInfo}
+          onMe={(l) => {
             const pi = phraseFor(l);
             if (takesRef.current[pi]) hearTake(pi);
           }}
-          you=${youMap}
-          onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })}
-          onPlayRange=${(l) => {
+          you={youMap}
+          onAnalyze={(l) => setPanel({ l, pi: phraseFor(l) })}
+          onPlayRange={(l) => {
             clearLoop();
-            playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () =>
-              stopAll(),
-            );
+            playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () => stopAll());
           }}
-          onSaveWords=${saveWords}
-          onPlayLine=${(l) => {
+          onSaveWords={saveWords}
+          onPlayLine={(l) => {
             clearLoop();
             playRange(Math.max(0, l.start - 0.2), l.end + 0.15, () =>
               stopAll(),
             );
           }}
-          onLoop=${(l) => {
+          onLoop={(l) => {
             if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) {
               clearLoop();
               stopAll();
             } else startLoop(l.start, l.end + 0.3);
           }}
-        />`
-      : html`<${React.Fragment}>
+        />
+      ) : (
+        <React.Fragment>
           <section
-            class="panel p-4 flex flex-col gap-3 min-w-0 coach"
-            ref=${coachRef}
-            style=${view === "sheet"
-              ? {
-                  position: "sticky",
-                  top: 8,
-                  zIndex: 15,
-                  boxShadow: "0 8px 24px rgba(0,0,0,.25)",
-                }
-              : undefined}
+            className="panel p-4 flex flex-col gap-3 min-w-0 coach"
+            ref={coachRef}
+            style={
+              view === "sheet"
+                ? {
+                    position: "sticky",
+                    top: 8,
+                    zIndex: 15,
+                    boxShadow: "0 8px 24px rgba(0,0,0,.25)",
+                  }
+                : undefined
+            }
           >
-            <div
-              class="flex items-center justify-between gap-2 text-xs muted"
-            >
-              <span
-                >${key ? keyName(key, tr) : ""}${notes.length
+            <div className="flex items-center justify-between gap-2 text-xs muted">
+              <span>
+                {key ? keyName(key, tr) : ""}
+                {notes.length
                   ? " · " +
                     pretty(midiInfo(lo2 + tr).label) +
                     "–" +
                     pretty(midiInfo(hi2 + tr).label)
-                  : ""}</span
-              >
+                  : ""}
+              </span>
             </div>
-            ${(() => {
+            {(() => {
               const showResult =
                 mode === "repeat" &&
                 !turn &&
@@ -1200,139 +1206,155 @@ export function Learn({
                 pending &&
                 !pending.scored;
               if (turn)
-                return html`<div class="flex flex-col gap-1 min-w-0">
-                  <span class="label"
-                    >Your turn · phrase ${turn.idx + 1}</span
-                  >
-                  ${html`<div class="flex flex-col gap-2">
-                    <p
-                      class="display font-bold"
-                      style=${{
-                        fontSize: 30,
-                        lineHeight: 1.1,
-                        color: "var(--accent)",
-                      }}
-                    >
-                      Sing it
-                      back${turn.listening
-                        ? html` <span
-                            class="rec-dot"
-                            style=${{
-                              display: "inline-block",
-                              verticalAlign: "middle",
+                return (
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <span className="label">
+                      Your turn · phrase {turn.idx + 1}
+                    </span>
+                    {
+                      <div className="flex flex-col gap-2">
+                        <p
+                          className="display font-bold"
+                          style={{
+                            fontSize: 30,
+                            lineHeight: 1.1,
+                            color: "var(--accent)",
+                          }}
+                        >
+                          {"Sing it\n                      back"}
+                          {turn.listening ? (
+                            <>
+                              {" "}
+                              <span
+                                className="rec-dot"
+                                style={{
+                                  display: "inline-block",
+                                  verticalAlign: "middle",
+                                }}
+                              />
+                            </>
+                          ) : (
+                            ""
+                          )}
+                        </p>
+                        <div className="level" style={{ height: 6 }}>
+                          <div
+                            style={{
+                              width:
+                                Math.max(0, (100 * turn.left) / turn.total) +
+                                "%",
                             }}
-                          ></span>`
-                        : ""}
-                    </p>
-                    <div class="level" style=${{ height: 6 }}>
-                      <div
-                        style=${{
-                          width:
-                            Math.max(0, (100 * turn.left) / turn.total) + "%",
-                        }}
-                      ></div>
-                    </div>
-                    <p class="text-xs muted">
-                      Phrase
-                      ${turn.idx + 1}${linesIn(
-                        phrases[turn.idx].start,
-                        phrases[turn.idx].end,
-                      ).length
-                        ? " · “" +
-                          linesIn(
+                          />
+                        </div>
+                        <p className="text-xs muted">
+                          Phrase{turn.idx + 1}
+                          {linesIn(
                             phrases[turn.idx].start,
                             phrases[turn.idx].end,
-                          ).join(" / ") +
-                          "”"
-                        : ""}
-                    </p>
-                  </div>`}
-                </div>`;
+                          ).length
+                            ? " · “" +
+                              linesIn(
+                                phrases[turn.idx].start,
+                                phrases[turn.idx].end,
+                              ).join(" / ") +
+                              "”"
+                            : ""}
+                        </p>
+                      </div>
+                    }
+                  </div>
+                );
               if (showResult) {
                 if (scoring || !attempt)
-                  return html`<div class="flex flex-col gap-1">
-                    <span class="label">Your try</span>
-                    <p class="display text-xl font-bold muted">Checking…</p>
-                  </div>`;
+                  return (
+                    <div className="flex flex-col gap-1">
+                      <span className="label">Your try</span>
+                      <p className="display text-xl font-bold muted">
+                        Checking…
+                      </p>
+                    </div>
+                  );
                 const a = attempt,
                   wrong = a.rows.filter((r) => !r.ok);
                 const tone =
                   a.score >= 80 ? "good" : a.score >= 50 ? "warn" : "bad";
                 const nextIdx = pending ? pending.next : a.idx + 1;
                 const again = pending && pending.again;
-                return html`<div class="flex flex-col gap-3">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="flex flex-col">
-                      <span class="label"
-                        >Your try · phrase ${a.idx + 1}</span
+                return (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-col">
+                        <span className="label">
+                          Your try · phrase {a.idx + 1}
+                        </span>
+                        <span className="display text-xl font-bold">
+                          {a.score >= 85 ? "Great! " : a.score >= 60 ? "" : ""}
+                          {a.right}of {a.rows.length} notes right
+                        </span>
+                      </div>
+                      <span
+                        className="display font-bold"
+                        style={{
+                          fontSize: 36,
+                          lineHeight: 1,
+                          color: "var(--" + tone + ")",
+                        }}
                       >
-                      <span class="display text-xl font-bold"
-                        >${a.score >= 85
-                          ? "Great! "
-                          : a.score >= 60
-                            ? ""
-                            : ""}${a.right}
-                        of ${a.rows.length} notes right</span
-                      >
+                        {a.score}%
+                      </span>
                     </div>
-                    <span
-                      class="display font-bold"
-                      style=${{
-                        fontSize: 36,
-                        lineHeight: 1,
-                        color: "var(--" + tone + ")",
-                      }}
-                      >${a.score}%</span
-                    >
-                  </div>
-                  <div class="flex flex-wrap gap-1">
-                    ${a.rows.map(
-                      (r, i) =>
-                        html`<span
-                          key=${i}
-                          class=${"nchip " +
-                          (r.missed ? "miss" : r.ok ? "ok" : "bad")}
-                          >${nameOf(r.n.midi)}
-                          ${r.missed ? "–" : r.ok ? "✓" : "✗"}</span
-                        >`,
-                    )}
-                  </div>
-                  ${wrong.length > 0 &&
-                  !showDetails &&
-                  html`<p class="text-sm">
-                    <b>${nameOf(wrong[0].n.midi)}</b>:
-                    ${wrong[0].missed
-                      ? "I couldn't hear this one."
-                      : "you sang " +
-                        sungName(wrong[0].sung, a.keyShift) +
-                        ", " +
-                        howMuch(wrong[0].cents) +
-                        " too " +
-                        (wrong[0].cents > 0 ? "high" : "low") +
-                        "."}${wrong.length > 1 ||
-                    Math.abs(a.lean) >= 15 ||
-                    a.keyShift !== 0
-                      ? html` <button
-                          class="link-btn"
-                          onClick=${() => setShowDetails(true)}
+                    <div className="flex flex-wrap gap-1">
+                      {a.rows.map((r, i) => (
+                        <span
+                          key={i}
+                          className={
+                            "nchip " + (r.missed ? "miss" : r.ok ? "ok" : "bad")
+                          }
                         >
-                          Details
-                        </button>`
-                      : ""}
-                  </p>`}
-                  ${showDetails &&
-                  html`<div class="flex flex-col gap-2">
-                    <ul
-                      class="text-sm flex flex-col gap-1"
-                      style=${{ listStyle: "none", padding: 0, margin: 0 }}
-                    >
-                      ${wrong
-                        .slice(0, 4)
-                        .map(
-                          (r, i) =>
-                            html`<li key=${i}>
-                              <b>${nameOf(r.n.midi)}</b>:
-                              ${r.missed
+                          {nameOf(r.n.midi)}
+                          {r.missed ? "–" : r.ok ? "✓" : "✗"}
+                        </span>
+                      ))}
+                    </div>
+                    {wrong.length > 0 && !showDetails && (
+                      <p className="text-sm">
+                        <b>{nameOf(wrong[0].n.midi)}</b>:
+                        {wrong[0].missed
+                          ? "I couldn't hear this one."
+                          : "you sang " +
+                            sungName(wrong[0].sung, a.keyShift) +
+                            ", " +
+                            howMuch(wrong[0].cents) +
+                            " too " +
+                            (wrong[0].cents > 0 ? "high" : "low") +
+                            "."}
+                        {wrong.length > 1 ||
+                        Math.abs(a.lean) >= 15 ||
+                        a.keyShift !== 0 ? (
+                          <>
+                            {" "}
+                            <button
+                              className="link-btn"
+                              onClick={() => setShowDetails(true)}
+                            >
+                              Details
+                            </button>
+                          </>
+                        ) : (
+                          ""
+                        )}
+                      </p>
+                    )}
+                    {showDetails && (
+                      <div className="flex flex-col gap-2">
+                        <ul
+                          className="text-sm flex flex-col gap-1"
+                          style={{ listStyle: "none", padding: 0, margin: 0 }}
+                        >
+                          {wrong.slice(0, 4).map((r, i) => (
+                            <li key={i}>
+                              <b>{nameOf(r.n.midi)}</b>:
+                              {r.missed
                                 ? "I couldn't hear this one."
                                 : "you sang " +
                                   sungName(r.sung, a.keyShift) +
@@ -1341,548 +1363,576 @@ export function Learn({
                                   " too " +
                                   (r.cents > 0 ? "high" : "low") +
                                   "."}
-                            </li>`,
+                            </li>
+                          ))}
+                        </ul>
+                        {Math.abs(a.lean) >= 15 && (
+                          <p className="text-sm muted">
+                            Overall you were {howMuch(a.lean)}
+                            {a.lean > 0 ? "high (sharp)" : "low (flat)"}
+                            {" on this\n                      phrase."}
+                          </p>
                         )}
-                    </ul>
-                    ${Math.abs(a.lean) >= 15 &&
-                    html`<p class="text-sm muted">
-                      Overall you were ${howMuch(a.lean)}
-                      ${a.lean > 0 ? "high (sharp)" : "low (flat)"} on this
-                      phrase.
-                    </p>`}
-                    ${a.keyShift !== 0 &&
-                    html`<div
-                      class="notice"
-                      style=${{
-                        borderColor: "var(--line)",
-                        background: "var(--surface)",
-                      }}
-                    >
-                      You sang this ${pianoKeys(Math.abs(a.keyShift))}
-                      ${a.keyShift > 0 ? "higher" : "lower"} than the guide,
-                      which is fine.
-                      <button
-                        class="btn"
-                        style=${{
-                          padding: "4px 10px",
-                          fontSize: 12,
-                          marginLeft: 8,
-                        }}
-                        onClick=${() => {
-                          stopAll();
-                          shiftKey(a.keyShift);
-                        }}
-                      >
-                        Move the guide to my key
-                      </button>
-                    </div>`}
-                    <button
-                      class="link-btn"
-                      style=${{ alignSelf: "flex-start" }}
-                      onClick=${() => setShowDetails(false)}
-                    >
-                      Hide details
-                    </button>
-                  </div>`}
-                  <div class="coach-actions">
-                    ${again
-                      ? html`<button
-                          class="btn"
-                          onClick=${() => hearPhrase(a.idx)}
-                        >
-                          ▶ Phrase
-                        </button>`
-                      : html`<button
-                          class="btn"
-                          onClick=${() => tryAgain(a.idx)}
-                        >
-                          ↻ Try again
-                        </button>`}
-                    <button
-                      class="btn"
-                      onClick=${() => hearTake(a.idx)}
-                      disabled=${!takesRef.current[a.idx]}
-                    >
-                      ▶ Hear me
-                    </button>
-                    ${again
-                      ? html`<button
-                          class="btn btn-primary"
-                          onClick=${() => tryAgain(a.idx)}
-                        >
-                          ↻ Try again
-                        </button>`
-                      : nextIdx >= 0 && nextIdx < phrases.length
-                        ? html`<button
-                            class="btn btn-primary"
-                            onClick=${() => {
-                              setShowDetails(false);
-                              runRepeat(nextIdx);
+                        {a.keyShift !== 0 && (
+                          <div
+                            className="notice"
+                            style={{
+                              borderColor: "var(--line)",
+                              background: "var(--surface)",
                             }}
                           >
-                            Next →
-                          </button>`
-                        : html`<button
-                            class="btn btn-primary"
-                            onClick=${() => onGo && onGo("karaoke")}
-                          >
-                            Karaoke →
-                          </button>`}
-                  </div>
-                  ${again &&
-                  html`<p class="text-xs muted">
-                    ${loop
-                      ? "Looping this phrase."
-                      : "Get 80% or more to move on. You can skip ahead from the phrase list."}
-                  </p>`}
-                  ${!again &&
-                  (nextIdx < 0 || nextIdx >= phrases.length) &&
-                  html`<p class="text-xs muted">
-                    That was the last phrase. Nice work!
-                  </p>`}
-                  ${review &&
-                  html`<div class="flex items-center gap-3">
-                    <div class="level" style=${{ flex: 1, height: 4 }}>
-                      <div
-                        style=${{
-                          width: (100 * review.left) / review.total + "%",
-                        }}
-                      ></div>
-                    </div>
-                    <span class="text-xs muted"
-                      >${review.again
-                        ? "Same phrase again"
-                        : "Phrase " + (review.next + 1) + " next"}</span
-                    >
-                    <button
-                      class="btn btn-ghost"
-                      style=${{ padding: "3px 10px", fontSize: 12 }}
-                      onClick=${stopAll}
-                    >
-                      Pause
-                    </button>
-                  </div>`}
-                </div>`;
-              }
-              if (showReady)
-                return html`<div class="flex flex-col gap-2">
-                  <span class="label">Phrase ${pending.after + 1} done</span>
-                  <p class="display text-2xl font-bold">
-                    ${pending.next >= 0
-                      ? pending.again
-                        ? "Ready to go again?"
-                        : "Ready for phrase " + (pending.next + 1) + "?"
-                      : "That was the last phrase"}
-                  </p>
-                  <div class="coach-actions">
-                    <button
-                      class="btn"
-                      onClick=${() => tryAgain(pending.after)}
-                    >
-                      ↻ Again
-                    </button>
-                    <button
-                      class="btn"
-                      onClick=${() => hearPhrase(pending.after)}
-                    >
-                      ▶ Phrase
-                    </button>
-                    ${pending.next >= 0
-                      ? html`<button
-                          class="btn btn-primary"
-                          onClick=${() => runRepeat(pending.next)}
+                            You sang this {pianoKeys(Math.abs(a.keyShift))}
+                            {a.keyShift > 0 ? "higher" : "lower"}
+                            {
+                              " than the guide,\n                      which is fine."
+                            }
+                            <button
+                              className="btn"
+                              style={{
+                                padding: "4px 10px",
+                                fontSize: 12,
+                                marginLeft: 8,
+                              }}
+                              onClick={() => {
+                                stopAll();
+                                shiftKey(a.keyShift);
+                              }}
+                            >
+                              Move the guide to my key
+                            </button>
+                          </div>
+                        )}
+                        <button
+                          className="link-btn"
+                          style={{ alignSelf: "flex-start" }}
+                          onClick={() => setShowDetails(false)}
                         >
-                          ${pending.again ? "Go →" : "Next →"}
-                        </button>`
-                      : html`<button
-                          class="btn btn-primary"
-                          onClick=${() => onGo && onGo("karaoke")}
+                          Hide details
+                        </button>
+                      </div>
+                    )}
+                    <div className="coach-actions">
+                      {again ? (
+                        <button
+                          className="btn"
+                          onClick={() => hearPhrase(a.idx)}
+                        >
+                          ▶ Phrase
+                        </button>
+                      ) : (
+                        <button className="btn" onClick={() => tryAgain(a.idx)}>
+                          ↻ Try again
+                        </button>
+                      )}
+                      <button
+                        className="btn"
+                        onClick={() => hearTake(a.idx)}
+                        disabled={!takesRef.current[a.idx]}
+                      >
+                        ▶ Hear me
+                      </button>
+                      {again ? (
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => tryAgain(a.idx)}
+                        >
+                          ↻ Try again
+                        </button>
+                      ) : nextIdx >= 0 && nextIdx < phrases.length ? (
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => {
+                            setShowDetails(false);
+                            runRepeat(nextIdx);
+                          }}
+                        >
+                          Next →
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => onGo && onGo("karaoke")}
                         >
                           Karaoke →
-                        </button>`}
+                        </button>
+                      )}
+                    </div>
+                    {again && (
+                      <p className="text-xs muted">
+                        {loop
+                          ? "Looping this phrase."
+                          : "Get 80% or more to move on. You can skip ahead from the phrase list."}
+                      </p>
+                    )}
+                    {!again && (nextIdx < 0 || nextIdx >= phrases.length) && (
+                      <p className="text-xs muted">
+                        That was the last phrase. Nice work!
+                      </p>
+                    )}
+                    {review && (
+                      <div className="flex items-center gap-3">
+                        <div className="level" style={{ flex: 1, height: 4 }}>
+                          <div
+                            style={{
+                              width: (100 * review.left) / review.total + "%",
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs muted">
+                          {review.again
+                            ? "Same phrase again"
+                            : "Phrase " + (review.next + 1) + " next"}
+                        </span>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "3px 10px", fontSize: 12 }}
+                          onClick={stopAll}
+                        >
+                          Pause
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </div>`;
+                );
+              }
+              if (showReady)
+                return (
+                  <div className="flex flex-col gap-2">
+                    <span className="label">
+                      Phrase {pending.after + 1} done
+                    </span>
+                    <p className="display text-2xl font-bold">
+                      {pending.next >= 0
+                        ? pending.again
+                          ? "Ready to go again?"
+                          : "Ready for phrase " + (pending.next + 1) + "?"
+                        : "That was the last phrase"}
+                    </p>
+                    <div className="coach-actions">
+                      <button
+                        className="btn"
+                        onClick={() => tryAgain(pending.after)}
+                      >
+                        ↻ Again
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => hearPhrase(pending.after)}
+                      >
+                        ▶ Phrase
+                      </button>
+                      {pending.next >= 0 ? (
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => runRepeat(pending.next)}
+                        >
+                          {pending.again ? "Go →" : "Next →"}
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => onGo && onGo("karaoke")}
+                        >
+                          Karaoke →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
               const listenPh = mode === "repeat" && playing && curPh >= 0;
-              return html`<div class="flex flex-col gap-1 min-w-0">
-                <span class="flex items-center justify-between gap-2">
-                  <span class="label"
-                    >${listenPh
-                      ? "Listen · phrase " + (curPh + 1)
-                      : "Now singing"}</span
-                  >
-                  ${mode === "repeat" &&
-                  attempt &&
-                  html`<span
-                    class=${"tag tag-" +
-                    (attempt.score >= 80
-                      ? "good"
-                      : attempt.score >= 50
-                        ? "warn"
-                        : "bad")}
-                    >Last try ${attempt.score}%</span
-                  >`}
-                </span>
-                ${html`<div class="flex items-end gap-3 flex-wrap">
-                  <span
-                    class="display font-bold"
-                    style=${{
-                      fontSize: 48,
-                      lineHeight: 1,
-                      color: curIdx >= 0 ? "var(--accent)" : "var(--muted)",
-                    }}
-                    >${curIdx >= 0 ? nameOf(notes[curIdx].midi) : "—"}</span
-                  >
-                  ${nextNotes.length > 0 &&
-                  html`<span class="text-sm muted pb-1"
-                    >Coming up:
-                    <span class="mono" style=${{ color: "var(--fg)" }}
-                      >${nextNotes
-                        .map((n) => nameOf(n.midi))
-                        .join("  ")}</span
-                    ></span
-                  >`}
-                </div>`}
-                ${spans.length > 0 &&
-                html`<p
-                  class="display font-bold"
-                  style=${{ fontSize: 19, lineHeight: 1.3, marginTop: 4 }}
-                >
-                  ${curLine >= 0 ? spans[curLine].text : "♪"}
-                </p>`}
-              </div>`;
+              return (
+                <div className="flex flex-col gap-1 min-w-0">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="label">
+                      {listenPh
+                        ? "Listen · phrase " + (curPh + 1)
+                        : "Now singing"}
+                    </span>
+                    {mode === "repeat" && attempt && (
+                      <span
+                        className={
+                          "tag tag-" +
+                          (attempt.score >= 80
+                            ? "good"
+                            : attempt.score >= 50
+                              ? "warn"
+                              : "bad")
+                        }
+                      >
+                        Last try {attempt.score}%
+                      </span>
+                    )}
+                  </span>
+                  {
+                    <div className="flex items-end gap-3 flex-wrap">
+                      <span
+                        className="display font-bold"
+                        style={{
+                          fontSize: 48,
+                          lineHeight: 1,
+                          color: curIdx >= 0 ? "var(--accent)" : "var(--muted)",
+                        }}
+                      >
+                        {curIdx >= 0 ? nameOf(notes[curIdx].midi) : "—"}
+                      </span>
+                      {nextNotes.length > 0 && (
+                        <span className="text-sm muted pb-1">
+                          Coming up:
+                          <span className="mono" style={{ color: "var(--fg)" }}>
+                            {nextNotes.map((n) => nameOf(n.midi)).join("  ")}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  }
+                  {spans.length > 0 && (
+                    <p
+                      className="display font-bold"
+                      style={{ fontSize: 19, lineHeight: 1.3, marginTop: 4 }}
+                    >
+                      {curLine >= 0 ? spans[curLine].text : "♪"}
+                    </p>
+                  )}
+                </div>
+              );
             })()}
           </section>
-          ${toast &&
-          html`<div
-            class="notice"
-            role="status"
-            style=${{
-              borderColor: "var(--good)",
-              background:
-                "color-mix(in srgb, var(--good) 10%, var(--surface))",
-            }}
-          >
-            ${toast}
-          </div>`}
-          ${view === "sheet"
-            ? html`<${SongSheet}
-                scrollLine=${scrollLine}
-                notes=${notes}
-                spans=${spans}
-                phrases=${phrases}
-                tr=${tr}
-                nameOf=${nameOf}
-                names=${names}
-                onNames=${chooseNames}
-                cursor=${cursor}
-                curIdx=${curIdx}
-                playing=${playing}
-                loop=${loop}
-                lineInfo=${lineInfo}
-                onMe=${(l) => {
-                  const pi = phraseFor(l);
-                  if (takesRef.current[pi]) hearTake(pi);
-                }}
-                you=${youMap}
-                onAnalyze=${(l) => setPanel({ l, pi: phraseFor(l) })}
-                onPlayRange=${(l) => {
+          {toast && (
+            <div
+              className="notice"
+              role="status"
+              style={{
+                borderColor: "var(--good)",
+                background:
+                  "color-mix(in srgb, var(--good) 10%, var(--surface))",
+              }}
+            >
+              {toast}
+            </div>
+          )}
+          {view === "sheet" ? (
+            <SongSheet
+              scrollLine={scrollLine}
+              notes={notes}
+              spans={spans}
+              phrases={phrases}
+              tr={tr}
+              nameOf={nameOf}
+              names={names}
+              onNames={chooseNames}
+              cursor={cursor}
+              curIdx={curIdx}
+              playing={playing}
+              loop={loop}
+              lineInfo={lineInfo}
+              onMe={(l) => {
+                const pi = phraseFor(l);
+                if (takesRef.current[pi]) hearTake(pi);
+              }}
+              you={youMap}
+              onAnalyze={(l) => setPanel({ l, pi: phraseFor(l) })}
+              onPlayRange={(l) => {
+                clearLoop();
+                playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () =>
+                  stopAll(),
+                );
+              }}
+              onSaveWords={saveWords}
+              onPlayLine={(l) => {
+                clearLoop();
+                runRepeat(phraseFor(l));
+              }}
+              onLoop={(l) => {
+                if (loop && Math.abs(loop.a - Math.max(0, l.start)) < 0.05) {
                   clearLoop();
-                  playRange(Math.max(0, l.start - 0.8), l.end + 0.3, () =>
-                    stopAll(),
-                  );
-                }}
-                onSaveWords=${saveWords}
-                onPlayLine=${(l) => {
-                  clearLoop();
-                  runRepeat(phraseFor(l));
-                }}
-                onLoop=${(l) => {
-                  if (
-                    loop &&
-                    Math.abs(loop.a - Math.max(0, l.start)) < 0.05
-                  ) {
-                    clearLoop();
-                    stopAll();
-                  } else startLoop(l.start, l.end + 0.3);
-                }}
-              />`
-            : html`<${MelodyMap}
-                data=${data}
-                notes=${notes}
-                tr=${tr}
-                nameOf=${nameOf}
-                phrases=${phrases}
-                lyrics=${spans}
-                loop=${loop}
-                cursor=${cursor}
-                curIdx=${curIdx}
-                onTapNote=${tapNote}
-                onSeek=${seek}
-                themeKey=${themeKey}
-                overlay=${liveLine}
-              />`}
-          ${view === "chart" &&
-          html`<${SongFit}
-            notes=${notes}
-            tr=${tr}
-            phrases=${phrases}
-            linesIn=${linesIn}
-            nameOf=${nameOf}
-            active=${active}
-            onPractice=${(ph) => {
-              clearLoop();
-              if (modeRef.current === "repeat") runRepeat(ph.i);
-              else startPlay(Math.max(0, ph.start - 0.2));
-              try {
-                coachRef.current &&
-                  coachRef.current.scrollIntoView({
-                    block: "start",
-                    behavior: "smooth",
-                  });
-              } catch (e) {}
-            }}
-            onFind=${() => {
-              saveJSON(MATCH_KEY + ".mode", "range");
-              onGo && onGo("live");
-            }}
-          />`}
-
-          <div class="flex justify-center">
-            <button class="btn" onClick=${() => onGo && onGo("karaoke")}>
+                  stopAll();
+                } else startLoop(l.start, l.end + 0.3);
+              }}
+            />
+          ) : (
+            <MelodyMap
+              data={data}
+              notes={notes}
+              tr={tr}
+              nameOf={nameOf}
+              phrases={phrases}
+              lyrics={spans}
+              loop={loop}
+              cursor={cursor}
+              curIdx={curIdx}
+              onTapNote={tapNote}
+              onSeek={seek}
+              themeKey={themeKey}
+              overlay={liveLine}
+            />
+          )}
+          {view === "chart" && (
+            <SongFit
+              notes={notes}
+              tr={tr}
+              phrases={phrases}
+              linesIn={linesIn}
+              nameOf={nameOf}
+              active={active}
+              onPractice={(ph) => {
+                clearLoop();
+                if (modeRef.current === "repeat") runRepeat(ph.i);
+                else startPlay(Math.max(0, ph.start - 0.2));
+                try {
+                  coachRef.current &&
+                    coachRef.current.scrollIntoView({
+                      block: "start",
+                      behavior: "smooth",
+                    });
+                } catch (e) {}
+              }}
+              onFind={() => {
+                saveJSON(MATCH_KEY + ".mode", "range");
+                onGo && onGo("live");
+              }}
+            />
+          )}
+          <div className="flex justify-center">
+            <button className="btn" onClick={() => onGo && onGo("karaoke")}>
               Ready? Try it in Karaoke →
             </button>
           </div>
-        <//>`}
-
-    <${TryPanel}
-      open=${!!panel}
-      line=${panel && panel.l}
-      tries=${panel ? tries[panel.pi] : null}
-      notes=${notes}
-      onClose=${() => setPanel(null)}
-      canHear=${!!(panel && takesRef.current[panel.pi])}
-      onHear=${() => panel && hearTake(panel.pi)}
-      onDrill=${(rec, info) => drillLine(panel.l, panel.pi, rec, info)}
-    />
-    <div class="playbar">
-      <button
-        class="round-btn primary"
-        onClick=${() =>
-          playing
-            ? stopAll()
-            : startPlay(turn ? phrases[turn.idx].start : cursor || 0)}
-        aria-label=${playing ? "Pause" : "Play"}
-      >
-        <${Icon} name=${playing ? "pause" : "play"} />
-      </button>
-      <span class="flex flex-col gap-1 min-w-0" style=${{ flex: 1 }}>
-        <input
-          id="practice-seek"
-          type="range"
-          min="0"
-          max=${data.duration}
-          step="0.1"
-          value=${cursor || 0}
-          onChange=${(e) => seek(parseFloat(e.target.value))}
-          aria-label="Position in the song"
-        />
-        <span class="flex justify-between gap-2 mono text-xs muted">
-          <span>${fmt(cursor || 0)}</span>
-          <span
-            >${loop
-              ? "Looping " + fmt(loop.a) + "–" + fmt(loop.b)
-              : (speed < 1 ? Math.round(speed * 100) + "% speed" : "") +
-                (tr
-                  ? (speed < 1 ? " · " : "") + "key " + signed(tr)
-                  : "")}</span
-          >
+        </React.Fragment>
+      )}
+      <TryPanel
+        open={!!panel}
+        line={panel && panel.l}
+        tries={panel ? tries[panel.pi] : null}
+        notes={notes}
+        onClose={() => setPanel(null)}
+        canHear={!!(panel && takesRef.current[panel.pi])}
+        onHear={() => panel && hearTake(panel.pi)}
+        onDrill={(rec, info) => drillLine(panel.l, panel.pi, rec, info)}
+      />
+      <div className="playbar">
+        <button
+          className="round-btn primary"
+          onClick={() =>
+            playing
+              ? stopAll()
+              : startPlay(turn ? phrases[turn.idx].start : cursor || 0)
+          }
+          aria-label={playing ? "Pause" : "Play"}
+        >
+          <Icon name={playing ? "pause" : "play"} />
+        </button>
+        <span className="flex flex-col gap-1 min-w-0" style={{ flex: 1 }}>
+          <input
+            id="practice-seek"
+            type="range"
+            min="0"
+            max={data.duration}
+            step="0.1"
+            value={cursor || 0}
+            onChange={(e) => seek(parseFloat(e.target.value))}
+            aria-label="Position in the song"
+          />
+          <span className="flex justify-between gap-2 mono text-xs muted">
+            <span>{fmt(cursor || 0)}</span>
+            <span>
+              {loop
+                ? "Looping " + fmt(loop.a) + "–" + fmt(loop.b)
+                : (speed < 1 ? Math.round(speed * 100) + "% speed" : "") +
+                  (tr ? (speed < 1 ? " · " : "") + "key " + signed(tr) : "")}
+            </span>
+          </span>
         </span>
-      </span>
-      ${loop &&
-      html`<button
-        class="icon-btn"
-        onClick=${clearLoop}
-        aria-label="Stop looping"
-        style=${{ color: "var(--accent)", borderColor: "var(--accent)" }}
+        {loop && (
+          <button
+            className="icon-btn"
+            onClick={clearLoop}
+            aria-label="Stop looping"
+            style={{ color: "var(--accent)", borderColor: "var(--accent)" }}
+          >
+            <Icon name="loop" />
+          </button>
+        )}
+        <button
+          className="icon-btn"
+          onClick={() => setOptOpen(true)}
+          aria-label="Practice options"
+        >
+          <Icon name="sliders" />
+        </button>
+      </div>
+      <Sheet
+        open={optOpen}
+        title="Practice options"
+        onClose={() => setOptOpen(false)}
       >
-        <${Icon} name="loop" />
-      </button>`}
-      <button
-        class="icon-btn"
-        onClick=${() => setOptOpen(true)}
-        aria-label="Practice options"
-      >
-        <${Icon} name="sliders" />
-      </button>
-    </div>
-
-    <${Sheet}
-      open=${optOpen}
-      title="Practice options"
-      onClose=${() => setOptOpen(false)}
-    >
-      <div class="opt-group">
-        <span class="label">Sound</span>
-        <div class="mixer" style=${{ gridTemplateColumns: "1fr" }}>
-          ${[
-            ["o", "Original vocal"],
-            ...(inst && inst.buffer ? [["m", "Music"]] : []),
-            ["g", "Guide notes"],
-          ].map(
-            ([k, l]) =>
-              html`<label key=${k} class="mix-row" for=${"lmix-" + k}>
-                <span class="text-xs font-semibold">${l}</span>
+        <div className="opt-group">
+          <span className="label">Sound</span>
+          <div className="mixer" style={{ gridTemplateColumns: "1fr" }}>
+            {[
+              ["o", "Original vocal"],
+              ...(inst && inst.buffer ? [["m", "Music"]] : []),
+              ["g", "Guide notes"],
+            ].map(([k, l]) => (
+              <label key={k} className="mix-row" htmlFor={"lmix-" + k}>
+                <span className="text-xs font-semibold">{l}</span>
                 <input
-                  id=${"lmix-" + k}
+                  id={"lmix-" + k}
                   type="range"
                   min="0"
                   max="1"
                   step="0.05"
-                  value=${mix[k]}
-                  onInput=${(e) => setVol(k, parseFloat(e.target.value))}
-                  onChange=${(e) => setVol(k, parseFloat(e.target.value))}
-                  style=${{ accentColor: "var(--accent)" }}
+                  value={mix[k]}
+                  onInput={(e) => setVol(k, parseFloat(e.target.value))}
+                  onChange={(e) => setVol(k, parseFloat(e.target.value))}
+                  style={{ accentColor: "var(--accent)" }}
                 />
                 <span
-                  class="mono text-xs muted"
-                  style=${{ width: 34, textAlign: "right" }}
-                  >${mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}</span
+                  className="mono text-xs muted"
+                  style={{ width: 34, textAlign: "right" }}
                 >
-              </label>`,
-          )}
+                  {mix[k] === 0 ? "off" : Math.round(mix[k] * 100)}
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
-      <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <div class="flex items-center gap-2">
-          <span class="label">Speed</span>
-          <div class="seg" role="group" aria-label="Speed">
-            ${[
-              [0.5, "50%"],
-              [0.75, "75%"],
-              [1, "100%"],
-            ].map(
-              ([v, l]) =>
-                html`<button
-                  key=${l}
-                  aria-pressed=${speed === v ? "true" : "false"}
-                  onClick=${() => chooseSpeed(v)}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div className="flex items-center gap-2">
+            <span className="label">Speed</span>
+            <div className="seg" role="group" aria-label="Speed">
+              {[
+                [0.5, "50%"],
+                [0.75, "75%"],
+                [1, "100%"],
+              ].map(([v, l]) => (
+                <button
+                  key={l}
+                  aria-pressed={speed === v ? "true" : "false"}
+                  onClick={() => chooseSpeed(v)}
                 >
-                  ${l}
-                </button>`,
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="label">Guide key</span>
+            <button
+              className="btn"
+              style={btn}
+              onClick={() => shiftKey(-1)}
+              aria-label="Lower the guide notes"
+            >
+              −
+            </button>
+            <span
+              className="mono text-xs"
+              style={{ minWidth: 70, textAlign: "center" }}
+            >
+              {tr === 0
+                ? "Original"
+                : signed(tr) + " " + (Math.abs(tr) === 1 ? "key" : "keys")}
+            </span>
+            <button
+              className="btn"
+              style={btn}
+              onClick={() => shiftKey(1)}
+              aria-label="Raise the guide notes"
+            >
+              +
+            </button>
+            {tr !== 0 && (
+              <button className="btn btn-ghost" style={btn} onClick={resetKey}>
+                Reset
+              </button>
             )}
           </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="label">Guide key</span>
-          <button
-            class="btn"
-            style=${btn}
-            onClick=${() => shiftKey(-1)}
-            aria-label="Lower the guide notes"
-          >
-            −
-          </button>
-          <span
-            class="mono text-xs"
-            style=${{ minWidth: 70, textAlign: "center" }}
-            >${tr === 0
-              ? "Original"
-              : signed(tr) +
-                " " +
-                (Math.abs(tr) === 1 ? "key" : "keys")}</span
-          >
-          <button
-            class="btn"
-            style=${btn}
-            onClick=${() => shiftKey(1)}
-            aria-label="Raise the guide notes"
-          >
-            +
-          </button>
-          ${tr !== 0 &&
-          html`<button class="btn btn-ghost" style=${btn} onClick=${resetKey}>
-            Reset
-          </button>`}
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="label">Names</span>
-          <div class="seg" role="group" aria-label="Note names">
-            <button
-              aria-pressed=${names === "letters" ? "true" : "false"}
-              onClick=${() => chooseNames("letters")}
-            >
-              C D E
-            </button>
-            <button
-              aria-pressed=${names === "solfege" ? "true" : "false"}
-              onClick=${() => chooseNames("solfege")}
-            >
-              Do Re Mi
-            </button>
-          </div>
-        </div>
-      </div>
-      ${(speed < 1 || (tr !== 0 && mix.o > 0)) &&
-      html`<p class="text-xs muted">
-        ${speed < 1
-          ? "Music and the original vocal only play at 100% speed, because slowing a recording down also makes it lower. The guide notes stay in tune at any speed. "
-          : ""}${tr !== 0 && mix.o > 0
-          ? "The original vocal stays in its own key; only the guide notes move."
-          : ""}
-      </p>`}
-      ${names === "solfege" &&
-      key &&
-      html`<p class="text-xs muted">
-        Do is
-        ${(key.minor ? KEY_MIN : KEY_MAJ)[key.doPc % 12]}${key.minor
-          ? ", so the song's home note is La"
-          : ", the song's home note"}.
-      </p>`}
-      ${mode === "repeat" &&
-      html`<div class="opt-group">
-        <span class="label">Repeat after me</span>
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <button
-            class="switch"
-            role="switch"
-            aria-checked=${mastery ? "true" : "false"}
-            onClick=${toggleMastery}
-            style=${{ fontSize: 13 }}
-            disabled=${!listen}
-            title=${listen ? "" : "Turn on Listen to me first"}
-          >
-            <span class="track"><span class="knob"></span></span>Move on at
-            80%+
-          </button>
-          <div class="flex items-center gap-2">
-            <span class="label">Sing-back time</span>
-            <div class="seg" role="group" aria-label="Sing-back time">
-              ${[
-                [0, "Normal"],
-                [1, "+1 s"],
-                [2, "+2 s"],
-              ].map(
-                ([v, l]) =>
-                  html`<button
-                    key=${l}
-                    aria-pressed=${moreTime === v ? "true" : "false"}
-                    onClick=${() => chooseMoreTime(v)}
-                  >
-                    ${l}
-                  </button>`,
-              )}
+          <div className="flex items-center gap-2">
+            <span className="label">Names</span>
+            <div className="seg" role="group" aria-label="Note names">
+              <button
+                aria-pressed={names === "letters" ? "true" : "false"}
+                onClick={() => chooseNames("letters")}
+              >
+                C D E
+              </button>
+              <button
+                aria-pressed={names === "solfege" ? "true" : "false"}
+                onClick={() => chooseNames("solfege")}
+              >
+                Do Re Mi
+              </button>
             </div>
           </div>
         </div>
-        ${listen &&
-        html`<p class="text-xs muted">
-          The app listens only during "Sing it back" and scores each try. Your
-          line shows in blue on the melody. Two tries of 85% or more in a row
-          mark a phrase as learned.
-        </p>`}
-      </div>`}
-    <//>
-  </div>`;
+        {(speed < 1 || (tr !== 0 && mix.o > 0)) && (
+          <p className="text-xs muted">
+            {speed < 1
+              ? "Music and the original vocal only play at 100% speed, because slowing a recording down also makes it lower. The guide notes stay in tune at any speed. "
+              : ""}
+            {tr !== 0 && mix.o > 0
+              ? "The original vocal stays in its own key; only the guide notes move."
+              : ""}
+          </p>
+        )}
+        {names === "solfege" && key && (
+          <p className="text-xs muted">
+            Do is{(key.minor ? KEY_MIN : KEY_MAJ)[key.doPc % 12]}
+            {key.minor
+              ? ", so the song's home note is La"
+              : ", the song's home note"}
+            .
+          </p>
+        )}
+        {mode === "repeat" && (
+          <div className="opt-group">
+            <span className="label">Repeat after me</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <button
+                className="switch"
+                role="switch"
+                aria-checked={mastery ? "true" : "false"}
+                onClick={toggleMastery}
+                style={{ fontSize: 13 }}
+                disabled={!listen}
+                title={listen ? "" : "Turn on Listen to me first"}
+              >
+                <span className="track">
+                  <span className="knob" />
+                </span>
+                {"Move on at\n            80%+"}
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="label">Sing-back time</span>
+                <div className="seg" role="group" aria-label="Sing-back time">
+                  {[
+                    [0, "Normal"],
+                    [1, "+1 s"],
+                    [2, "+2 s"],
+                  ].map(([v, l]) => (
+                    <button
+                      key={l}
+                      aria-pressed={moreTime === v ? "true" : "false"}
+                      onClick={() => chooseMoreTime(v)}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {listen && (
+              <p className="text-xs muted">
+                {
+                  'The app listens only during "Sing it back" and scores each try. Your\n          line shows in blue on the melody. Two tries of 85% or more in a row\n          mark a phrase as learned.'
+                }
+              </p>
+            )}
+          </div>
+        )}
+      </Sheet>
+    </div>
+  );
 }
 
 /* ---------- note matching (Tuner tab) ---------- */

@@ -113,7 +113,14 @@ export function usNotesFor(entry, data) {
   return ns.map((n) => ({ ...n, midi: n.midi + sh }));
 }
 
-export function toUltraStar({ title, artist, audio, instrumental, notes, spans }) {
+export function toUltraStar({
+  title,
+  artist,
+  audio,
+  instrumental,
+  notes,
+  spans,
+}) {
   const spb = 0.05,
     gapMs = Math.max(0, Math.round((notes.length ? notes[0].pos : 0) * 1000));
   const beat = (t) => Math.max(0, Math.round((t - gapMs / 1000) / spb));

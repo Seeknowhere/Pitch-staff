@@ -2,13 +2,31 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { Icon } from "../../components/Icon.jsx";
 import { UploadSlot } from "../../components/UploadSlot.jsx";
-import { html } from "../../html.js";
-import { mapTime, fixedMap, detectKeyAndOffset, GRID, loadSessions, warpTake, invTime, compare, trackPitch, scheduleGuide, SESS_KEY, decodeFile } from "../../lib/analysis.js";
+import {
+  mapTime,
+  fixedMap,
+  detectKeyAndOffset,
+  GRID,
+  loadSessions,
+  warpTake,
+  invTime,
+  compare,
+  trackPitch,
+  scheduleGuide,
+  SESS_KEY,
+  decodeFile,
+} from "../../lib/analysis.js";
 import { lyricSpans } from "../../lib/lyrics.js";
 import { fmt } from "../../lib/music.js";
 import { buildPhrases } from "../../lib/phrases.js";
 import { savePlan, makePlan } from "../../lib/plan.js";
-import { loadRuns, analyzeRun, loadLastRun, saveLastRun, addRun } from "../../lib/runs.js";
+import {
+  loadRuns,
+  analyzeRun,
+  loadLastRun,
+  saveLastRun,
+  addRun,
+} from "../../lib/runs.js";
 import { loadJSON, saveJSON } from "../../lib/storage.js";
 import { technique } from "../../lib/technique.js";
 import { loadTries } from "../../lib/tries.js";
@@ -39,9 +57,7 @@ export function Analyst({
   const [take, setTake] = useState(null);
   const [off, setOff] = useState(0);
   const [octaveFree, setOctaveFree] = useState(true);
-  const [warp, setWarp] = useState(() =>
-    loadJSON("pitchstaff.warp.v1", false),
-  );
+  const [warp, setWarp] = useState(() => loadJSON("pitchstaff.warp.v1", false));
   useEffect(() => saveJSON("pitchstaff.warp.v1", warp), [warp]);
   const [keyFree, setKeyFree] = useState(false); // judge against the song's own key, like Practice does
   const [ks, setKs] = useState(0);
@@ -256,9 +272,7 @@ export function Analyst({
     const hasMusic = !!(inst && inst.buffer);
     const map = result.map,
       takeOnly = mx.o === 0 && mx.g === 0 && !(hasMusic && (mx.m || 0) > 0);
-    let end = takeOnly
-      ? invTime(map, take.data.duration)
-      : orig.data.duration;
+    let end = takeOnly ? invTime(map, take.data.duration) : orig.data.duration;
     if (loop) {
       end = Math.min(end, loop.b);
       if (t < loop.a - 0.5 || t >= loop.b) t = loop.a - 0.3;
@@ -295,8 +309,7 @@ export function Analyst({
     };
     if (!takeOnly) {
       p.origSrc = make(orig.buffer, t, now, p.gO);
-      if (hasMusic)
-        p.musicSrc = make(inst.buffer, t + (sync || 0), now, p.gM);
+      if (hasMusic) p.musicSrc = make(inst.buffer, t + (sync || 0), now, p.gM);
       p.guide = scheduleGuide(
         ctx,
         p.gG,
@@ -545,229 +558,245 @@ export function Analyst({
   ];
   const takeIsFromKaraoke =
     take && take.name && /^Karaoke take/.test(take.name);
-  return html`<div class="flex flex-col gap-4">
-    ${!(take && (take.data || take.busy))
-      ? html`<section class="flex flex-col gap-3">
-          <div class="empty-hero">
-            <h2 class="display text-2xl font-bold">Check a whole-song run</h2>
-            <p class="muted text-sm">
-              Use your last Karaoke take or upload a recording of you singing
-              this song. Every line gets checked, weakest first.
+  return (
+    <div className="flex flex-col gap-4">
+      {!(take && (take.data || take.busy)) ? (
+        <section className="flex flex-col gap-3">
+          <div className="empty-hero">
+            <h2 className="display text-2xl font-bold">
+              Check a whole-song run
+            </h2>
+            <p className="muted text-sm">
+              {
+                "Use your last Karaoke take or upload a recording of you singing\n              this song. Every line gets checked, weakest first."
+              }
             </p>
           </div>
-          ${lastTake &&
-          html`<button
-            class="file-row"
-            style=${{
-              cursor: "pointer",
-              textAlign: "left",
-              color: "var(--fg)",
-              font: "inherit",
-            }}
-            onClick=${() => onUseTake && onUseTake(lastTake)}
-          >
-            <span class="song-ico"><${Icon} name="mic" /></span>
-            <span class="flex flex-col min-w-0" style=${{ flex: 1 }}
-              ><span class="font-semibold">Use my last Karaoke take</span
-              ><span class="text-xs muted"
-                >${lastTake.name.replace(
-                  /^Karaoke take · /,
-                  "Recorded ",
-                )}</span
-              ></span
+          {lastTake && (
+            <button
+              className="file-row"
+              style={{
+                cursor: "pointer",
+                textAlign: "left",
+                color: "var(--fg)",
+                font: "inherit",
+              }}
+              onClick={() => onUseTake && onUseTake(lastTake)}
             >
-            <span
-              class="btn btn-primary"
-              style=${{ padding: "6px 14px", fontSize: 13 }}
-              >Use</span
-            >
-          </button>`}
-          <div class="grid gap-4">
-            <${UploadSlot}
+              <span className="song-ico">
+                <Icon name="mic" />
+              </span>
+              <span className="flex flex-col min-w-0" style={{ flex: 1 }}>
+                <span className="font-semibold">Use my last Karaoke take</span>
+                <span className="text-xs muted">
+                  {lastTake.name.replace(/^Karaoke take · /, "Recorded ")}
+                </span>
+              </span>
+              <span
+                className="btn btn-primary"
+                style={{ padding: "6px 14px", fontSize: 13 }}
+              >
+                Use
+              </span>
+            </button>
+          )}
+          <div className="grid gap-4">
+            <UploadSlot
               id="take-file"
-              step=${lastTake ? "or" : "1"}
+              step={lastTake ? "or" : "1"}
               title="Upload a recording"
               hint="A recording of you singing the same part, like a Voice Memo. Record somewhere quiet, ideally with headphones so the music isn't picked up."
-              slot=${take}
-              onPick=${(f) => pick("take", f)}
+              slot={take}
+              onPick={(f) => pick("take", f)}
             />
           </div>
-          ${!lastTake &&
-          html`<p class="text-xs muted">
-            Tip: sing in Karaoke with headphones and your take comes straight
-            here.
-          </p>`}
-        </section>`
-      : html`<div class="flex items-center gap-3">
-          <span class="song-ico"><${Icon} name="mic" /></span>
-          <span class="flex flex-col min-w-0" style=${{ flex: 1 }}>
+          {!lastTake && (
+            <p className="text-xs muted">
+              {
+                "Tip: sing in Karaoke with headphones and your take comes straight\n            here."
+              }
+            </p>
+          )}
+        </section>
+      ) : (
+        <div className="flex items-center gap-3">
+          <span className="song-ico">
+            <Icon name="mic" />
+          </span>
+          <span className="flex flex-col min-w-0" style={{ flex: 1 }}>
             <span
-              class="font-semibold text-sm"
-              style=${{ overflowWrap: "anywhere" }}
-              >${take.name}</span
+              className="font-semibold text-sm"
+              style={{ overflowWrap: "anywhere" }}
             >
-            <span class="text-xs muted"
-              >${take.busy
+              {take.name}
+            </span>
+            <span className="text-xs muted">
+              {take.busy
                 ? "Analyzing " + Math.round((take.progress || 0) * 100) + "%"
                 : result && result.range && !result.range.whole
                   ? "Sung " +
                     fmt(result.range.start) +
                     "–" +
                     fmt(result.range.end)
-                  : "Your singing"}</span
-            >
+                  : "Your singing"}
+            </span>
           </span>
           <button
-            class="btn"
-            style=${{ padding: "7px 14px", fontSize: 13 }}
-            onClick=${() => {
+            className="btn"
+            style={{ padding: "7px 14px", fontSize: 13 }}
+            onClick={() => {
               stopPlay();
               setTake(null);
             }}
           >
             Change take
           </button>
-        </div>`}
-    ${ready &&
-    result &&
-    html`<section class="flex flex-col gap-2">
-      <div class="flex items-center justify-between gap-2 flex-wrap">
-        <span class="label">Whole take</span>
-        <div class="seg" role="group" aria-label="Listen to">
-          ${[
-            ["me", "Me"],
-            ["song", "Song"],
-            ["both", "Both"],
-          ].map(
-            ([k, l]) =>
-              html`<button
-                key=${k}
-                aria-pressed=${listenMode === k ? "true" : "false"}
-                onClick=${() => chooseListen(k)}
-              >
-                ${l}
-              </button>`,
-          )}
         </div>
-      </div>
-      <${RollChart}
-        orig=${orig.data}
-        take=${take.data}
-        result=${result}
-        cursor=${cursor}
-        onSeek=${seek}
-        themeKey=${themeKey}
-        lyrics=${spans}
-        loop=${loop}
-      />
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs muted">
-        <span class="flex items-center gap-1"
-          ><span
-            style=${{
-              display: "inline-block",
-              width: 16,
-              height: 6,
-              borderRadius: 3,
-              background: "var(--fg)",
-              opacity: 0.3,
-            }}
-          ></span
-          >Song</span
-        >
-        <span class="flex items-center gap-1"
-          ><span
-            style=${{
-              display: "inline-block",
-              width: 16,
-              height: 3,
-              background: "var(--good)",
-            }}
-          ></span
-          >You, right</span
-        >
-        <span class="flex items-center gap-1"
-          ><span
-            style=${{
-              display: "inline-block",
-              width: 16,
-              height: 3,
-              background: "var(--warn)",
-            }}
-          ></span
-          >A bit off ↑↓</span
-        >
-        <span class="flex items-center gap-1"
-          ><span
-            style=${{
-              display: "inline-block",
-              width: 16,
-              height: 3,
-              background: "var(--bad)",
-            }}
-          ></span
-          >Other note (yours in red)</span
-        >
-        <span>Tap the chart to jump there.</span>
-      </div>
-      <div class="playbar">
-        <button
-          class="round-btn primary"
-          onClick=${() => (playing ? stopPlay() : startPlay(cursor || 0))}
-          aria-label=${playing ? "Pause" : "Play"}
-        >
-          <${Icon} name=${playing ? "pause" : "play"} />
-        </button>
-        <span class="flex flex-col gap-1 min-w-0" style=${{ flex: 1 }}>
-          <input
-            id="an-seek"
-            type="range"
-            min="0"
-            max=${orig.data.duration}
-            step="0.1"
-            value=${cursor || 0}
-            onChange=${(e) => seek(parseFloat(e.target.value))}
-            aria-label="Position in the song"
+      )}
+      {ready && result && (
+        <section className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="label">Whole take</span>
+            <div className="seg" role="group" aria-label="Listen to">
+              {[
+                ["me", "Me"],
+                ["song", "Song"],
+                ["both", "Both"],
+              ].map(([k, l]) => (
+                <button
+                  key={k}
+                  aria-pressed={listenMode === k ? "true" : "false"}
+                  onClick={() => chooseListen(k)}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <RollChart
+            orig={orig.data}
+            take={take.data}
+            result={result}
+            cursor={cursor}
+            onSeek={seek}
+            themeKey={themeKey}
+            lyrics={spans}
+            loop={loop}
           />
-          <span class="flex justify-between gap-2 mono text-xs muted"
-            ><span>${fmt(cursor || 0)} / ${fmt(orig.data.duration)}</span
-            ><span
-              >${listenMode === "me"
-                ? "Just me"
-                : listenMode === "song"
-                  ? "The song"
-                  : "Me + the song"}</span
-            ></span
-          >
-        </span>
-      </div>
-    </section>`}
-    ${orig &&
-    orig.data &&
-    html`<${AnalyzeView}
-      songName=${songName}
-      notes=${orig.data.notes}
-      phrases=${phrasesA}
-      spans=${spans}
-      run=${shownRun}
-      runs=${runs}
-      tries=${triesA}
-      canHear=${!!(liveRun && runMeta && take && take.buffer)}
-      onHearMe=${(rec) =>
-        take && rec.clip && playClip(take.buffer, rec.clip[0], rec.clip[1])}
-      onHearSong=${(ph) =>
-        playClip(orig.buffer, ph.start - 0.3, ph.end + 0.3)}
-      onPractise=${(ph) => {
-        stopPlay();
-        onPractice && onPractice(ph.start, ph.end, true);
-      }}
-      planDraft=${liveRun ? planDraft : null}
-      onPlan=${() => {
-        stopPlay();
-        savePlan(orig.name, planDraft);
-        onGo && onGo("learn");
-      }}
-    />`}
-  </div>`;
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs muted">
+            <span className="flex items-center gap-1">
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 16,
+                  height: 6,
+                  borderRadius: 3,
+                  background: "var(--fg)",
+                  opacity: 0.3,
+                }}
+              />
+              Song
+            </span>
+            <span className="flex items-center gap-1">
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 16,
+                  height: 3,
+                  background: "var(--good)",
+                }}
+              />
+              You, right
+            </span>
+            <span className="flex items-center gap-1">
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 16,
+                  height: 3,
+                  background: "var(--warn)",
+                }}
+              />
+              A bit off ↑↓
+            </span>
+            <span className="flex items-center gap-1">
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 16,
+                  height: 3,
+                  background: "var(--bad)",
+                }}
+              />
+              Other note (yours in red)
+            </span>
+            <span>Tap the chart to jump there.</span>
+          </div>
+          <div className="playbar">
+            <button
+              className="round-btn primary"
+              onClick={() => (playing ? stopPlay() : startPlay(cursor || 0))}
+              aria-label={playing ? "Pause" : "Play"}
+            >
+              <Icon name={playing ? "pause" : "play"} />
+            </button>
+            <span className="flex flex-col gap-1 min-w-0" style={{ flex: 1 }}>
+              <input
+                id="an-seek"
+                type="range"
+                min="0"
+                max={orig.data.duration}
+                step="0.1"
+                value={cursor || 0}
+                onChange={(e) => seek(parseFloat(e.target.value))}
+                aria-label="Position in the song"
+              />
+              <span className="flex justify-between gap-2 mono text-xs muted">
+                <span>
+                  {fmt(cursor || 0)} / {fmt(orig.data.duration)}
+                </span>
+                <span>
+                  {listenMode === "me"
+                    ? "Just me"
+                    : listenMode === "song"
+                      ? "The song"
+                      : "Me + the song"}
+                </span>
+              </span>
+            </span>
+          </div>
+        </section>
+      )}
+      {orig && orig.data && (
+        <AnalyzeView
+          songName={songName}
+          notes={orig.data.notes}
+          phrases={phrasesA}
+          spans={spans}
+          run={shownRun}
+          runs={runs}
+          tries={triesA}
+          canHear={!!(liveRun && runMeta && take && take.buffer)}
+          onHearMe={(rec) =>
+            take && rec.clip && playClip(take.buffer, rec.clip[0], rec.clip[1])
+          }
+          onHearSong={(ph) =>
+            playClip(orig.buffer, ph.start - 0.3, ph.end + 0.3)
+          }
+          onPractise={(ph) => {
+            stopPlay();
+            onPractice && onPractice(ph.start, ph.end, true);
+          }}
+          planDraft={liveRun ? planDraft : null}
+          onPlan={() => {
+            stopPlay();
+            savePlan(orig.name, planDraft);
+            onGo && onGo("learn");
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 /* ---------- shared song pieces ---------- */

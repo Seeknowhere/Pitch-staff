@@ -4,7 +4,6 @@ import { Dial } from "../../components/Dial.jsx";
 import { Icon } from "../../components/Icon.jsx";
 import { Keyboard } from "../../components/Keyboard.jsx";
 import { Sheet } from "../../components/Sheet.jsx";
-import { html } from "../../html.js";
 import { playPiano, playChime } from "../../lib/audio.js";
 import { signed, pretty, midiInfo } from "../../lib/music.js";
 import { loadJSON, saveJSON, MATCH_KEY } from "../../lib/storage.js";
@@ -136,10 +135,7 @@ export function MatchTrainer({
     setHold(0);
     if (!s.matched) {
       setPhase("listen");
-      later(
-        () => setPhase((p) => (p === "listen" ? "sing" : p)),
-        PIANO_QUIET,
-      );
+      later(() => setPhase((p) => (p === "listen" ? "sing" : p)), PIANO_QUIET);
     }
     playPiano(ctx(), s.target);
   };
@@ -202,8 +198,7 @@ export function MatchTrainer({
   }, [target, cents, hold, tol, phase]);
   let hint,
     tone = "muted";
-  if (target == null)
-    hint = "Pick a note on the keyboard, or tap Random note.";
+  if (target == null) hint = "Pick a note on the keyboard, or tap Random note.";
   else if (phase === "hit") {
     hint = "Matched!";
     tone = "good";
@@ -240,20 +235,23 @@ export function MatchTrainer({
       onTarget(null);
     }
   };
-  const startBtn = html`<button
-    class="btn btn-primary"
-    style=${{
-      minHeight: 52,
-      fontSize: 16,
-      padding: "0 22px",
-      justifyContent: "center",
-    }}
-    onClick=${onStartMic}
-  >
-    <span class="flex items-center gap-2"
-      ><${Icon} name="mic" size=${20} />Tap to start listening</span
+  const startBtn = (
+    <button
+      className="btn btn-primary"
+      style={{
+        minHeight: 52,
+        fontSize: 16,
+        padding: "0 22px",
+        justifyContent: "center",
+      }}
+      onClick={onStartMic}
     >
-  </button>`;
+      <span className="flex items-center gap-2">
+        <Icon name="mic" size={20} />
+        Tap to start listening
+      </span>
+    </button>
+  );
   const freeTone = !live
     ? "muted"
     : Math.abs(live.cents) <= 10
@@ -265,423 +263,454 @@ export function MatchTrainer({
   const sungInfo = sung != null ? midiInfo(sung) : null;
   const ringC = 2 * Math.PI * 50;
 
-  return html`<div class="tuner-screen">
-    <div class="flex items-center gap-2">
-      <div
-        class="mode-seg"
-        role="group"
-        aria-label="Tuner mode"
-        style=${{ flex: 1, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}
-      >
-        <button
-          aria-pressed=${tmode === "free" ? "true" : "false"}
-          onClick=${() => switchMode("free")}
+  return (
+    <div className="tuner-screen">
+      <div className="flex items-center gap-2">
+        <div
+          className="mode-seg"
+          role="group"
+          aria-label="Tuner mode"
+          style={{ flex: 1, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}
         >
-          Free
-        </button>
-        <button
-          aria-pressed=${tmode === "match" ? "true" : "false"}
-          onClick=${() => switchMode("match")}
-        >
-          Match a note
-        </button>
-        <button
-          aria-pressed=${tmode === "range" ? "true" : "false"}
-          onClick=${() => switchMode("range")}
-        >
-          My range
-        </button>
+          <button
+            aria-pressed={tmode === "free" ? "true" : "false"}
+            onClick={() => switchMode("free")}
+          >
+            Free
+          </button>
+          <button
+            aria-pressed={tmode === "match" ? "true" : "false"}
+            onClick={() => switchMode("match")}
+          >
+            Match a note
+          </button>
+          <button
+            aria-pressed={tmode === "range" ? "true" : "false"}
+            onClick={() => switchMode("range")}
+          >
+            My range
+          </button>
+        </div>
       </div>
-    </div>
-    ${error && html`<div class="notice" role="alert">${error}</div>`}
-    ${tmode === "range"
-      ? html`<${RangeFinder}
-          feedRef=${rangeFeed}
-          listening=${listening}
-          onStartMic=${onStartMic}
-          onStopMic=${onStopMic}
-        />`
-      : tmode === "free"
-        ? html`<${React.Fragment}>
-            <section class="tuner-card" style=${{ flex: 1 }}>
-              <${Dial}
-                cents=${live ? live.cents : null}
-                tol=${10}
-                tone=${freeTone}
-                lowLabel="−50¢"
-                highLabel="+50¢"
-              />
-              ${listening
-                ? html`<div class="flex flex-col items-center gap-1">
-                    <span class="flex items-start gap-1">
-                      <span
-                        class="display font-bold"
-                        style=${{
-                          fontSize: 88,
-                          lineHeight: 0.9,
-                          color: lInfo
-                            ? "var(--" + freeTone + ")"
-                            : "var(--muted)",
-                        }}
-                        >${lInfo
-                          ? lInfo.letter + (lInfo.sharp ? "♯" : "")
-                          : "—"}</span
-                      >
-                      ${lInfo &&
-                      html`<span
-                        class="mono font-semibold"
-                        style=${{ fontSize: 30, marginTop: 44 }}
-                        >${lInfo.octave}</span
-                      >`}
+      {error && (
+        <div className="notice" role="alert">
+          {error}
+        </div>
+      )}
+      {tmode === "range" ? (
+        <RangeFinder
+          feedRef={rangeFeed}
+          listening={listening}
+          onStartMic={onStartMic}
+          onStopMic={onStopMic}
+        />
+      ) : tmode === "free" ? (
+        <React.Fragment>
+          <section className="tuner-card" style={{ flex: 1 }}>
+            <Dial
+              cents={live ? live.cents : null}
+              tol={10}
+              tone={freeTone}
+              lowLabel="−50¢"
+              highLabel="+50¢"
+            />
+            {listening ? (
+              <div className="flex flex-col items-center gap-1">
+                <span className="flex items-start gap-1">
+                  <span
+                    className="display font-bold"
+                    style={{
+                      fontSize: 88,
+                      lineHeight: 0.9,
+                      color: lInfo ? "var(--" + freeTone + ")" : "var(--muted)",
+                    }}
+                  >
+                    {lInfo ? lInfo.letter + (lInfo.sharp ? "♯" : "") : "—"}
+                  </span>
+                  {lInfo && (
+                    <span
+                      className="mono font-semibold"
+                      style={{ fontSize: 30, marginTop: 44 }}
+                    >
+                      {lInfo.octave}
                     </span>
-                    <span class="mono text-sm muted"
-                      >${live
-                        ? live.freq.toFixed(1) +
-                          " Hz · " +
-                          signed(live.cents) +
-                          "¢"
-                        : "Sing or play a note"}</span
-                    >
-                    ${live &&
-                    html`<span
-                      class=${"tag tag-" + freeTone}
-                      style=${{ fontSize: 13, padding: "4px 12px" }}
-                      >${Math.abs(live.cents) <= 10
-                        ? "In tune"
-                        : live.cents > 0
-                          ? "A little sharp"
-                          : "A little flat"}</span
-                    >`}
-                  </div>`
-                : html`<div class="flex flex-col items-center gap-3 py-2">
-                    ${startBtn}<span class="text-xs muted"
-                      >See which note you're singing, and how close you
-                      are.</span
-                    >
-                  </div>`}
-            </section>
-            ${listening &&
-            html`<div class="listen-bar">
-              <span class="flex items-center gap-2 text-sm"
-                ><span class="rec-dot"></span>Listening</span
-              >
-              <span class="level" style=${{ flex: 1, height: 5 }}
-                ><div style=${{ width: level * 100 + "%" }}></div
-              ></span>
+                  )}
+                </span>
+                <span className="mono text-sm muted">
+                  {live
+                    ? live.freq.toFixed(1) + " Hz · " + signed(live.cents) + "¢"
+                    : "Sing or play a note"}
+                </span>
+                {live && (
+                  <span
+                    className={"tag tag-" + freeTone}
+                    style={{ fontSize: 13, padding: "4px 12px" }}
+                  >
+                    {Math.abs(live.cents) <= 10
+                      ? "In tune"
+                      : live.cents > 0
+                        ? "A little sharp"
+                        : "A little flat"}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-2">
+                {startBtn}
+                <span className="text-xs muted">
+                  {
+                    "See which note you're singing, and how close you\n                      are."
+                  }
+                </span>
+              </div>
+            )}
+          </section>
+          {listening && (
+            <div className="listen-bar">
+              <span className="flex items-center gap-2 text-sm">
+                <span className="rec-dot" />
+                Listening
+              </span>
+              <span className="level" style={{ flex: 1, height: 5 }}>
+                <div style={{ width: level * 100 + "%" }} />
+              </span>
               <button
-                class="btn"
-                style=${{ padding: "6px 12px", fontSize: 13 }}
-                onClick=${onStopMic}
+                className="btn"
+                style={{ padding: "6px 12px", fontSize: 13 }}
+                onClick={onStopMic}
               >
                 Stop
               </button>
-            </div>`}
-          <//>`
-        : html`<${React.Fragment}>
-            <div class="flex flex-wrap gap-2">
-              <span class="chip"
-                ><span class="muted text-xs">Streak</span
-                ><b class="mono">${streak}</b></span
-              >
-              <span class="chip"
-                ><span class="muted text-xs">Last</span
-                ><b class="mono"
-                  >${lastTime == null ? "—" : lastTime.toFixed(1) + " s"}</b
-                ></span
-              >
-              <span class="chip"
-                ><span class="muted text-xs">Best</span
-                ><b class="mono"
-                  >${stats.best == null
-                    ? "—"
-                    : stats.best.toFixed(1) + " s"}</b
-                ></span
-              >
             </div>
-            <section class=${"tuner-card" + (phase === "hit" ? " hit" : "")}>
-              <${Dial}
-                cents=${target != null && listening && phase !== "listen"
+          )}
+        </React.Fragment>
+      ) : (
+        <React.Fragment>
+          <div className="flex flex-wrap gap-2">
+            <span className="chip">
+              <span className="muted text-xs">Streak</span>
+              <b className="mono">{streak}</b>
+            </span>
+            <span className="chip">
+              <span className="muted text-xs">Last</span>
+              <b className="mono">
+                {lastTime == null ? "—" : lastTime.toFixed(1) + " s"}
+              </b>
+            </span>
+            <span className="chip">
+              <span className="muted text-xs">Best</span>
+              <b className="mono">
+                {stats.best == null ? "—" : stats.best.toFixed(1) + " s"}
+              </b>
+            </span>
+          </div>
+          <section className={"tuner-card" + (phase === "hit" ? " hit" : "")}>
+            <Dial
+              cents={
+                target != null && listening && phase !== "listen"
                   ? phase === "hit"
                     ? 0
                     : cents
-                  : null}
-                tol=${tol}
-                tone=${phase === "hit" ||
-                (cents != null && Math.abs(cents) <= tol)
+                  : null
+              }
+              tol={tol}
+              tone={
+                phase === "hit" || (cents != null && Math.abs(cents) <= tol)
                   ? "good"
-                  : "warn"}
-                lowLabel="too low"
-                highLabel="too high"
-                zoneSoft=${true}
-              />
-              <div
-                class="flex items-center justify-center gap-5"
-                style=${{ minHeight: 112 }}
+                  : "warn"
+              }
+              lowLabel="too low"
+              highLabel="too high"
+              zoneSoft={true}
+            />
+            <div
+              className="flex items-center justify-center gap-5"
+              style={{ minHeight: 112 }}
+            >
+              <span
+                style={{
+                  position: "relative",
+                  width: 112,
+                  height: 112,
+                  flexShrink: 0,
+                }}
               >
+                <svg
+                  width="112"
+                  height="112"
+                  viewBox="0 0 112 112"
+                  role="img"
+                  aria-label={
+                    "Hold progress " +
+                    Math.round((phase === "hit" ? 1 : hold) * 100) +
+                    " percent"
+                  }
+                >
+                  <circle
+                    cx="56"
+                    cy="56"
+                    r="50"
+                    fill={
+                      phase === "hit"
+                        ? "color-mix(in srgb, var(--good) 18%, transparent)"
+                        : "none"
+                    }
+                    stroke="var(--line)"
+                    strokeWidth="6"
+                  />
+                  <circle
+                    cx="56"
+                    cy="56"
+                    r="50"
+                    fill="none"
+                    stroke="var(--good)"
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                    strokeDasharray={
+                      (ringC * (phase === "hit" ? 1 : hold)).toFixed(1) +
+                      " " +
+                      ringC.toFixed(1)
+                    }
+                    transform="rotate(-90 56 56)"
+                  />
+                </svg>
                 <span
-                  style=${{
-                    position: "relative",
-                    width: 112,
-                    height: 112,
-                    flexShrink: 0,
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
-                  <svg
-                    width="112"
-                    height="112"
-                    viewBox="0 0 112 112"
-                    role="img"
-                    aria-label=${"Hold progress " +
-                    Math.round((phase === "hit" ? 1 : hold) * 100) +
-                    " percent"}
-                  >
-                    <circle
-                      cx="56"
-                      cy="56"
-                      r="50"
-                      fill=${phase === "hit"
-                        ? "color-mix(in srgb, var(--good) 18%, transparent)"
-                        : "none"}
-                      stroke="var(--line)"
-                      strokeWidth="6"
-                    ></circle>
-                    <circle
-                      cx="56"
-                      cy="56"
-                      r="50"
-                      fill="none"
-                      stroke="var(--good)"
-                      strokeWidth="6"
-                      strokeLinecap="round"
-                      strokeDasharray=${(
-                        ringC * (phase === "hit" ? 1 : hold)
-                      ).toFixed(1) +
-                      " " +
-                      ringC.toFixed(1)}
-                      transform="rotate(-90 56 56)"
-                    ></circle>
-                  </svg>
+                  <span className="label" style={{ fontSize: 10 }}>
+                    Target
+                  </span>
                   <span
-                    style=${{
-                      position: "absolute",
-                      inset: 0,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
+                    className="display font-bold"
+                    style={{
+                      fontSize: 38,
+                      lineHeight: 1,
+                      color:
+                        phase === "hit"
+                          ? "var(--good)"
+                          : tInfo
+                            ? "var(--fg)"
+                            : "var(--muted)",
                     }}
                   >
-                    <span class="label" style=${{ fontSize: 10 }}
-                      >Target</span
-                    >
-                    <span
-                      class="display font-bold"
-                      style=${{
-                        fontSize: 38,
-                        lineHeight: 1,
-                        color:
-                          phase === "hit"
-                            ? "var(--good)"
-                            : tInfo
-                              ? "var(--fg)"
-                              : "var(--muted)",
-                      }}
-                      >${tInfo ? pretty(tInfo.label) : "—"}</span
-                    >
+                    {tInfo ? pretty(tInfo.label) : "—"}
                   </span>
                 </span>
-                <span class="flex flex-col gap-1 min-w-0">
-                  ${listening &&
-                  target != null &&
-                  phase !== "listen" &&
-                  html`<span class="text-xs muted">You're singing</span>
+              </span>
+              <span className="flex flex-col gap-1 min-w-0">
+                {listening && target != null && phase !== "listen" && (
+                  <>
+                    <span className="text-xs muted">You're singing</span>
                     <span
-                      class="display font-bold"
-                      style=${{ fontSize: 24, color: "var(--you)" }}
-                      >${sungInfo ? pretty(sungInfo.label) : "—"}</span
-                    >`}
-                  <span
-                    class="display font-bold"
-                    style=${{
-                      fontSize: 21,
-                      lineHeight: 1.2,
-                      color: "var(--" + tone + ")",
-                    }}
-                    aria-live="polite"
-                    >${hint}</span
-                  >
-                </span>
-              </div>
-              ${!listening &&
-              target != null &&
-              html`<div class="flex justify-center">${startBtn}</div>`}
-            </section>
-
-            <div class="tuner-actions">
-              <button
-                class="btn btn-primary"
-                style=${{ justifyContent: "center", minHeight: 44 }}
-                onClick=${random}
-              >
-                Random
-              </button>
-              <button
-                class="btn"
-                style=${{ justifyContent: "center", minHeight: 44 }}
-                onClick=${replay}
-                disabled=${target == null}
-              >
-                Play again
-              </button>
-              <button
-                class=${"btn" + (listening ? "" : "")}
-                style=${{ justifyContent: "center", minHeight: 44 }}
-                onClick=${listening ? onStopMic : onStartMic}
-                aria-label=${listening ? "Stop listening" : "Start listening"}
-              >
-                <span class="flex items-center gap-2"
-                  >${listening
-                    ? html`<span class="rec-dot"></span>On`
-                    : html`<${Icon} name="mic" size=${18} />Off`}</span
+                      className="display font-bold"
+                      style={{ fontSize: 24, color: "var(--you)" }}
+                    >
+                      {sungInfo ? pretty(sungInfo.label) : "—"}
+                    </span>
+                  </>
+                )}
+                <span
+                  className="display font-bold"
+                  style={{
+                    fontSize: 21,
+                    lineHeight: 1.2,
+                    color: "var(--" + tone + ")",
+                  }}
+                  aria-live="polite"
                 >
-              </button>
+                  {hint}
+                </span>
+              </span>
+            </div>
+            {!listening && target != null && (
+              <div className="flex justify-center">{startBtn}</div>
+            )}
+          </section>
+          <div className="tuner-actions">
+            <button
+              className="btn btn-primary"
+              style={{ justifyContent: "center", minHeight: 44 }}
+              onClick={random}
+            >
+              Random
+            </button>
+            <button
+              className="btn"
+              style={{ justifyContent: "center", minHeight: 44 }}
+              onClick={replay}
+              disabled={target == null}
+            >
+              Play again
+            </button>
+            <button
+              className={"btn" + (listening ? "" : "")}
+              style={{ justifyContent: "center", minHeight: 44 }}
+              onClick={listening ? onStopMic : onStartMic}
+              aria-label={listening ? "Stop listening" : "Start listening"}
+            >
+              <span className="flex items-center gap-2">
+                {listening ? (
+                  <>
+                    <span className="rec-dot" />
+                    On
+                  </>
+                ) : (
+                  <>
+                    <Icon name="mic" size={18} />
+                    Off
+                  </>
+                )}
+              </span>
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => setOptOpen(true)}
+              aria-label="Tuner options"
+            >
+              <Icon name="sliders" />
+            </button>
+          </div>
+          <section
+            className="flex flex-col gap-2"
+            style={{ marginTop: "auto" }}
+            aria-label="Piano keyboard"
+          >
+            <div className="flex items-center justify-between">
               <button
-                class="icon-btn"
-                onClick=${() => setOptOpen(true)}
-                aria-label="Tuner options"
+                className="icon-btn"
+                style={{ height: 36 }}
+                onClick={() => setBaseOct((b) => Math.max(2, b - 1))}
+                disabled={baseOct <= 2}
+                aria-label="Lower octave"
               >
-                <${Icon} name="sliders" />
+                <Icon name="back" size={18} />
+              </button>
+              <span className="mono text-xs muted">
+                C{baseOct} – C{baseOct + 1}
+              </span>
+              <button
+                className="icon-btn"
+                style={{ height: 36, transform: "scaleX(-1)" }}
+                onClick={() => setBaseOct((b) => Math.min(5, b + 1))}
+                disabled={baseOct >= 5}
+                aria-label="Higher octave"
+              >
+                <Icon name="back" size={18} />
               </button>
             </div>
-
-            <section
-              class="flex flex-col gap-2"
-              style=${{ marginTop: "auto" }}
-              aria-label="Piano keyboard"
-            >
-              <div class="flex items-center justify-between">
-                <button
-                  class="icon-btn"
-                  style=${{ height: 36 }}
-                  onClick=${() => setBaseOct((b) => Math.max(2, b - 1))}
-                  disabled=${baseOct <= 2}
-                  aria-label="Lower octave"
-                >
-                  <${Icon} name="back" size=${18} />
-                </button>
-                <span class="mono text-xs muted"
-                  >C${baseOct} – C${baseOct + 1}</span
-                >
-                <button
-                  class="icon-btn"
-                  style=${{ height: 36, transform: "scaleX(-1)" }}
-                  onClick=${() => setBaseOct((b) => Math.min(5, b + 1))}
-                  disabled=${baseOct >= 5}
-                  aria-label="Higher octave"
-                >
-                  <${Icon} name="back" size=${18} />
-                </button>
-              </div>
-              <${Keyboard}
-                baseOct=${baseOct}
-                target=${target}
-                matched=${phase === "hit"}
-                sung=${sung}
-                onKey=${choose}
-              />
-            </section>
-          <//>`}
-
-    <${Sheet}
-      open=${optOpen}
-      title="Tuner options"
-      onClose=${() => setOptOpen(false)}
-    >
-      <div class="opt-group">
-        <span class="label">How close counts</span>
-        <div class="seg" role="group" aria-label="Difficulty">
-          ${[
-            ["easy", "Easy"],
-            ["normal", "Normal"],
-            ["hard", "Hard"],
-          ].map(
-            ([k, l]) =>
-              html`<button
-                key=${k}
-                aria-pressed=${diff === k ? "true" : "false"}
-                onClick=${() => {
+            <Keyboard
+              baseOct={baseOct}
+              target={target}
+              matched={phase === "hit"}
+              sung={sung}
+              onKey={choose}
+            />
+          </section>
+        </React.Fragment>
+      )}
+      <Sheet
+        open={optOpen}
+        title="Tuner options"
+        onClose={() => setOptOpen(false)}
+      >
+        <div className="opt-group">
+          <span className="label">How close counts</span>
+          <div className="seg" role="group" aria-label="Difficulty">
+            {[
+              ["easy", "Easy"],
+              ["normal", "Normal"],
+              ["hard", "Hard"],
+            ].map(([k, l]) => (
+              <button
+                key={k}
+                aria-pressed={diff === k ? "true" : "false"}
+                onClick={() => {
                   setDiff(k);
                   save("diff", k);
                 }}
               >
-                ${l}
-              </button>`,
-          )}
+                {l}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs muted">
+            {diff === "easy"
+              ? "Easy: within half a piano key."
+              : diff === "normal"
+                ? "Normal: within a quarter of a piano key."
+                : "Hard: within a tenth of a piano key."}
+            Hold it for half a second to count.
+          </p>
         </div>
-        <p class="text-xs muted">
-          ${diff === "easy"
-            ? "Easy: within half a piano key."
-            : diff === "normal"
-              ? "Normal: within a quarter of a piano key."
-              : "Hard: within a tenth of a piano key."}
-          Hold it for half a second to count.
-        </p>
-      </div>
-      <div class="opt-group">
-        <span class="label">Random notes from</span>
-        <div
-          class="seg"
-          role="group"
-          aria-label="Voice range for random notes"
-        >
-          ${Object.entries(RANGES).map(
-            ([k, v]) =>
-              html`<button
-                key=${k}
-                aria-pressed=${range === k ? "true" : "false"}
-                onClick=${() => {
+        <div className="opt-group">
+          <span className="label">Random notes from</span>
+          <div
+            className="seg"
+            role="group"
+            aria-label="Voice range for random notes"
+          >
+            {Object.entries(RANGES).map(([k, v]) => (
+              <button
+                key={k}
+                aria-pressed={range === k ? "true" : "false"}
+                onClick={() => {
                   setRange(k);
                   save("range", k);
                 }}
               >
-                ${v[2]} voice
-              </button>`,
-          )}
+                {v[2]} voice
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-      <div class="opt-group">
-        <button
-          class="switch"
-          role="switch"
-          aria-checked=${anyOct ? "true" : "false"}
-          onClick=${() => {
-            setAnyOct(!anyOct);
-            save("anyoct", !anyOct);
-          }}
-          style=${{ fontSize: 14, alignSelf: "flex-start" }}
-        >
-          <span class="track"><span class="knob"></span></span>Any octave
-          counts
-        </button>
-        <button
-          class="switch"
-          role="switch"
-          aria-checked=${autoNext ? "true" : "false"}
-          onClick=${() => {
-            setAutoNext(!autoNext);
-            save("auto", !autoNext);
-          }}
-          style=${{ fontSize: 14, alignSelf: "flex-start" }}
-        >
-          <span class="track"><span class="knob"></span></span>Auto next note
-        </button>
-        <p class="text-xs muted">
-          Total hits: ${stats.hits}. The app ignores the mic while the piano
-          note rings, so it never hears itself.
-        </p>
-      </div>
-    <//>
-  </div>`;
+        <div className="opt-group">
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={anyOct ? "true" : "false"}
+            onClick={() => {
+              setAnyOct(!anyOct);
+              save("anyoct", !anyOct);
+            }}
+            style={{ fontSize: 14, alignSelf: "flex-start" }}
+          >
+            <span className="track">
+              <span className="knob" />
+            </span>
+            {"Any octave\n          counts"}
+          </button>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={autoNext ? "true" : "false"}
+            onClick={() => {
+              setAutoNext(!autoNext);
+              save("auto", !autoNext);
+            }}
+            style={{ fontSize: 14, alignSelf: "flex-start" }}
+          >
+            <span className="track">
+              <span className="knob" />
+            </span>
+            Auto next note
+          </button>
+          <p className="text-xs muted">
+            Total hits: {stats.hits}
+            {
+              ". The app ignores the mic while the piano\n          note rings, so it never hears itself."
+            }
+          </p>
+        </div>
+      </Sheet>
+    </div>
+  );
 }
 
 // semicircle tuner dial: needle at -50..+50 cents, green zone of +/- tol

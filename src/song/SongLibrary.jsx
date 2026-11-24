@@ -1,8 +1,13 @@
 // The sample song library.
 import { useState, useEffect } from "react";
 import { Icon } from "../components/Icon.jsx";
-import { html } from "../html.js";
-import { driveFile, DRIVE_FOLDER, sortSongFiles, DRIVE_KEY, driveList } from "../lib/drive.js";
+import {
+  driveFile,
+  DRIVE_FOLDER,
+  sortSongFiles,
+  DRIVE_KEY,
+  driveList,
+} from "../lib/drive.js";
 
 export function SongLibrary({ onLoad, current, inline }) {
   const [songs, setSongs] = useState(null);
@@ -15,9 +20,7 @@ export function SongLibrary({ onLoad, current, inline }) {
     driveList(DRIVE_FOLDER)
       .then((fs) =>
         setSongs(
-          fs.filter(
-            (f) => f.mimeType === "application/vnd.google-apps.folder",
-          ),
+          fs.filter((f) => f.mimeType === "application/vnd.google-apps.folder"),
         ),
       )
       .catch(() =>
@@ -67,86 +70,101 @@ export function SongLibrary({ onLoad, current, inline }) {
     }
     setBusy(null);
   };
-  return html`<div
-    class=${inline ? "flex flex-col gap-3" : "panel p-4 flex flex-col gap-3"}
-  >
+  return (
     <div
-      class="flex flex-wrap items-center justify-between gap-3"
-      hidden=${inline}
+      className={
+        inline ? "flex flex-col gap-3" : "panel p-4 flex flex-col gap-3"
+      }
     >
-      <div class="min-w-0">
-        <span class="label">Sample songs</span>
-        <p class="text-sm">
-          ${current
-            ? html`Now loaded: <b>${current}</b>`
-            : "Pick a song to load its vocal, music and lyrics in one go."}
-        </p>
-      </div>
-      <button
-        class=${"btn" + (open ? "" : " btn-primary")}
-        onClick=${() => setOpen((v) => !v)}
-        aria-expanded=${open ? "true" : "false"}
+      <div
+        className="flex flex-wrap items-center justify-between gap-3"
+        hidden={inline}
       >
-        ${open ? "Close" : "Browse songs"}
-      </button>
-    </div>
-    ${open &&
-    (blockedHere
-      ? html`<p class="text-sm muted">
-          ${!DRIVE_KEY
-            ? "The song library isn't connected yet."
-            : "The song library works on your Tono website (seeknowhere.github.io). Here, upload the files yourself below."}
-        </p>`
-      : html`<div class="flex flex-col gap-2">
-          ${err &&
-          html`<p class="text-sm" style=${{ color: "var(--bad)" }}>
-            ${err}
-          </p>`}
-          ${!songs &&
-          !err &&
-          html`<p class="text-sm muted">Loading songs…</p>`}
-          ${songs &&
-          songs.length === 0 &&
-          html`<p class="text-sm muted">
-            No songs yet. Add a folder per song inside Tono › Songs in your
-            Google Drive.
-          </p>`}
-          ${songs &&
-          songs.map(
-            (sg) =>
-              html`<div key=${sg.id} class="song-row">
-                <span class="flex items-center gap-3 min-w-0">
-                  <span class="song-ico"
-                    ><${Icon} name="music" size=${20}
-                  /></span>
-                  <span
-                    class="display font-bold"
-                    style=${{ overflowWrap: "anywhere" }}
-                    >${sg.name}</span
-                  >
-                </span>
-                ${busy && busy.id === sg.id
-                  ? html`<span class="text-xs muted">${busy.step}</span>`
-                  : current === sg.name
-                    ? html`<span
-                        class="flex items-center gap-1 text-xs"
-                        style=${{ color: "var(--good)" }}
-                        ><${Icon} name="check" size=${16} />Loaded</span
-                      >`
-                    : html`<button
-                        class="btn btn-primary"
-                        style=${{ padding: "6px 14px", fontSize: 13 }}
-                        disabled=${!!busy}
-                        onClick=${() => load(sg)}
-                      >
-                        Load
-                      </button>`}
-              </div>`,
-          )}
-          <p class="text-xs muted">
-            Add more in Google Drive › Tono › Songs. Each song downloads once,
-            then loads instantly.
+        <div className="min-w-0">
+          <span className="label">Sample songs</span>
+          <p className="text-sm">
+            {current ? (
+              <>
+                Now loaded: <b>{current}</b>
+              </>
+            ) : (
+              "Pick a song to load its vocal, music and lyrics in one go."
+            )}
           </p>
-        </div>`)}
-  </div>`;
+        </div>
+        <button
+          className={"btn" + (open ? "" : " btn-primary")}
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open ? "true" : "false"}
+        >
+          {open ? "Close" : "Browse songs"}
+        </button>
+      </div>
+      {open &&
+        (blockedHere ? (
+          <p className="text-sm muted">
+            {!DRIVE_KEY
+              ? "The song library isn't connected yet."
+              : "The song library works on your Tono website (seeknowhere.github.io). Here, upload the files yourself below."}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {err && (
+              <p className="text-sm" style={{ color: "var(--bad)" }}>
+                {err}
+              </p>
+            )}
+            {!songs && !err && <p className="text-sm muted">Loading songs…</p>}
+            {songs && songs.length === 0 && (
+              <p className="text-sm muted">
+                {
+                  "No songs yet. Add a folder per song inside Tono › Songs in your\n            Google Drive."
+                }
+              </p>
+            )}
+            {songs &&
+              songs.map((sg) => (
+                <div key={sg.id} className="song-row">
+                  <span className="flex items-center gap-3 min-w-0">
+                    <span className="song-ico">
+                      <Icon name="music" size={20} />
+                    </span>
+                    <span
+                      className="display font-bold"
+                      style={{ overflowWrap: "anywhere" }}
+                    >
+                      {sg.name}
+                    </span>
+                  </span>
+                  {busy && busy.id === sg.id ? (
+                    <span className="text-xs muted">{busy.step}</span>
+                  ) : current === sg.name ? (
+                    <span
+                      className="flex items-center gap-1 text-xs"
+                      style={{ color: "var(--good)" }}
+                    >
+                      <Icon name="check" size={16} />
+                      Loaded
+                    </span>
+                  ) : (
+                    <button
+                      className="btn btn-primary"
+                      style={{ padding: "6px 14px", fontSize: 13 }}
+                      disabled={!!busy}
+                      onClick={() => load(sg)}
+                    >
+                      Load
+                    </button>
+                  )}
+                </div>
+              ))}
+            <p className="text-xs muted">
+              {
+                "Add more in Google Drive › Tono › Songs. Each song downloads once,\n            then loads instantly."
+              }
+            </p>
+          </div>
+        ))}
+    </div>
+  );
 }

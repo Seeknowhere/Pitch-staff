@@ -6,7 +6,8 @@ import { loadJSON, saveJSON } from "./storage.js";
 // ---- your tries per phrase (Repeat after me), saved per song ----
 const TRIES_KEY = "pitchstaff.tries.v2"; // v2: phrases follow lyric lines
 
-export const loadTries = (song) => (song ? loadJSON(TRIES_KEY, {})[song] || {} : {});
+export const loadTries = (song) =>
+  song ? loadJSON(TRIES_KEY, {})[song] || {} : {};
 
 export const saveTries = (song, t) => {
   if (!song) return;
@@ -63,8 +64,7 @@ export function tryStats(rec) {
             "¢ " +
             (lean < 0 ? "low" : "high") +
             " overall",
-      tone:
-        Math.abs(lean) < 15 ? "good" : Math.abs(lean) < 30 ? "warn" : "bad",
+      tone: Math.abs(lean) < 15 ? "good" : Math.abs(lean) < 30 ? "warn" : "bad",
     },
     {
       label: "Landing",
@@ -84,8 +84,7 @@ export function tryStats(rec) {
           : sd < 12
             ? "held notes stayed put"
             : "long notes wavered",
-      tone:
-        sd == null ? "muted" : sd < 12 ? "good" : sd < 20 ? "warn" : "bad",
+      tone: sd == null ? "muted" : sd < 12 ? "good" : sd < 20 ? "warn" : "bad",
     },
   ];
   let worst = null;

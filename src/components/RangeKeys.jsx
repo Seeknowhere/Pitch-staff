@@ -1,5 +1,4 @@
-import {html} from "../html.js";
-import {midiInfo, pretty} from "../lib/music.js";
+import { midiInfo, pretty } from "../lib/music.js";
 
 // a strip of piano keys with your range (and optionally a song's range) marked
 export function RangeKeys({ lo, hi, comfy, song }) {
@@ -44,85 +43,86 @@ export function RangeKeys({ lo, hi, comfy, song }) {
         " to " +
         pretty(midiInfo(song[1]).label)
       : "");
-  return html`<svg
-    viewBox=${"0 0 " + W + " " + (H + 16)}
-    style=${{ width: "100%", height: "auto", display: "block" }}
-    role="img"
-    aria-label=${label}
-  >
-    ${whites.map(
-      (m) =>
-        html`<rect
-          key=${"w" + m}
-          x=${(xs[m] + 0.5).toFixed(1)}
+  return (
+    <svg
+      viewBox={"0 0 " + W + " " + (H + 16)}
+      style={{ width: "100%", height: "auto", display: "block" }}
+      role="img"
+      aria-label={label}
+    >
+      {whites.map((m) => (
+        <rect
+          key={"w" + m}
+          x={(xs[m] + 0.5).toFixed(1)}
           y="0.5"
-          width=${(kw - 1).toFixed(1)}
-          height=${H - 1}
+          width={(kw - 1).toFixed(1)}
+          height={H - 1}
           rx="3"
-          fill=${fillW(m)}
+          fill={fillW(m)}
           stroke="var(--bg)"
-        ></rect>`,
-    )}
-    ${whites
-      .filter((m) => m < last && midiInfo(m + 1).sharp)
-      .map(
-        (m) =>
-          html`<rect
-            key=${"b" + m}
-            x=${(xs[m] + kw * 0.68).toFixed(1)}
+        />
+      ))}
+      {whites
+        .filter((m) => m < last && midiInfo(m + 1).sharp)
+        .map((m) => (
+          <rect
+            key={"b" + m}
+            x={(xs[m] + kw * 0.68).toFixed(1)}
             y="0.5"
-            width=${(kw * 0.64).toFixed(1)}
-            height=${(H * 0.58).toFixed(1)}
+            width={(kw * 0.64).toFixed(1)}
+            height={(H * 0.58).toFixed(1)}
             rx="2"
-            fill=${fillB(m + 1)}
+            fill={fillB(m + 1)}
             stroke="var(--bg)"
-          ></rect>`,
+          />
+        ))}
+      {song && (
+        <line
+          x1={cx(song[0]).toFixed(1)}
+          y1={H - 9}
+          x2={cx(song[1]).toFixed(1)}
+          y2={H - 9}
+          stroke="var(--you)"
+          strokeWidth="5"
+          strokeLinecap="round"
+        />
       )}
-    ${song &&
-    html`<line
-      x1=${cx(song[0]).toFixed(1)}
-      y1=${H - 9}
-      x2=${cx(song[1]).toFixed(1)}
-      y2=${H - 9}
-      stroke="var(--you)"
-      strokeWidth="5"
-      strokeLinecap="round"
-    ></line>`}
-    ${song &&
-    song[1] > hi &&
-    html`<line
-      x1=${cx(hi + 1).toFixed(1)}
-      y1=${H - 9}
-      x2=${cx(song[1]).toFixed(1)}
-      y2=${H - 9}
-      stroke="var(--bad)"
-      strokeWidth="5"
-      strokeLinecap="round"
-    ></line>`}
-    ${song &&
-    song[0] < lo &&
-    html`<line
-      x1=${cx(song[0]).toFixed(1)}
-      y1=${H - 9}
-      x2=${cx(lo - 1).toFixed(1)}
-      y2=${H - 9}
-      stroke="var(--bad)"
-      strokeWidth="5"
-      strokeLinecap="round"
-    ></line>`}
-    ${whites
-      .filter((m) => m % 12 === 0)
-      .map(
-        (m) =>
-          html`<text
-            key=${"t" + m}
-            x=${(xs[m] + 3).toFixed(1)}
-            y=${H + 12}
+      {song && song[1] > hi && (
+        <line
+          x1={cx(hi + 1).toFixed(1)}
+          y1={H - 9}
+          x2={cx(song[1]).toFixed(1)}
+          y2={H - 9}
+          stroke="var(--bad)"
+          strokeWidth="5"
+          strokeLinecap="round"
+        />
+      )}
+      {song && song[0] < lo && (
+        <line
+          x1={cx(song[0]).toFixed(1)}
+          y1={H - 9}
+          x2={cx(lo - 1).toFixed(1)}
+          y2={H - 9}
+          stroke="var(--bad)"
+          strokeWidth="5"
+          strokeLinecap="round"
+        />
+      )}
+      {whites
+        .filter((m) => m % 12 === 0)
+        .map((m) => (
+          <text
+            key={"t" + m}
+            x={(xs[m] + 3).toFixed(1)}
+            y={H + 12}
             fill="var(--muted)"
             fontSize="10"
             fontFamily="JetBrains Mono, monospace"
-            >${midiInfo(m).label}</text
-          >`,
-      )}
-  </svg>`;
+          >
+            {midiInfo(m).label}
+          </text>
+        ))}
+    </svg>
+  );
 }

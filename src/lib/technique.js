@@ -206,8 +206,7 @@ export function technique(o, t, result) {
   runs.forEach(([a, b]) => {
     if (
       result.range &&
-      (a * GRID < result.range.start - 0.1 ||
-        b * GRID > result.range.end + 0.1)
+      (a * GRID < result.range.start - 0.1 || b * GRID > result.range.end + 0.1)
     )
       return;
     const oE = win(b - 15, b, origAt),
@@ -252,11 +251,8 @@ export function technique(o, t, result) {
       p: {
         title: "Ends of lines",
         value:
-          Math.abs(avg) < 12
-            ? "Steady"
-            : "Drops " + (avg < 0 ? "low" : "high"),
-        compare:
-          flatOnes.length + " of " + drops.length + " lines end too low",
+          Math.abs(avg) < 12 ? "Steady" : "Drops " + (avg < 0 ? "low" : "high"),
+        compare: flatOnes.length + " of " + drops.length + " lines end too low",
         detail:
           Math.abs(avg) < 12
             ? "You keep your pitch steady right to the end of each line."
@@ -388,9 +384,7 @@ export function technique(o, t, result) {
         "Your straight long notes waver by about ±" +
           Math.round(wob) +
           "¢" +
-          (wobOrig != null
-            ? " (original ±" + Math.round(wobOrig) + "¢)"
-            : "") +
+          (wobOrig != null ? " (original ±" + Math.round(wobOrig) + "¢)" : "") +
           ".",
       );
     if (Math.abs(drift) >= 20)
@@ -446,8 +440,7 @@ export function technique(o, t, result) {
                 ? "Creeps high"
                 : "A bit shaky",
         compare: hy.count + " long notes checked",
-        detail:
-          pParts.join(" ") || "You hold your long notes nice and steady.",
+        detail: pParts.join(" ") || "You hold your long notes nice and steady.",
         tip:
           stTone === "good"
             ? ""

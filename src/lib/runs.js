@@ -6,7 +6,8 @@ import { loadJSON, saveJSON } from "./storage.js";
 const RUNS_KEY = "pitchstaff.runs.v1",
   LASTRUN_KEY = "pitchstaff.lastrun.v1";
 
-export const loadRuns = (song) => (song ? loadJSON(RUNS_KEY, {})[song] || [] : []);
+export const loadRuns = (song) =>
+  song ? loadJSON(RUNS_KEY, {})[song] || [] : [];
 
 export function addRun(song, run) {
   if (!song) return [];
@@ -104,9 +105,7 @@ export function analyzeRun(od, phrases, td, map) {
   return {
     lines,
     score: tot
-      ? Math.round(
-          sung.reduce((s, r) => s + r.score * r.rows.length, 0) / tot,
-        )
+      ? Math.round(sung.reduce((s, r) => s + r.score * r.rows.length, 0) / tot)
       : 0,
   };
 }

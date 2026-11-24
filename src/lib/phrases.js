@@ -1,5 +1,11 @@
 // Splitting a song into phrases, finding its key, and scoring a sung phrase.
-import { warpMap, fixedMap, detectKeyAndOffset, GRID, foldOct } from "./analysis.js";
+import {
+  warpMap,
+  fixedMap,
+  detectKeyAndOffset,
+  GRID,
+  foldOct,
+} from "./analysis.js";
 import { median, mean } from "./math.js";
 
 // Breath and timing for one line: breaths taken where the song keeps going, a last note cut short,
@@ -19,10 +25,7 @@ function breathTiming(ph, rows, her, map, len, speed) {
     const n = rows[i].n,
       m = rows[i + 1].n;
     if (m.pos - n.end >= 0.15) continue; // the song has a gap here, so a breath is fine
-    const reach = Math.min(
-      15,
-      Math.round((m.end - m.pos) / speed / GRID / 2),
-    );
+    const reach = Math.min(15, Math.round((m.end - m.pos) / speed / GRID / 2));
     const j0 = map[Math.max(0, kOf(n.end) - 3)],
       j1 = map[Math.min(len - 1, kOf(m.pos) + Math.max(3, reach))];
     let run = 0,
@@ -161,9 +164,8 @@ export function scorePhrase(ph, her, speed, tr) {
     if (k1 - k0 >= 25 && ds.length > 8) {
       const mu = ds.reduce((a, x) => a + x, 0) / ds.length;
       sd = Math.round(
-        Math.sqrt(
-          ds.reduce((a, x) => a + (x - mu) * (x - mu), 0) / ds.length,
-        ) * 100,
+        Math.sqrt(ds.reduce((a, x) => a + (x - mu) * (x - mu), 0) / ds.length) *
+          100,
       );
     }
     return {

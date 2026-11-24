@@ -1,6 +1,5 @@
 // The piano-roll chart comparing your singing with the song.
 import { useRef, useMemo, useEffect } from "react";
-import { html } from "../../html.js";
 import { GRID } from "../../lib/analysis.js";
 import { cssVar } from "../../lib/css.js";
 import { pretty, fmt, NAMES } from "../../lib/music.js";
@@ -239,74 +238,79 @@ export function RollChart({
       box.scrollLeft = Math.max(0, x - 60);
   }, [cursor, pps]);
 
-  return html`<div
-    ref=${boxRef}
-    style=${{
-      overflowX: "auto",
-      position: "relative",
-      borderRadius: 10,
-      background: "var(--surface-2)",
-      border: "1px solid var(--line)",
-    }}
-  >
-    <div style=${{ position: "relative", width: W }}>
-      ${lyrics &&
-      lyrics.length > 0 &&
-      html`<div class="lyr-band">
-        ${lyrics.map(
-          (l, i) =>
-            html`<div
-              key=${i}
-              class=${"lyr" +
-              (cursor != null && cursor >= l.start && cursor < l.end
-                ? " on"
-                : "")}
-              style=${{
-                left: l.start * pps,
-                width: Math.max(8, (l.end - l.start) * pps - 2),
-              }}
-              title=${l.text}
-              onClick=${() => onSeek(l.start)}
-            >
-              ${l.text}
-            </div>`,
+  return (
+    <div
+      ref={boxRef}
+      style={{
+        overflowX: "auto",
+        position: "relative",
+        borderRadius: 10,
+        background: "var(--surface-2)",
+        border: "1px solid var(--line)",
+      }}
+    >
+      <div style={{ position: "relative", width: W }}>
+        {lyrics && lyrics.length > 0 && (
+          <div className="lyr-band">
+            {lyrics.map((l, i) => (
+              <div
+                key={i}
+                className={
+                  "lyr" +
+                  (cursor != null && cursor >= l.start && cursor < l.end
+                    ? " on"
+                    : "")
+                }
+                style={{
+                  left: l.start * pps,
+                  width: Math.max(8, (l.end - l.start) * pps - 2),
+                }}
+                title={l.text}
+                onClick={() => onSeek(l.start)}
+              >
+                {l.text}
+              </div>
+            ))}
+          </div>
         )}
-      </div>`}
-      <canvas
-        ref=${canvasRef}
-        style=${{ display: "block", cursor: "pointer" }}
-        onClick=${(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          onSeek(Math.max(0, (e.clientX - r.left) / pps));
-        }}
-      ></canvas>
-      ${loop &&
-      html`<div
-        style=${{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          left: loop.a * pps,
-          width: (loop.b - loop.a) * pps,
-          background: "color-mix(in srgb, var(--accent) 12%, transparent)",
-          borderLeft: "1px solid var(--accent)",
-          borderRight: "1px solid var(--accent)",
-          pointerEvents: "none",
-        }}
-      ></div>`}
-      ${cursor != null &&
-      html`<div
-        style=${{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          left: cursor * pps,
-          width: 2,
-          marginLeft: -1,
-          background: "var(--accent)",
-          pointerEvents: "none",
-        }}
-      ></div>`}
+        <canvas
+          ref={canvasRef}
+          style={{ display: "block", cursor: "pointer" }}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            onSeek(Math.max(0, (e.clientX - r.left) / pps));
+          }}
+        />
+        {loop && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: loop.a * pps,
+              width: (loop.b - loop.a) * pps,
+              background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+              borderLeft: "1px solid var(--accent)",
+              borderRight: "1px solid var(--accent)",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+        {cursor != null && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: cursor * pps,
+              width: 2,
+              marginLeft: -1,
+              background: "var(--accent)",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+      </div>
     </div>
-  </div>`;
+  );
 }

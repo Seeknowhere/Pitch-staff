@@ -99,8 +99,7 @@ export async function splitSong(file, onStage) {
         else if (m.type === "error") reject(new Error(m.text));
         else if (m.type !== "log") resolve(m);
       };
-      w.onerror = () =>
-        reject(new Error("The splitter stopped unexpectedly."));
+      w.onerror = () => reject(new Error("The splitter stopped unexpectedly."));
       w.postMessage(msg, transfer || []);
     });
   try {

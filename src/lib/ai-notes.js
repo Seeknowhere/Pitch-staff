@@ -90,8 +90,7 @@ function aiToMelody(evs, onsets, grid) {
       last.end = n.s; // a new note starts: cut the previous one here
     }
     const prevEnd = last ? last.end : -1;
-    const cut =
-      n.s - prevEnd > 0.12 ? "silence" : on >= 0.5 ? "dip" : "pitch";
+    const cut = n.s - prevEnd > 0.12 ? "silence" : on >= 0.5 ? "dip" : "pitch";
     if (
       last &&
       cut === "pitch" &&
