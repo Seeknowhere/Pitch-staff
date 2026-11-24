@@ -642,8 +642,10 @@ export function Karaoke({
       Math.min(songEnd, play.current.lastSongT || cursor || 0),
     );
     const lis = isListening();
-    if (battleOn.current && battleCtl)
+    if (battleOn.current && battleCtl) {
       battleCtl.sendFinal({ bestCombo: R.bestCombo || 0 });
+      closeCamera(); // the song's over: camera off
+    }
     if (!lis || v < 50) {
       setFinal({ score: null, lines: 0, scoring: lis, reached });
       return;
@@ -1080,6 +1082,122 @@ export function Karaoke({
     };
   };
   useEffect(() => () => hl.current.stop && hl.current.stop(), []);
+
+  // ---- battle candid photos: a few surprise snaps of you while you sing ----
+  // The camera is only on while the battle song plays; photos go to the other singer and the
+  // results, never anywhere else.
+  const cam = useRef({ stream: null, video: null, targets: [], taken: 0 });
+  const [myPhotos, setMyPhotos] = useState([]);
+  const myPhotoUrls = useRef([]);
+  const dropMyPhotos = () => {
+    myPhotoUrls.current.forEach((u) => URL.revokeObjectURL(u));
+    myPhotoUrls.current = [];
+    setMyPhotos([]);
+  };
+  const closeCamera = () => {
+    const c = cam.current;
+    if (c.stream) c.stream.getTracks().forEach((t) => t.stop());
+    if (c.video) c.video.srcObject = null;
+    cam.current = { stream: null, video: null, targets: [], taken: 0 };
+  };
+  const camConstraints = {
+    video: {
+      facingMode: "user",
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+    },
+    audio: false,
+  };
+  // asked when you tap "I'm ready", so the permission prompt never interrupts the song
+  const askCamera = async () => {
+    try {
+      const st = await navigator.mediaDevices.getUserMedia(camConstraints);
+      st.getTracks().forEach((t) => t.stop());
+      battleCtl && battleCtl.setCam("ok");
+    } catch (e) {
+      battleCtl && battleCtl.setCam("denied");
+    }
+  };
+  const openCamera = async () => {
+    closeCamera();
+    if (!data) return;
+    // 3 moments spread over the song (not the very start or end), at least 12 s apart
+    const T = songEnd,
+      ts = [];
+    for (let k = 0; k < 40 && ts.length < 3; k++) {
+      const t = T * (0.12 + Math.random() * 0.8);
+      if (ts.every((x) => Math.abs(x - t) > Math.min(12, T / 6))) ts.push(t);
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(camConstraints);
+      const video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute("playsinline", "");
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      cam.current = {
+        stream,
+        video,
+        targets: ts.sort((a, b) => a - b),
+        taken: 0,
+      };
+    } catch (e) {
+      battleCtl && battleCtl.setCam("denied");
+    }
+  };
+  const snap = () => {
+    const v = cam.current.video;
+    if (!v || !v.videoWidth) return;
+    const w = Math.min(480, v.videoWidth),
+      h = Math.round((w * v.videoHeight) / v.videoWidth);
+    const cv = document.createElement("canvas");
+    cv.width = w;
+    cv.height = h;
+    const g = cv.getContext("2d");
+    // mirrored, like a selfie camera shows you
+    g.translate(w, 0);
+    g.scale(-1, 1);
+    g.drawImage(v, 0, 0, w, h);
+    cv.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        myPhotoUrls.current.push(url);
+        setMyPhotos((p) => [...p, url]);
+        if (battleCtl && battle && battle.peer) battleCtl.sendPhoto(blob);
+      },
+      "image/jpeg",
+      0.72,
+    );
+  };
+  // while the battle song plays, take each photo when the song reaches its moment
+  useEffect(() => {
+    if (!playing || !battleOn.current) return;
+    const id = setInterval(() => {
+      const c = cam.current,
+        p = play.current;
+      if (!c.video || c.taken >= c.targets.length || !p.songAt) return;
+      if (p.songAt() >= c.targets[c.taken]) {
+        c.taken++;
+        snap();
+      }
+    }, 300);
+    return () => clearInterval(id);
+  }, [playing]);
+  useEffect(
+    () => () => {
+      closeCamera();
+      myPhotoUrls.current.forEach((u) => URL.revokeObjectURL(u));
+    },
+    [],
+  );
+  // leaving the battle turns the camera off and drops the photos
+  useEffect(() => {
+    if (battle) return;
+    closeCamera();
+    dropMyPhotos();
+  }, [!!battle]);
   const setOut = (k, v) => {
     const next = { ...mixVol, [k]: v };
     setMixVol(next);
@@ -1362,6 +1480,9 @@ export function Karaoke({
     stopAll();
     setFinal(null);
     ensureCtx();
+    dropMyPhotos();
+    if (battleCtl && battleCtl.sharePhotos && battle && battle.cam === "ok")
+      openCamera();
     const go = () => countIn(() => startAt(0, true));
     const wait = atLocal - 2100 - Date.now(); // the 3-2-1 takes 2.1 s
     if (wait > 0) countTimers.current.push(setTimeout(go, wait));
@@ -1372,6 +1493,7 @@ export function Karaoke({
       // called straight from the lobby's tap, so creating the audio context here unlocks sound
       prepare: () => {
         ensureCtx();
+        if (battleCtl.sharePhotos) askCamera();
         return runCheck();
       },
       setHpMode: (mode) => {
@@ -1422,6 +1544,8 @@ export function Karaoke({
           theirs={battle.lines}
           myCombo={final.bestCombo ?? run.current.bestCombo ?? null}
           highlights={reel}
+          myPhotos={myPhotos}
+          theirPhotos={battle.theirPhotos || []}
           hlNow={hlNow}
           onPlayHighlights={playHighlights}
           onStopHighlights={stopHighlights}

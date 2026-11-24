@@ -1,6 +1,6 @@
 // End of a battle: who won, head-to-head stats, and what next.
 // Pure fun on purpose: no recording, no analysis, just the match.
-import React from "react";
+import React, { useState } from "react";
 
 const avg = (o) => {
   const v = Object.values(o);
@@ -18,6 +18,8 @@ export function BattleResults({
   again,
   rivalHere,
   highlights,
+  myPhotos = [],
+  theirPhotos = [],
   hlNow,
   onPlayHighlights,
   onStopHighlights,
@@ -119,6 +121,15 @@ export function BattleResults({
         ))}
       </div>
 
+      {(myPhotos.length > 0 || theirPhotos.length > 0) && (
+        <CandidPhotos
+          myName={myName}
+          rivalName={rivalName}
+          mine={myPhotos}
+          theirs={theirPhotos}
+        />
+      )}
+
       {highlights && (highlights.waiting || highlights.items.length > 0) && (
         <div className="battle-hl" aria-live="polite">
           {hlNow ? (
@@ -178,5 +189,44 @@ export function BattleResults({
         </div>
       </div>
     </section>
+  );
+}
+
+// "Caught singing": the surprise photos from both phones; tap one to see it big
+function CandidPhotos({ myName, rivalName, mine, theirs }) {
+  const [big, setBig] = useState(null);
+  const row = (who, list, cls) =>
+    list.length > 0 && (
+      <div className="flex flex-col gap-1">
+        <span className={"text-xs font-semibold " + cls}>{who}</span>
+        <div className="candid-row">
+          {list.map((u, i) => (
+            <button
+              key={u}
+              className="candid"
+              onClick={() => setBig(u)}
+              aria-label={"Photo " + (i + 1) + " of " + who}
+            >
+              <img src={u} alt="" />
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="label">📸 Caught singing</span>
+      {row(myName, mine, "you")}
+      {row(rivalName, theirs, "opp")}
+      {big && (
+        <button
+          className="candid-big"
+          onClick={() => setBig(null)}
+          aria-label="Close photo"
+        >
+          <img src={big} alt="" />
+        </button>
+      )}
+    </div>
   );
 }

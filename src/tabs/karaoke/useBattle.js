@@ -18,11 +18,16 @@ import {
 //          stopReq: { by: "me" | "peer", pos, until } | null,
 //          peerFinal: { bestCombo } | null, again: { me, peer } | null,
 //          sending: { pct } | null (sharing your song), recv: { pct, done, error } | null,
-//          theirClips: { lineIndex: { sr, pcm: Int16Array } } (their voice for the highlights) } | null
+//          theirClips: { lineIndex: { sr, pcm: Int16Array } } (their voice for the highlights),
+//          theirPhotos: [object URL] (their candid photos), cam: "ok" | "denied" | null } | null
 export function useBattle() {
   const [state, setState] = useState(null);
   const [myName, setMyName] = useState(() => loadJSON("tono.battle.name", ""));
   // share my voice for the end-of-battle highlights (only sent to the other player, never saved)
+  // candid photos of me while I sing, shown on the results (only to the other player, never saved)
+  const [sharePhotos, setSharePhotosState] = useState(
+    () => loadJSON("tono.battle.photos", true) !== false,
+  );
   const [shareHL, setShareHLState] = useState(
     () => loadJSON("tono.battle.highlights", true) !== false,
   );
@@ -34,6 +39,7 @@ export function useBattle() {
     dur: 0,
     ready: false,
     hl: true,
+    ph: true,
   });
   // Karaoke registers its player here: prepare() (headphone check + unlock sound, from a tap),
   // setHpMode(mode) and start(atMs), so either phone can start the song at a shared moment
@@ -48,7 +54,12 @@ export function useBattle() {
   const onReceived = useRef(null);
   const recv = useRef(null);
   const sendJob = useRef(0);
-  const blobs = useRef({}); // small files arriving in chunks (highlight clips): id -> { meta, parts, left }
+  const blobs = useRef({}); // small files arriving in chunks (highlight clips, photos): id -> { meta, parts, left }
+  const photoUrls = useRef([]);
+  const dropPhotos = () => {
+    photoUrls.current.forEach((u) => URL.revokeObjectURL(u));
+    photoUrls.current = [];
+  };
   useEffect(() => () => net.current && net.current.leave(), []);
   // times sent between phones are on the host's clock
   const toHost = (local) => local + offset.current;
@@ -105,6 +116,7 @@ export function useBattle() {
           again: null,
           lines: {},
           theirClips: {},
+          theirPhotos: [],
         },
     );
   };
@@ -231,10 +243,12 @@ export function useBattle() {
       const v = Math.max(-1, Math.min(1, samples[i]));
       pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
     }
-    const bytes = new Uint8Array(pcm.buffer),
-      n = chunkCount(bytes.length),
+    await sendBlob("clip", { line, sr }, new Uint8Array(pcm.buffer));
+  };
+  const sendBlob = async (kind, meta, bytes) => {
+    const n = chunkCount(bytes.length),
       id = Math.random().toString(36).slice(2);
-    await send({ type: "blobMeta", id, kind: "clip", meta: { line, sr }, n });
+    await send({ type: "blobMeta", id, kind, meta, n });
     for (let i = 0; i < n; i++) {
       if (!net.current) return;
       await send({
@@ -267,7 +281,13 @@ export function useBattle() {
       all.set(p, o);
       o += p.length;
     });
-    if (b.kind === "clip") {
+    if (b.kind === "photo") {
+      const url = URL.createObjectURL(new Blob([all], { type: "image/jpeg" }));
+      photoUrls.current.push(url);
+      setState(
+        (s) => s && { ...s, theirPhotos: [...(s.theirPhotos || []), url] },
+      );
+    } else if (b.kind === "clip") {
       const pcm = new Int16Array(all.buffer, 0, len >> 1);
       setState(
         (s) =>
@@ -286,6 +306,7 @@ export function useBattle() {
   const begin = useCallback((atLocal) => {
     again.current = { me: false, peer: false };
     blobs.current = {};
+    dropPhotos();
     setState(
       (b) =>
         b && {
@@ -297,6 +318,7 @@ export function useBattle() {
           again: null,
           lines: {},
           theirClips: {},
+          theirPhotos: [],
           round: (b.round || 0) + 1,
         },
     );
@@ -309,7 +331,14 @@ export function useBattle() {
     if (net.current) net.current.leave();
     const name = myName.trim() || "Singer";
     saveJSON("tono.battle.name", name);
-    me.current = { ...me.current, name, host, ready: false, hl: shareHL };
+    me.current = {
+      ...me.current,
+      name,
+      host,
+      ready: false,
+      hl: shareHL,
+      ph: sharePhotos,
+    };
     offset.current = 0;
     bestRtt.current = Infinity;
     setState({
@@ -406,6 +435,7 @@ export function useBattle() {
     join: (code) => open(code, false),
     leave: () => {
       clearStopTimer();
+      dropPhotos();
       sendJob.current++;
       recv.current = null;
       me.current = { ...me.current, ready: false };
@@ -480,6 +510,17 @@ export function useBattle() {
       announce();
     },
     sendClip,
+    sharePhotos,
+    setSharePhotos: (on) => {
+      saveJSON("tono.battle.photos", on);
+      setSharePhotosState(on);
+      me.current = { ...me.current, ph: on };
+      announce();
+    },
+    sendPhoto: async (blob) =>
+      sendBlob("photo", {}, new Uint8Array(await blob.arrayBuffer())),
+    // whether this phone's camera can take the photos (asked when you tap "I'm ready")
+    setCam: (cam) => setState((b) => b && { ...b, cam }),
     setPlayer: (p) => {
       player.current = p;
     },

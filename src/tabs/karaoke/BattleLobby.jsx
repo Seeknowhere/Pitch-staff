@@ -167,6 +167,24 @@ export function BattleLobby({
       <label className="battle-opt">
         <input
           type="checkbox"
+          checked={ctl.sharePhotos}
+          onChange={(e) => ctl.setSharePhotos(e.target.checked)}
+        />
+        <span className="flex flex-col">
+          <span className="font-semibold">📸 Candid photos</span>
+          <span className="text-xs muted">
+            Tono snaps 3 surprise photos of you while you sing and shows them on
+            the results. Only {peer ? peer.name : "your friend"} sees them, and
+            they're never saved.
+            {ctl.sharePhotos &&
+              b.cam === "denied" &&
+              " The camera isn't allowed, so no photos of you this time."}
+          </span>
+        </span>
+      </label>
+      <label className="battle-opt">
+        <input
+          type="checkbox"
           checked={ctl.shareHL}
           onChange={(e) => ctl.setShareHL(e.target.checked)}
         />

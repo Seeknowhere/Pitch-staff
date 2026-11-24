@@ -263,6 +263,12 @@ select.btn { appearance: auto; }
 .battle-hl > .btn-primary { align-self: stretch; }
 .battle-opt { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); cursor: pointer; }
 .battle-opt input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+.candid-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.candid { flex: none; width: 96px; height: 72px; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); cursor: zoom-in; }
+.candid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.candid-big { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.85); border: none; cursor: zoom-out; }
+.candid-big img { max-width: 100%; max-height: 100%; border-radius: 12px; }
+.text-xs.you { color: #f3d18c; } .text-xs.opp { color: #9cc4ff; }
 .battle-notice { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 14px 16px; border-radius: 16px; background: rgba(127,178,255,.10); border: 1px solid rgba(127,178,255,.35); }
 /* Battle results */
 .battle-win { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 24px 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); }
