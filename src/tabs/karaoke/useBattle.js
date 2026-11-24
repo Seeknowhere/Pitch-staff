@@ -5,7 +5,9 @@ import { joinRoom, makeCode } from "../../lib/battleNet.js";
 import { loadJSON, saveJSON } from "../../lib/storage.js";
 
 // state: { code, host, status, peer: { name, host, song, dur, ready } | null, lastName,
-//          started, round, synced, lines: { lineIndex: friend's score } } | null
+//          started, round, synced, lines: { lineIndex: friend's score },
+//          paused: { by: "me" | "peer", pos } | null,
+//          stopReq: { by: "me" | "peer", pos, until } | null } | null
 export function useBattle() {
   const [state, setState] = useState(null);
   const [myName, setMyName] = useState(() => loadJSON("tono.battle.name", ""));
@@ -17,11 +19,51 @@ export function useBattle() {
   // how far the host's clock is ahead of this phone's (ms), measured with pings; 0 for the host
   const offset = useRef(0);
   const bestRtt = useRef(Infinity);
+  const stopTimer = useRef(null);
   useEffect(() => () => net.current && net.current.leave(), []);
+  // times sent between phones are on the host's clock
+  const toHost = (local) => local + offset.current;
+  const fromHost = (h) => h - offset.current;
+  const send = (msg) => net.current && net.current.send(msg);
+  const clearStopTimer = () => {
+    clearTimeout(stopTimer.current);
+    stopTimer.current = null;
+  };
+  // both phones pause at the same spot; resuming is a synced 3-2-1 from there
+  const doPause = (pos, by) => {
+    if (player.current) player.current.pause(pos);
+    setState((b) => b && { ...b, paused: { by, pos } });
+  };
+  const doResume = (atLocal, pos) => {
+    clearStopTimer();
+    setState((b) => b && { ...b, paused: null, stopReq: null });
+    if (player.current) player.current.resume(atLocal, pos);
+  };
+  const doFinish = () => {
+    clearStopTimer();
+    setState((b) => b && { ...b, paused: null, stopReq: null });
+    if (player.current) player.current.finish();
+  };
+  const resumeAll = (pos) => {
+    const at = Date.now() + 3000;
+    send({ type: "resume", at: toHost(at), pos });
+    doResume(at, pos);
+  };
+  // ending needs the other singer's OK; no answer in 20 s ends it anyway
+  const STOP_WAIT = 20000;
+  const answerStop = (end, pos) => {
+    if (end) {
+      send({ type: "stopOk" });
+      doFinish();
+    } else {
+      send({ type: "stopNo" });
+      resumeAll(pos);
+    }
+  };
 
   // atLocal: the moment (this phone's clock, ms) the countdown should end and the music start
   const begin = useCallback((atLocal) => {
-    setState((b) => b && { ...b, started: true, lines: {}, round: (b.round || 0) + 1 });
+    setState((b) => b && { ...b, started: true, paused: null, stopReq: null, lines: {}, round: (b.round || 0) + 1 });
     if (player.current) player.current.start(atLocal);
   }, []);
 
@@ -51,7 +93,19 @@ export function useBattle() {
             offset.current = m.t1 + rtt / 2 - now;
           }
           setState((b) => b && (b.synced ? b : { ...b, synced: true }));
-        } else if (m.type === "start") begin(m.at - offset.current);
+        } else if (m.type === "start") begin(fromHost(m.at));
+        else if (m.type === "pause") doPause(m.pos, "peer");
+        else if (m.type === "resume") doResume(fromHost(m.at), m.pos);
+        else if (m.type === "stopReq") {
+          doPause(m.pos, "peer");
+          clearStopTimer();
+          setState((b) => b && { ...b, stopReq: { by: "peer", pos: m.pos, until: Date.now() + STOP_WAIT } });
+          stopTimer.current = setTimeout(() => answerStop(true), STOP_WAIT);
+        } else if (m.type === "stopOk") doFinish();
+        else if (m.type === "stopNo") {
+          clearStopTimer();
+          setState((b) => b && { ...b, stopReq: null });
+        }
         else if (m.type === "line")
           setState((b) => b && { ...b, lines: { ...b.lines, [m.i]: m.score } });
       },
@@ -75,6 +129,7 @@ export function useBattle() {
     create: () => open(makeCode(), true),
     join: (code) => open(code, false),
     leave: () => {
+      clearStopTimer();
       me.current = { ...me.current, ready: false };
       if (net.current) net.current.leave();
       net.current = null;
@@ -103,6 +158,22 @@ export function useBattle() {
       if (net.current) net.current.send({ type: "start", at });
       begin(at);
     },
+    pause: (pos) => {
+      send({ type: "pause", pos });
+      doPause(pos, "me");
+    },
+    resume: (pos) => resumeAll(pos),
+    // ask to end: both pause, the friend confirms (or it ends by itself after 20 s)
+    requestStop: (pos) => {
+      if (!(state && state.peer)) return doFinish();
+      send({ type: "stopReq", pos });
+      doPause(pos, "me");
+      clearStopTimer();
+      setState((b) => b && { ...b, stopReq: { by: "me", pos, until: Date.now() + STOP_WAIT } });
+      // a little extra so the friend's own timeout (and its "end" message) lands first
+      stopTimer.current = setTimeout(doFinish, STOP_WAIT + 3000);
+    },
+    answerStop,
     sendLine: (i, score) => net.current && net.current.send({ type: "line", i, score }),
     resetLines: () =>
       setState((b) => (b && Object.keys(b.lines).length ? { ...b, lines: {} } : b)),
