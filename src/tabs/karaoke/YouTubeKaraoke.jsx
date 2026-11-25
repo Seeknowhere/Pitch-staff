@@ -6,7 +6,8 @@ import { Icon } from "../../components/Icon.jsx";
 import { detectPitch } from "../../lib/pitch.js";
 import { SETTINGS, micGate, getMicStream } from "../../lib/settings.js";
 import { midiInfo } from "../../lib/music.js";
-import { saveBlob } from "../../lib/audio.js";
+import { saveBlob, encodeWav, peakOf, makeImpulse } from "../../lib/audio.js";
+import { loadJSON, saveJSON } from "../../lib/storage.js";
 import {
   canSearch,
   loadYouTube,
@@ -194,18 +195,85 @@ function Player({ video, onBack }) {
   const canvas = useRef(null);
   const trail = useRef([]);
   const rec = useRef(null); // { recorder, chunks, start }
-  const [take, setTake] = useState(null); // { url, start, blob }
+  // your take: the recording, where in the video it started, and the delay it was recorded with
+  const [take, setTake] = useState(null); // { url, start, blob, buf, auto }
   const [saveMsg, setSaveMsg] = useState("");
   useEffect(() => setSaveMsg(""), [take]);
-  // your voice as a file (the video's music can't be included: Tono never has it)
+  // the same mix settings as normal Karaoke (shared with it), plus this device's timing tweak
+  const [mixVol, setMixVol] = useState(() =>
+    loadJSON("pitchstaff.karaout.v1", { v: 1, m: 0.75, verb: true }),
+  );
+  const [nudge, setNudge] = useState(() => loadJSON("tono.yt.timing.v1", 0));
+  const shift = take ? take.auto + nudge : 0; // how much earlier your voice is played
+  const shiftRef = useRef(0);
+  shiftRef.current = shift;
+  const [hearing, setHearing] = useState(false);
+  const pb = useRef({ ctx: null, chain: null, src: null, at: 0, off: 0 });
+  const syncTimer = useRef(0);
+  const playCtx = () => {
+    const P = pb.current;
+    if (!P.ctx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      P.ctx = new Ctx();
+    }
+    if (P.ctx.state === "suspended") P.ctx.resume().catch(() => {});
+    return P.ctx;
+  };
+  // your voice cleaned up like normal Karaoke: low rumble off, an even level, a touch of echo
+  const voiceChain = (ctx, dest, buf) => {
+    const out = ctx.createDynamicsCompressor();
+    out.threshold.value = -8;
+    out.ratio.value = 4;
+    out.attack.value = 0.005;
+    out.release.value = 0.2;
+    out.connect(dest);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 90;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -24;
+    comp.ratio.value = 3;
+    comp.attack.value = 0.01;
+    comp.release.value = 0.25;
+    const norm = Math.min(8, 0.5 / peakOf(buf));
+    const vG = ctx.createGain();
+    vG.gain.value = mixVol.v * norm;
+    hp.connect(comp);
+    comp.connect(vG);
+    vG.connect(out);
+    const conv = ctx.createConvolver();
+    conv.buffer = makeImpulse(ctx);
+    const wet = ctx.createGain();
+    wet.gain.value = mixVol.verb ? 0.22 : 0;
+    vG.connect(conv);
+    conv.connect(wet);
+    wet.connect(out);
+    return { input: hp, vG, wet, norm, out };
+  };
+  const setOut = (k, v) => {
+    const next = { ...mixVol, [k]: v };
+    setMixVol(next);
+    saveJSON("pitchstaff.karaout.v1", next);
+    const P = pb.current;
+    if (P.chain && P.ctx) {
+      const t = P.ctx.currentTime;
+      if (k === "v") P.chain.vG.gain.setTargetAtTime(v * P.chain.norm, t, 0.03);
+      if (k === "verb") P.chain.wet.gain.setTargetAtTime(v ? 0.22 : 0, t, 0.03);
+    }
+  };
+  // the music is YouTube's own player volume (it can't go above 100)
+  useEffect(() => {
+    if (ready && yt.current && yt.current.setVolume)
+      yt.current.setVolume(Math.round(Math.min(1, mixVol.m) * 100));
+  }, [ready, mixVol.m]);
+  const setTiming = (v) => {
+    setNudge(v);
+    saveJSON("tono.yt.timing.v1", v);
+  };
+  // your voice as a file, with the echo and the timing fix (the video's music can't be
+  // included: Tono never has it)
   const saveTake = async () => {
-    if (!take || !take.blob) return;
-    const type = take.blob.type || "";
-    const ext = /mp4|m4a|aac/.test(type)
-      ? "m4a"
-      : /ogg/.test(type)
-        ? "ogg"
-        : "webm";
+    if (!take || !take.buf) return;
     const base =
       (title || "YouTube karaoke")
         .replace(/\(.*?\)|\[.*?\]/g, "")
@@ -214,8 +282,21 @@ function Player({ video, onBack }) {
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 40) || "song";
+    setSaveMsg("Getting it ready…");
     try {
-      await saveBlob(take.blob, base + " - my singing." + ext);
+      const buf = take.buf,
+        sr = buf.sampleRate,
+        tail = mixVol.verb ? 1.8 : 0.2;
+      const len = Math.max(1, Math.ceil((buf.duration - shift + tail) * sr));
+      const off = new OfflineAudioContext(2, len, sr);
+      const ch = voiceChain(off, off.destination, buf);
+      const src = off.createBufferSource();
+      src.buffer = buf;
+      src.connect(ch.input);
+      if (shift >= 0) src.start(0, shift);
+      else src.start(-shift, 0);
+      const out = await off.startRendering();
+      await saveBlob(encodeWav(out), base + " - my singing.wav");
       setSaveMsg("Saved. It's your voice only, without the music.");
     } catch (e) {
       setSaveMsg(
@@ -225,9 +306,6 @@ function Player({ video, onBack }) {
       );
     }
   };
-  const [hearing, setHearing] = useState(false);
-  const audio = useRef(null);
-  const syncTimer = useRef(0);
 
   // the YouTube player
   useEffect(() => {
@@ -268,23 +346,25 @@ function Player({ video, onBack }) {
   useEffect(
     () => () => {
       stopMic();
-      clearInterval(syncTimer.current);
-      if (audio.current) audio.current.pause();
+      stopHearing();
+      if (pb.current.ctx) pb.current.ctx.close().catch(() => {});
     },
     [],
   );
   useEffect(() => () => take && URL.revokeObjectURL(take.url), [take]);
 
-  // while "Hear yourself" plays, keep your recording lined up with the video and paused with it
+  // while "Hear yourself" plays, your recording follows the video: it starts, pauses and
+  // jumps with it, and is put back in line if the video stutters or buffers
   useEffect(() => {
-    if (!hearing || !audio.current || !take) return;
-    const a = audio.current;
-    if (state === 1) {
-      a.currentTime = Math.max(0, yt.current.getCurrentTime() - take.start);
-      a.play().catch(() => {});
-    } else a.pause();
+    if (!hearing || !take) return;
+    if (state === 1) startVoice();
+    else stopVoice();
     if (state === 0) stopHearing();
   }, [state, hearing]);
+  // moving the timing slider while it plays takes effect straight away
+  useEffect(() => {
+    if (hearing && state === 1) startVoice();
+  }, [nudge]);
 
   // recording starts the moment the video actually plays
   useEffect(() => {
@@ -323,6 +403,15 @@ function Player({ video, onBack }) {
     an.fftSize = 2048;
     ctx.createMediaStreamSource(stream).connect(an);
     mic.current = { stream, ctx, an };
+    // the delay this phone and these headphones add: what you hear comes late, and so does
+    // the mic, so your recording lands late against the video
+    const tr = stream.getAudioTracks()[0];
+    const inLat =
+      (tr && tr.getSettings && tr.getSettings().latency) ||
+      ctx.baseLatency ||
+      0.01;
+    const outLat = ctx.outputLatency || ctx.baseLatency || 0.02;
+    const auto = Math.max(0.05, Math.min(0.5, inLat + outLat + 0.04));
     trail.current = [];
     // record your voice only (the video's sound never goes through Tono)
     const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find(
@@ -338,7 +427,7 @@ function Player({ video, onBack }) {
       );
       const chunks = [];
       recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-      rec.current = { recorder, chunks, started: false, start: 0 };
+      rec.current = { recorder, chunks, started: false, start: 0, auto };
     }
     const buf = new Float32Array(an.fftSize);
     const tick = () => {
@@ -376,7 +465,21 @@ function Player({ video, onBack }) {
         const blob = new Blob(r.chunks, {
           type: r.chunks[0].type || "audio/webm",
         });
-        setTake({ url: URL.createObjectURL(blob), start: r.start, blob });
+        blob
+          .arrayBuffer()
+          .then((ab) => playCtx().decodeAudioData(ab))
+          .then((buf) =>
+            setTake({
+              url: URL.createObjectURL(blob),
+              start: r.start,
+              blob,
+              buf,
+              auto: r.auto,
+            }),
+          )
+          .catch(() =>
+            setFailed("Couldn't get your recording ready. Try singing again."),
+          );
       };
       try {
         r.recorder.stop();
@@ -384,27 +487,59 @@ function Player({ video, onBack }) {
     }
   };
 
+  // your voice from the spot the video is at (shifted earlier to make up for the delay)
+  function startVoice() {
+    const P = pb.current,
+      p = yt.current;
+    if (!take || !take.buf || !p) return;
+    stopVoice();
+    const ctx = playCtx();
+    if (!P.chain) P.chain = voiceChain(ctx, ctx.destination, take.buf);
+    const off = p.getCurrentTime() - take.start + shiftRef.current;
+    const src = ctx.createBufferSource();
+    src.buffer = take.buf;
+    src.connect(P.chain.input);
+    const now = ctx.currentTime + 0.02;
+    if (off >= 0) src.start(now, off);
+    else src.start(now - off, 0);
+    P.src = src;
+    P.at = now;
+    P.off = off;
+  }
+  function stopVoice() {
+    const P = pb.current;
+    if (P.src) {
+      try {
+        P.src.stop();
+      } catch (e) {}
+      P.src = null;
+    }
+  }
   const hearYourself = () => {
-    if (!take || !yt.current) return;
-    if (!audio.current || audio.current.src !== take.url)
-      audio.current = new Audio(take.url);
+    if (!take || !take.buf || !yt.current) return;
+    const P = pb.current;
+    playCtx();
+    if (P.chain) {
+      try {
+        P.chain.out.disconnect();
+      } catch (e) {}
+    }
+    P.chain = null;
     setHearing(true);
     yt.current.seekTo(take.start, true);
     yt.current.playVideo();
-    // nudge the recording back in line if the video stutters or buffers
     clearInterval(syncTimer.current);
     syncTimer.current = setInterval(() => {
-      const a = audio.current,
-        p = yt.current;
-      if (!a || !p || a.paused) return;
-      const want = p.getCurrentTime() - take.start;
-      if (Math.abs(a.currentTime - want) > 0.25)
-        a.currentTime = Math.max(0, want);
-    }, 1000);
+      const p = yt.current;
+      if (!P.src || !p || !P.ctx) return;
+      const want = p.getCurrentTime() - take.start + shiftRef.current;
+      const have = P.off + (P.ctx.currentTime - P.at);
+      if (Math.abs(have - want) > 0.12) startVoice();
+    }, 500);
   };
   function stopHearing() {
     clearInterval(syncTimer.current);
-    if (audio.current) audio.current.pause();
+    stopVoice();
     setHearing(false);
   }
 
@@ -539,10 +674,85 @@ function Player({ video, onBack }) {
           )}
         </div>
         {take && !singing && (
-          <p className="text-xs muted" style={{ margin: 0 }}>
-            {saveMsg ||
-              "Hear yourself plays the video with your recording on top. Saving gives you a file of your voice only, since Tono can't record YouTube's music."}
-          </p>
+          <div className="flex flex-col gap-3">
+            <div
+              className="mixer"
+              style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}
+            >
+              {[
+                ["v", "My voice", 1.6],
+                ["m", "Music", 1],
+              ].map(([k, l, mx]) => (
+                <label key={k} className="mix-row" htmlFor={"yt-out-" + k}>
+                  <span className="text-xs font-semibold">{l}</span>
+                  <input
+                    id={"yt-out-" + k}
+                    type="range"
+                    min="0"
+                    max={mx}
+                    step="0.05"
+                    value={Math.min(mx, mixVol[k])}
+                    onInput={(e) => setOut(k, parseFloat(e.target.value))}
+                    onChange={(e) => setOut(k, parseFloat(e.target.value))}
+                    style={{ accentColor: "var(--accent)" }}
+                  />
+                  <span
+                    className="mono text-xs muted"
+                    style={{ width: 34, textAlign: "right" }}
+                  >
+                    {Math.round(Math.min(mx, mixVol[k]) * 100)}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <button
+                className="switch"
+                role="switch"
+                aria-checked={mixVol.verb ? "true" : "false"}
+                onClick={() => setOut("verb", !mixVol.verb)}
+                style={{ fontSize: 13 }}
+              >
+                <span className="track">
+                  <span className="knob" />
+                </span>
+                Echo (reverb)
+              </button>
+              <label
+                className="mix-row"
+                htmlFor="yt-voice-timing"
+                style={{ flex: "1 1 260px" }}
+              >
+                <span className="text-xs font-semibold">Voice timing</span>
+                <input
+                  id="yt-voice-timing"
+                  type="range"
+                  min={-0.3 - take.auto}
+                  max={0.6 - take.auto}
+                  step="0.01"
+                  value={nudge}
+                  onChange={(e) => setTiming(parseFloat(e.target.value))}
+                  style={{ accentColor: "var(--accent)" }}
+                />
+                <span
+                  className="mono text-xs muted"
+                  style={{ minWidth: 86, textAlign: "right" }}
+                >
+                  {Math.abs(shift) < 0.005
+                    ? "no shift"
+                    : (shift > 0 ? "earlier " : "later ") +
+                      Math.abs(shift).toFixed(2) +
+                      " s"}
+                </span>
+              </label>
+            </div>
+            <p className="text-xs muted" style={{ margin: 0 }}>
+              {saveMsg ||
+                "Drag Voice timing while it plays until your voice sits on the beat. It starts " +
+                  take.auto.toFixed(2) +
+                  " s earlier to make up for headphone delay. Saving gives you your voice only, since Tono can't record YouTube's music."}
+            </p>
+          </div>
         )}
       </div>
     </section>
