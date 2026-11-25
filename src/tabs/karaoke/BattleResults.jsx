@@ -194,7 +194,8 @@ export function BattleResults({
             </button>
             <span className="text-xs muted">
               Saved only if you both tap it: the photos, the remix and the
-              score, on each of your phones.
+              score, on each of your phones. You'll both be able to keep and
+              download the remix.
             </span>
           </>
         )}

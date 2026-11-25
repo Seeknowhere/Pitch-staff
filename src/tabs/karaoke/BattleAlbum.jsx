@@ -2,6 +2,7 @@
 // battle as a little collage; tapping one opens its full collage, the remix and the scores.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon.jsx";
+import { saveBlob } from "../../lib/audio.js";
 import {
   listBattles,
   onAlbumChanged,
@@ -227,6 +228,45 @@ function RemixPlayer({ b }) {
           {b.rival}
         </span>
       </div>
+      <DownloadRemix b={b} />
+    </div>
+  );
+}
+
+// a copy of the remix to keep (both singers agreed to this when they saved the battle)
+function DownloadRemix({ b }) {
+  const [msg, setMsg] = useState("");
+  const name =
+    [b.myName + " vs " + b.rival, b.song, "remix"]
+      .filter(Boolean)
+      .join(" - ")
+      .replace(/[^\w\- ]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 60) + ".wav";
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        className="btn"
+        style={{ alignSelf: "flex-start" }}
+        onClick={async () => {
+          try {
+            await saveBlob(b.remix, name);
+            setMsg(
+              "Downloaded. If you post it, apps may mute it because of the song's music.",
+            );
+          } catch (e) {
+            setMsg(
+              e && e.code === "declined"
+                ? "Download cancelled."
+                : "Downloading isn't available here.",
+            );
+          }
+        }}
+      >
+        ⬇ Download remix
+      </button>
+      {msg && <span className="text-xs muted">{msg}</span>}
     </div>
   );
 }
