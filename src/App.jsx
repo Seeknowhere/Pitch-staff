@@ -9,6 +9,7 @@ import {
 import { Icon } from "./components/Icon.jsx";
 import { SettingsPanel } from "./components/SettingsPanel.jsx";
 import { Sheet } from "./components/Sheet.jsx";
+import { InstallTip } from "./components/InstallTip.jsx";
 import { aiCachePut, aiCacheGet, snapToKey, aiNotes } from "./lib/ai-notes.js";
 import { trackPitch, decodeFile, guideBySyllables } from "./lib/analysis.js";
 import { chromaOf } from "./lib/audio.js";
@@ -1169,6 +1170,7 @@ export function App() {
           </button>
         </div>
       </header>
+      <InstallTip />
       {showSettings && (
         <SettingsPanel
           listening={mode === "mic"}
